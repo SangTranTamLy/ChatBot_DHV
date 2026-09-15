@@ -1,22 +1,24 @@
-"""Evidence validation for model output before it reaches the UI."""
+"""Xác thực bằng chứng đối với đầu ra của model trước khi nó hiển thị lên giao diện."""
 
 from __future__ import annotations
 
 import re
 import unicodedata
 from typing import Any, Mapping
+from urllib.parse import urlparse
 
 from .evidence import EvidenceBundle
 
 
 FALLBACK_ANSWER = (
-    "Hiện tại tôi chưa tìm thấy thông tin này trong dữ liệu tuyển sinh DHV đã "
-    "được kiểm chứng. Bạn vui lòng tham khảo thông tin chính thức từ Trường "
-    "Đại học Hùng Vương TP.HCM."
+    "Tôi chưa biết câu trả lời này vì hiện chưa tìm thấy thông tin trong dữ liệu "
+    "tuyển sinh DHV đã được kiểm chứng. Bạn vui lòng tham khảo thông tin chính "
+    "thức từ Trường Đại học Hùng Vương TP.HCM."
 )
 OUT_OF_SCOPE_ANSWER = (
-    "Xin lỗi, tôi chỉ hỗ trợ các câu hỏi liên quan đến tuyển sinh Trường Đại học "
-    "Hùng Vương TP.HCM."
+    "Tôi không thể trả lời câu hỏi này vì nội dung không nằm trong phạm vi tuyển sinh "
+    "của Trường Đại học Hùng Vương TP.HCM. Tôi chỉ hỗ trợ các câu hỏi liên quan đến "
+    "tuyển sinh của trường."
 )
 CLARIFICATION_ANSWER = (
     "Bạn muốn biết điểm sàn (ngưỡng đầu vào), điểm trúng tuyển hay điểm của đợt "
@@ -54,6 +56,7 @@ _SUPPLEMENTARY_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 _DATE_LITERAL_RE = re.compile(r"\b\d{1,2}[/-]\d{1,2}[/-]20\d{2}\b")
+_YEAR_LITERAL_RE = re.compile(r"\b20\d{2}\b")
 _CONTACT_NUMBER_RE = re.compile(
     r"(?<!\d)(?:\+?\d)(?:[\s().-]?\d){7,14}(?!\d)"
 )
@@ -80,6 +83,11 @@ _TRUSTED_SCHOOL_NAMES = frozenset(
         "dai hoc hung vuong tp",
     }
 )
+_SCORE_TYPE_MARKERS = {
+    "application_threshold": ("điểm sàn", "ngưỡng đầu vào", "điểm đầu vào"),
+    "admission_score": ("điểm trúng tuyển", "điểm chuẩn"),
+    "supplementary_threshold": ("xét tuyển bổ sung", "tuyển sinh bổ sung"),
+}
 _STOPWORDS = frozenset(
     {
         "va", "la", "cua", "cho", "toi", "ban", "mot", "nhung", "duoc",
@@ -96,18 +104,24 @@ def validate_model_answer(
     question: str = "",
     analysis: Mapping[str, object] | Any | None = None,
 ) -> dict[str, object]:
-    """Accept only a grounded answer with correct structured score mapping.
+    """Chỉ chấp nhận câu trả lời có cơ sở với ánh xạ điểm số có cấu trúc chính xác.
 
-    This function never constructs a replacement answer from evidence.  A
-    failed validation is returned as ``no_data``; the orchestration layer may
-    ask the LLM once more with a correction instruction and validate again.
+    Hàm này không bao giờ tự tạo ra câu trả lời thay thế từ bằng chứng. Nếu
+    xác thực thất bại sẽ trả về ``no_data``; lớp điều phối (orchestration) có thể
+    yêu cầu LLM trả lời lại một lần nữa kèm hướng dẫn sửa lỗi và xác thực lại.
     """
 
     if not evidence.is_usable:
         return _failed("evidence_empty")
+    evidence_failure = _evidence_contract_failure(evidence)
+    if evidence_failure:
+        return _failed(evidence_failure)
     answer = sanitize_answer(raw_answer)
     if _is_model_fallback(answer) or not answer:
         return _failed("model_fallback")
+    contract_failure = _answer_contract_failure(answer, evidence, question, analysis)
+    if contract_failure:
+        return _failed(contract_failure)
     if not _is_supported_by_evidence(answer, evidence):
         return _failed("ungrounded")
     relation_failure = _program_relation_failure(answer, evidence, analysis)
@@ -132,6 +146,9 @@ def validate_model_answer(
     score_failure = _score_mapping_failure(answer, evidence, question, analysis)
     if score_failure:
         return _failed(score_failure)
+    score_semantics_failure = _score_semantics_failure(answer, evidence, question, analysis)
+    if score_semantics_failure:
+        return _failed(score_semantics_failure)
     if not _has_required_supplementary_date(answer, evidence, question):
         return _failed("supplementary_date")
 
@@ -152,7 +169,7 @@ def _failed(reason: str) -> dict[str, object]:
 
 
 def sanitize_answer(answer: str) -> str:
-    """Remove links/citation URLs the model may have ignored in the prompt."""
+    """Loại bỏ các liên kết/URL trích dẫn mà model có thể đã bỏ qua trong prompt."""
 
     if not isinstance(answer, str):
         return ""
@@ -161,6 +178,140 @@ def sanitize_answer(answer: str) -> str:
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
+
+
+def _official_dhv_url(value: object) -> bool:
+    parsed = urlparse(str(value or "").strip())
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    return bool(
+        parsed.scheme in {"http", "https"}
+        and not parsed.username
+        and (
+            hostname in {"dhv.edu.vn", "www.dhv.edu.vn"}
+            or hostname.endswith(".dhv.edu.vn")
+        )
+    )
+
+
+def _evidence_contract_failure(evidence: EvidenceBundle) -> str:
+    """Kiểm tra metadata ở ngay boundary validator, kể cả khi bundle được tạo thủ công."""
+
+    for chunk in evidence.chunks:
+        metadata = chunk.metadata or {}
+        if metadata.get("status") != "verified":
+            return "evidence_status_not_verified"
+        try:
+            if int(metadata.get("year")) != 2026:
+                return "evidence_year_mismatch"
+        except (TypeError, ValueError):
+            return "evidence_year_mismatch"
+        if str(metadata.get("school_code") or "").upper() != "DHV":
+            return "evidence_institution_mismatch"
+        if not _official_dhv_url(metadata.get("source_url")):
+            return "evidence_source_not_official"
+    return ""
+
+
+def _answer_contract_failure(
+    answer: str,
+    evidence: EvidenceBundle,
+    question: str,
+    analysis: Mapping[str, object] | Any | None,
+) -> str:
+    """Kiểm tra các contract không nên giao cho LLM tự quyết định."""
+
+    if _claims_official_status(answer):
+        return "official_status_claim"
+
+    entities = _analysis_entities(analysis)
+    evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
+    expected_major = str(entities.get("major_name") or "").strip()
+    expected_program = str(entities.get("program_name") or "").strip()
+    if expected_program and _fold_text(expected_program) in evidence_text:
+        if _fold_text(expected_program) not in _fold_text(answer):
+            return "entity_mismatch"
+
+    # Do not require every explanatory answer to repeat the major name: a
+    # verified generic rule can be a valid response for a named major. Still
+    # reject a different canonical major when the selected evidence exposes a
+    # concrete major binding.
+    if expected_major:
+        expected_folded = _fold_text(expected_major)
+        known_major_names = {
+            _fold_text(str(fact.get("major_name") or ""))
+            for fact in evidence.score_facts
+            if fact.get("major_name")
+        }
+        known_major_names.update(
+            _fold_text(str(relation.get("parent_major") or ""))
+            for relation in evidence.entity_relations
+            if relation.get("parent_major")
+        )
+        candidate_names = {
+            _fold_text(value)
+            for value in _candidate_strings(entities.get("candidate_majors"))
+        }
+        answer_folded = _fold_text(answer)
+        if expected_folded in evidence_text:
+            for other in known_major_names - {expected_folded} - candidate_names:
+                if other and other in answer_folded:
+                    return "entity_mismatch"
+
+    answer_years = {int(value) for value in _YEAR_LITERAL_RE.findall(answer)}
+    evidence_years = {
+        int(chunk.metadata.get("year"))
+        for chunk in evidence.chunks
+        if str(chunk.metadata.get("year") or "").isdigit()
+    }
+    # Verified DHV material may contain legitimate historical dates (for
+    # example the school's founding year) inside a 2026 document. Those
+    # literals are allowed only when they are present in the selected chunk;
+    # an unrelated year such as 2027 remains rejected below.
+    evidence_text_years = {
+        int(value) for value in _YEAR_LITERAL_RE.findall(" ".join(chunk.text for chunk in evidence.chunks))
+    }
+    requested_year = _requested_year(question, entities)
+    allowed_years = evidence_years | evidence_text_years | ({requested_year} if requested_year else set())
+    if answer_years and allowed_years and not answer_years.issubset(allowed_years):
+        return "year_mismatch"
+
+    institution_failure = _target_institution_failure(answer, evidence)
+    if institution_failure:
+        return institution_failure
+
+    return ""
+
+
+def _target_institution_failure(answer: str, evidence: EvidenceBundle) -> str:
+    evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
+    for match in _ORGANIZATION_RE.finditer(answer):
+        organization = _fold_text(match.group(0))
+        if organization in _TRUSTED_SCHOOL_NAMES or organization in evidence_text:
+            continue
+        return "institution_mismatch"
+    return ""
+
+
+def _claims_official_status(answer: str) -> bool:
+    normalized = _fold_text(answer)
+    return any(
+        re.search(pattern, normalized)
+        for pattern in (
+            r"\b(?:toi|minh)\b[^.!?\n]{0,20}\b(?:la|dai dien|cua)\b[^.!?\n]{0,25}\bchinh thuc\b",
+            r"\b(?:chatbot|tro ly)(?: nay)?\b[^.!?\n]{0,30}\bchinh thuc\b",
+        )
+    )
+
+
+def _requested_year(question: str, entities: Mapping[str, object]) -> int | None:
+    value = entities.get("year")
+    try:
+        if value is not None:
+            return int(value)
+    except (TypeError, ValueError):
+        pass
+    match = _YEAR_LITERAL_RE.search(question or "")
+    return int(match.group(0)) if match else None
 
 
 def _is_supported_by_evidence(answer: str, evidence: EvidenceBundle) -> bool:
@@ -177,14 +328,14 @@ def _has_unsupported_named_entity(
     evidence: EvidenceBundle,
     analysis: Mapping[str, object] | Any | None,
 ) -> bool:
-    """Reject named admissions entities that are absent from retrieved text.
+    """Từ chối các thực thể tuyển sinh được nhắc tên nhưng không có trong văn bản truy xuất.
 
-    Token overlap alone is too permissive: an answer can mention an unrelated
-    major or university while reusing a valid score such as 600. This guard
-    checks entity-shaped claims against the actual evidence text and the
-    evidence-derived major/program relations. Generic sentence labels are
-    ignored, but named candidates and organizations must be present verbatim
-    after normalization.
+    Chỉ dựa vào việc trùng lặp từ khóa (token overlap) là quá lỏng lẻo: một câu trả lời có thể
+    nhắc đến một ngành hoặc trường đại học không liên quan trong khi vẫn dùng lại một điểm số hợp lệ như 600.
+    Lớp bảo vệ này kiểm tra các khẳng định dạng thực thể đối với văn bản bằng chứng thực tế và
+    các mối quan hệ ngành/chương trình được suy ra từ bằng chứng. Các nhãn câu thông thường
+    được bỏ qua, nhưng các ứng viên và tổ chức được nhắc tên phải xuất hiện nguyên văn
+    sau khi chuẩn hóa.
     """
 
     entities = _analysis_entities(analysis)
@@ -229,6 +380,10 @@ def _has_unsupported_named_entity(
         "nhom nganh ",
         "nganh phu hop ",
         "danh sach ",
+        "cao hon ",
+        "thap hon ",
+        "cao hon hoac bang ",
+        "thap hon hoac bang ",
     )
     for match in _ENTITY_CLAIM_RE.finditer(answer):
         candidate = _fold_text(match.group("entity"))
@@ -263,7 +418,16 @@ def _has_unsupported_named_entity(
 
 def _is_model_fallback(answer: str) -> bool:
     normalized = _fold_text(answer)
-    return "chua tim thay thong tin" in normalized
+    return any(
+        marker in normalized
+        for marker in (
+            "chua tim thay thong tin",
+            "khong tim thay thong tin",
+            "khong biet",
+            "khong co thong tin",
+            "khong the tra loi",
+        )
+    )
 
 
 def _contains_forbidden_admission_claim(answer: str) -> bool:
@@ -287,7 +451,7 @@ def _program_relation_failure(
     evidence: EvidenceBundle,
     analysis: Mapping[str, object] | Any | None,
 ) -> str:
-    """Reject a code or relationship that the retrieved corpus does not map."""
+    """Từ chối một mã hoặc mối quan hệ mà corpus truy xuất không có ánh xạ."""
 
     entities = _analysis_entities(analysis)
     programs = list(_candidate_strings(entities.get("candidate_programs")))
@@ -374,7 +538,7 @@ def _program_catalog_failure(
     question: str,
     analysis: Mapping[str, object] | Any | None,
 ) -> str:
-    """Validate catalog scope, relation coverage and deterministic counts."""
+    """Xác thực phạm vi danh mục, độ bao phủ mối quan hệ và các bộ đếm tất định."""
 
     entities = _analysis_entities(analysis)
     if isinstance(analysis, Mapping):
@@ -448,7 +612,7 @@ def _advisory_choice_failure(
     answer: str,
     analysis: Mapping[str, object] | Any | None,
 ) -> str:
-    """Reject a confident single-choice answer for an unresolved comparison."""
+    """Từ chối câu trả lời chọn một lựa chọn một cách chắc chắn cho một phép so sánh chưa được giải quyết."""
 
     entities = _analysis_entities(analysis)
     intent = str(analysis.get("intent")) if isinstance(analysis, Mapping) else str(getattr(analysis, "intent", ""))
@@ -502,8 +666,11 @@ def _score_mapping_failure(
     analysis: Mapping[str, object] | Any | None,
 ) -> str:
     normalized_question = _fold_text(question)
-    facts = list(evidence.score_facts)
+    all_facts = list(evidence.score_facts)
+    facts = [fact for fact in all_facts if _is_verified_score_fact(fact)]
     if not facts:
+        if all_facts:
+            return "unverified_score_rule"
         return ""
     entities = _analysis_entities(analysis)
     major = _fold_text(str(entities.get("major_name") or ""))
@@ -566,6 +733,64 @@ def _score_mapping_failure(
     return ""
 
 
+def _score_semantics_failure(
+    answer: str,
+    evidence: EvidenceBundle,
+    question: str,
+    analysis: Mapping[str, object] | Any | None,
+) -> str:
+    """Không cho phép câu trả lời đổi loại điểm hoặc đổi phương thức đang hỏi."""
+
+    entities = _analysis_entities(analysis)
+    score_type = str(entities.get("score_type") or "")
+    normalized_question = _fold_text(question)
+    if not score_type:
+        if any(marker in normalized_question for marker in ("diem san", "nguong dau vao", "diem dau vao")):
+            score_type = "application_threshold"
+        elif any(marker in normalized_question for marker in ("diem trung tuyen", "diem chuan")):
+            score_type = "admission_score"
+        elif "xet tuyen bo sung" in normalized_question:
+            score_type = "supplementary_threshold"
+    if not score_type:
+        return ""
+
+    normalized_answer = _fold_text(answer)
+    numeric_answer = bool(re.search(r"\b\d+(?:[.,]\d+)?\b", answer))
+    if score_type == "application_threshold" and numeric_answer and any(
+        re.search(rf"{re.escape(marker)}[^.!?\n]{{0,40}}(?:la|:|=|\d)", normalized_answer)
+        for marker in _SCORE_TYPE_MARKERS["admission_score"]
+    ):
+        return "score_type_mismatch"
+    if score_type == "admission_score" and numeric_answer and any(
+        re.search(rf"{re.escape(marker)}[^.!?\n]{{0,40}}(?:la|:|=|\d)", normalized_answer)
+        for marker in _SCORE_TYPE_MARKERS["application_threshold"]
+    ):
+        return "score_type_mismatch"
+    if score_type == "supplementary_threshold" and numeric_answer and re.search(
+        r"diem san[^.!?\n]{0,40}(?:la|:|=|\d)", normalized_answer
+    ) and "bo sung" not in normalized_answer:
+        return "score_type_mismatch"
+
+    requested_method = str(entities.get("admission_method") or "")
+    if requested_method and score_type in {"application_threshold", "supplementary_threshold"}:
+        labels = {
+            "thpt": _METHOD_LABELS["thpt"],
+            "hoc_ba": _METHOD_LABELS["hoc_ba"],
+            "dgnl": _METHOD_LABELS["dgnl"],
+        }
+        label = labels.get(requested_method)
+        facts = [
+            fact
+            for fact in evidence.score_facts
+            if _is_verified_score_fact(fact)
+            and fact.get("score_type") == score_type
+            and fact.get("method") == requested_method
+        ]
+        if label and facts and not re.search(label, answer, re.IGNORECASE):
+            return "method_mismatch"
+    return ""
+
+
 def _analysis_entities(analysis: Mapping[str, object] | Any | None) -> Mapping[str, object]:
     if analysis is None:
         return {}
@@ -576,6 +801,10 @@ def _analysis_entities(analysis: Mapping[str, object] | Any | None) -> Mapping[s
     return entities if isinstance(entities, Mapping) else {}
 
 
+def _is_verified_score_fact(fact: Mapping[str, object]) -> bool:
+    return fact.get("status") == "verified" or fact.get("source_status") == "verified" or fact.get("verified") is True
+
+
 def _has_required_supplementary_date(answer: str, evidence: EvidenceBundle, question: str) -> bool:
     normalized_question = _fold_text(question)
     if "xet tuyen bo sung" not in normalized_question and "tuyen sinh bo sung" not in normalized_question:
@@ -583,7 +812,8 @@ def _has_required_supplementary_date(answer: str, evidence: EvidenceBundle, ques
     required_dates = {
         str(fact.get("raw_value"))
         for fact in evidence.score_facts
-        if fact.get("score_type") == "supplementary_threshold" and fact.get("method") == "deadline"
+        if _is_verified_score_fact(fact)
+        and fact.get("score_type") == "supplementary_threshold" and fact.get("method") == "deadline"
     }
     if not required_dates:
         required_dates = {
@@ -609,7 +839,7 @@ def _unsupported_contact_or_date_literal(
     evidence: EvidenceBundle,
     analysis: Mapping[str, object] | Any | None,
 ) -> str:
-    """Reject invented contact/date literals in the four fact-only topics."""
+    """Từ chối các giá trị liên hệ/ngày tháng bịa đặt trong 4 chủ đề chỉ thuần dữ kiện."""
 
     if isinstance(analysis, Mapping):
         intent = str(analysis.get("intent") or "")
@@ -653,11 +883,11 @@ def _number_token(value: str) -> float | None:
 
 
 def _extract_method_value(answer: str, method: str) -> str | None:
-    """Read a value from the same mapping segment as a method label.
+    """Đọc một giá trị từ cùng một phân đoạn ánh xạ với nhãn phương thức.
 
-    Answers may write either ``THPT: 15`` or ``15 điểm theo ... THPT``.
-    Segmenting on mapping punctuation prevents the value for the next method
-    from being associated with the current label.
+    Câu trả lời có thể viết là ``THPT: 15`` hoặc ``15 điểm theo ... THPT``.
+    Việc phân đoạn dựa trên dấu câu giúp ngăn giá trị của phương thức tiếp theo
+    bị gán nhầm cho nhãn hiện tại.
     """
 
     label = _METHOD_LABELS[method]

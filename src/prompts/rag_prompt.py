@@ -1,4 +1,4 @@
-"""Prompt construction for context-grounded DHV admissions answers."""
+"""Tạo prompt để trả lời các câu hỏi tuyển sinh DHV dựa trên ngữ cảnh."""
 
 from __future__ import annotations
 
@@ -17,15 +17,16 @@ def build_rag_prompt(
     intent: str | None = None,
     entities: Mapping[str, object] | None = None,
     conversation_state: Mapping[str, object] | None = None,
+    answer_plan: Mapping[str, object] | object | None = None,
     score_facts: list[dict[str, object]] | tuple[dict[str, object], ...] | None = None,
     score_comparisons: list[dict[str, object]] | tuple[dict[str, object], ...] | None = None,
     entity_relations: list[dict[str, str]] | tuple[dict[str, str], ...] | None = None,
 ) -> str:
-    """Build a bounded, structured Vietnamese prompt grounded in evidence."""
+    """Tạo một prompt tiếng Việt có cấu trúc, giới hạn và dựa trên bằng chứng."""
 
     state = dict(conversation_state or {})
-    # Raw messages are intentionally not accepted here. Only named slots are
-    # allowed into the prompt so a long conversation cannot grow without bound.
+    # Cố tình không nhận tin nhắn thô ở đây. Chỉ cho phép các biến (slots) đã được định danh
+    # đưa vào prompt để một cuộc hội thoại dài không bị phình to vô hạn.
     bounded_state = {
         key: state.get(key)
         for key in (
@@ -47,6 +48,20 @@ def build_rag_prompt(
     bounded_facts = [dict(fact) for fact in (score_facts or ())]
     bounded_comparisons = [dict(comparison) for comparison in (score_comparisons or ())]
     bounded_relations = [dict(relation) for relation in (entity_relations or ())]
+    if answer_plan is None:
+        bounded_answer_plan: dict[str, object] = {
+            "mode": "DIRECT_SHORT",
+            "response_format": "short_paragraph",
+            "sections": ["answer"],
+            "required_content": [],
+            "related_questions": [],
+        }
+    elif isinstance(answer_plan, Mapping):
+        bounded_answer_plan = dict(answer_plan)
+    else:
+        to_dict = getattr(answer_plan, "to_dict", None)
+        value = to_dict() if callable(to_dict) else {}
+        bounded_answer_plan = dict(value) if isinstance(value, Mapping) else {}
     relation_constraints = [
         {
             "program_name": relation.get("program_name"),
@@ -61,9 +76,9 @@ def build_rag_prompt(
 CHỈ DÙNG CONTEXT DƯỚI ĐÂY để trả lời câu hỏi. Không sử dụng kiến thức bên ngoài
 CONTEXT, không suy đoán, không tự điền thông tin còn thiếu và không biến một
 mốc lịch chung thành hạn hồ sơ riêng. Nếu CONTEXT không đủ để trả lời, hãy
-trả lời đúng câu: "Hiện tại tôi chưa tìm thấy thông tin này trong dữ liệu tuyển
-sinh DHV đã được kiểm chứng. Bạn vui lòng tham khảo thông tin chính thức từ
-Trường Đại học Hùng Vương TP.HCM."
+trả lời đúng câu: "Tôi chưa biết câu trả lời này vì hiện chưa tìm thấy thông tin
+trong dữ liệu tuyển sinh DHV đã được kiểm chứng. Bạn vui lòng tham khảo thông tin
+chính thức từ Trường Đại học Hùng Vương TP.HCM."
 
 Quy tắc:
 - Trả lời bằng tiếng Việt, ngắn gọn và nêu rõ năm nếu có trong CONTEXT.
@@ -109,6 +124,18 @@ Quy tắc:
 - Giữ giọng tư vấn tự nhiên như một chuyên viên tuyển sinh: dùng "mình" và "bạn",
   đặt nhận định có điều kiện lên trước rồi mới nêu dữ kiện và hỏi một câu tiếp nối.
   Không nhắc đến hệ thống, validator, model, prompt hay quy trình kiểm tra trong câu trả lời.
+  Không mở đầu lặp bằng "Theo dữ liệu tuyển sinh", "Đây là các thông tin được công bố"
+  hoặc câu xác nhận nguồn nếu người dùng không hỏi nguồn. Không sao chép các nhãn
+  [Evidence], Tiêu đề, Nhóm, Năm, Mục, Nội dung hay toàn bộ CONTEXT vào câu trả lời.
+- ANSWER_PLAN chỉ quyết định hình thức diễn đạt, không phải nguồn dữ kiện. Tuân thủ mode
+  và các section đã chọn. Chỉ dùng facts/evidence bên dưới; không tự điền section còn thiếu.
+- DIRECT_SHORT: trả lời thẳng trong 1–3 câu, đưa fact chính lên câu đầu. EXPLANATION: nêu kết luận trước rồi giải thích
+  ngắn bằng các dữ kiện liên quan. OVERVIEW: tóm tắt theo vài ý chính, không biến thành toàn
+  bộ văn bản nguồn, thường không quá 4 bullet. COMPARISON: đặt các lựa chọn cạnh nhau theo cùng tiêu chí và nêu rõ từng
+  lựa chọn. TABLE: chỉ dùng bảng/danh sách khi các dòng có cấu trúc tương đồng; không tự tạo
+  cột hoặc giá trị. STEP_BY_STEP: giữ đúng thứ tự bước và tách điều kiện/thời hạn. RECOMMENDATION:
+  tư vấn có điều kiện theo sở thích, không quyết định thay người dùng. CLARIFICATION, NO_DATA
+  và OUT_OF_SCOPE dùng đúng thông điệp boundary tương ứng, không gọi model để bịa thêm.
 - Nếu có nhiều lựa chọn trong candidate_majors hoặc candidate_programs mà người dùng chưa
   chốt, không khẳng định chắc chắn thay họ. Nếu sở thích đã đủ rõ, có thể nói "Với sở thích
   ..., mình nghiêng về ... hơn" và giải thích bằng đúng dữ kiện trong CONTEXT; nếu chưa đủ,
@@ -117,6 +144,9 @@ Quy tắc:
   cha nào.
 - Với điểm cá nhân, chỉ mô tả so sánh định lượng trong DETERMINISTIC_SCORE_COMPARISONS;
   không biến điểm sàn thành điểm trúng tuyển và không dùng điểm để tự quyết định ngành.
+- Chỉ dùng STRUCTURED_SCORE_FACTS có status là verified. Nếu rule của đúng ngành/phương
+  thức có raw_value là "-" hoặc thiếu value, phải nói rõ dữ liệu chưa công bố; không lấy
+  rule chung, điểm trúng tuyển hoặc điểm bổ sung để điền vào.
 - Không kết luận thí sinh đậu/trượt hoặc chắc chắn đủ điều kiện từ điểm cá nhân. Chỉ được
   so sánh điểm cá nhân với ngưỡng trong CONTEXT khi phương thức và mapping được nêu rõ.
 - Không dùng các cụm "đủ điều kiện xét tuyển", "đủ điều kiện trúng tuyển" hoặc tương đương
@@ -140,6 +170,10 @@ Quy tắc:
 <CONVERSATION_SLOTS>
 {_json_block(bounded_state)}
 </CONVERSATION_SLOTS>
+
+<ANSWER_PLAN>
+{_json_block(bounded_answer_plan)}
+</ANSWER_PLAN>
 
 <STRUCTURED_SCORE_FACTS>
 {_json_block(bounded_facts)}

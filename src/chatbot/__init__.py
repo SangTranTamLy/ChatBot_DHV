@@ -1,6 +1,7 @@
 """Chatbot orchestration modules."""
 
 from .chat_service import ChatService, ask_chatbot, get_chat_service
+from .answer_planner import AnswerPlan, AnswerPlanner, plan_answer
 from .query_analysis import (
     ConversationState,
     QueryAnalysis,
@@ -12,6 +13,8 @@ from .query_analysis import (
 
 __all__ = [
     "ChatService",
+    "AnswerPlan",
+    "AnswerPlanner",
     "ConversationState",
     "QueryAnalysis",
     "QueryPlan",
@@ -19,5 +22,6 @@ __all__ = [
     "ask_chatbot",
     "get_chat_service",
     "normalize_question",
+    "plan_answer",
     "route_question",
 ]

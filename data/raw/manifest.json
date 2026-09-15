@@ -1,0 +1,334 @@
+{
+  "manifest_version": "1.0",
+  "generated_at": "2026-09-15T18:25:03.914305+00:00",
+  "audited_at": "2026-09-16",
+  "target_year": 2026,
+  "raw_format": "pdf",
+  "official_source_policy": {
+    "allowed_host": "dhv.edu.vn",
+    "allowed_subdomains": true,
+    "require_https": true
+  },
+  "privacy_policy": "Do not ingest unnecessary personal data from forms or lookup tools.",
+  "documents": [
+    {
+      "raw_file": "data/raw/cach_tinh_diem/cach_tinh_diem_xet_tuyen_2026.pdf",
+      "sha256": "d992321400f1c9f89c25b4a0f3a9913b3bcfcc379302dc7779fc7ec0c2e88472",
+      "title": "Cách tính điểm xét tuyển được cổng tuyển sinh",
+      "year": 2026,
+      "date": "Nội dung cổng tuyển sinh 2026 đang công khai",
+      "source_date": "Nội dung cổng tuyển sinh 2026 đang công khai",
+      "collected_at": "2026-09-14",
+      "category": "cach_tinh_diem",
+      "data_role": "",
+      "source_url": "https://tuyensinh.dhv.edu.vn/",
+      "source_urls": [
+        "https://tuyensinh.dhv.edu.vn/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/co_so_lien_he/co_so_va_hotline_tuyen_sinh_2026.pdf",
+      "sha256": "c0be3d0b0d3b87a80f2910e364945e8a254c1a92a627a0356223f0747e2ad2bf",
+      "title": "Cơ sở và liên hệ tuyển sinh đang công khai",
+      "year": 2026,
+      "date": "04/07/2026 (trang DHV hiện tại)",
+      "source_date": "04/07/2026 (trang DHV hiện tại)",
+      "collected_at": "2026-09-14",
+      "category": "co_so_lien_he",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/",
+      "source_urls": [
+        "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/dang_ky_xet_tuyen/dang_ky_xet_tuyen_2026.pdf",
+      "sha256": "dd49a70febcb8309e8863e3234cb15c8a33057bfa7514e1ac61428f3b8a5244a",
+      "title": "Cổng đăng ký xét tuyển",
+      "year": 2026,
+      "date": "Cổng đăng ký 2026 đang công khai",
+      "source_date": "Cổng đăng ký 2026 đang công khai",
+      "collected_at": "2026-09-14",
+      "category": "dang_ky_xet_tuyen",
+      "data_role": "",
+      "source_url": "https://tuyensinh.dhv.edu.vn/dangky",
+      "source_urls": [
+        "https://tuyensinh.dhv.edu.vn/dangky"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/diem_trung_tuyen/diem_trung_tuyen_dot_1_2026.pdf",
+      "sha256": "db1cb89b74da988ebae6b71af28737e76a5269dafc5f500303bb54c8660772ce",
+      "title": "Điểm trúng tuyển đại học hệ chính quy đợt 1",
+      "year": 2026,
+      "date": "09/08/2026",
+      "source_date": "09/08/2026",
+      "collected_at": "2026-09-14",
+      "category": "diem_trung_tuyen",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-trung-tuyen-dai-hoc-he-chinh-quy-dot-1-nam-2026/",
+      "source_urls": [
+        "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-trung-tuyen-dai-hoc-he-chinh-quy-dot-1-nam-2026/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/ho_so/ho_so_nhap_hoc_2026.pdf",
+      "sha256": "62e2d0af03641404467f82d4d4fa9f83d72506827c4d68764992058757def82d",
+      "title": "Hồ sơ nhập học",
+      "year": 2026,
+      "date": "08/08/2026",
+      "source_date": "08/08/2026",
+      "collected_at": "2026-09-14",
+      "category": "ho_so",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026-va-thong-tin-tu-van-vien-ho-tro-tan-sinh-vien/",
+      "source_urls": [
+        "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026-va-thong-tin-tu-van-vien-ho-tro-tan-sinh-vien/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/hoc_bong/hoc_bong_2026.pdf",
+      "sha256": "b5684dda214b2e8775475d62c6055bb71aca8244c51521c9ad9e510b0b467126",
+      "title": "Chính sách học bổng",
+      "year": 2026,
+      "date": "27/03/2026",
+      "source_date": "27/03/2026",
+      "collected_at": "2026-09-14",
+      "category": "hoc_bong",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-dhv-cong-bo-chinh-sach-hoc-bong-len-den-75-ty-dong/",
+      "source_urls": [
+        "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-dhv-cong-bo-chinh-sach-hoc-bong-len-den-75-ty-dong/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/hoc_phi/hoc_phi_hoc_ky_1_2026.pdf",
+      "sha256": "cffb9c8733d9155f55870f88c2d7e94e4ef6de2d43833fc7cd17f2ef9420f9cd",
+      "title": "Học phí học kỳ I và các khoản thu",
+      "year": 2026,
+      "date": "08/08/2026",
+      "source_date": "08/08/2026",
+      "collected_at": "2026-09-14",
+      "category": "hoc_phi",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026-va-thong-tin-tu-van-vien-ho-tro-tan-sinh-vien/",
+      "source_urls": [
+        "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026-va-thong-tin-tu-van-vien-ho-tro-tan-sinh-vien/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/lich_tuyen_sinh/cac_moc_tuyen_sinh_da_xac_minh_2026.pdf",
+      "sha256": "cb9e5cc308401031c30139dafdff8bb9d0ffa98b348db9d3147223f18ecba3d4",
+      "title": "Các mốc tuyển sinh đã xác minh từ nguồn chính",
+      "year": 2026,
+      "date": "04/07/2026 và các bài cập nhật 08-10/08/2026",
+      "source_date": "04/07/2026 và các bài cập nhật 08-10/08/2026",
+      "collected_at": "2026-09-14",
+      "category": "lich_tuyen_sinh",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/",
+      "source_urls": [
+        "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/nganh_dao_tao/danh_muc_nganh_chuong_trinh_va_diem_san_2026.pdf",
+      "sha256": "40ef171627df780787811c8fd22661d135506f11539a3790dd95e16f93121c02",
+      "title": "Danh mục ngành, chương trình đào tạo và ngưỡng điểm sàn",
+      "year": 2026,
+      "date": "04/07/2026",
+      "source_date": "04/07/2026",
+      "collected_at": "2026-09-14",
+      "category": "nganh_dao_tao",
+      "data_role": "catalog",
+      "source_url": "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/",
+      "source_urls": [
+        "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/nganh_dao_tao/mo_ta_cntt_co_hoi_nghe_nghiep_2026.pdf",
+      "sha256": "f03cbed0af30d9992ed13743001e8201b15a0293864527f67d0e81b46691ed8a",
+      "title": "Mô tả ngành Công nghệ thông tin và cơ hội nghề nghiệp",
+      "year": 2026,
+      "date": "bài viết CNTT 21/03/2026; trang ngành được kiểm tra đối chiếu 15/09/2026",
+      "source_date": "bài viết CNTT 21/03/2026; trang ngành được kiểm tra đối chiếu 15/09/2026",
+      "collected_at": "2026-09-15",
+      "category": "nganh_dao_tao",
+      "data_role": "description",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/vi-sao-nen-lua-chon-nganh-cong-nghe-thong-tin-tai-khoa-ky-thuat-cong-nghe-truong-dai-hoc-hung-vuong-tp-hcm",
+      "source_urls": [
+        "https://tec.dhv.edu.vn/news-event/news/vi-sao-nen-lua-chon-nganh-cong-nghe-thong-tin-tai-khoa-ky-thuat-cong-nghe-truong-dai-hoc-hung-vuong-tp-hcm",
+        "https://tec.dhv.edu.vn/educational-program/cong-nghe-thong-tin?program=dai-hoc"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/nguong_dau_vao/diem_san_2026.pdf",
+      "sha256": "6b0ce4aac91896d62c1fd2e4a74219b54ca670bab44e9bd031e655cca990ba50",
+      "title": "Ngưỡng đảm bảo chất lượng đầu vào (điểm sàn)",
+      "year": 2026,
+      "date": "04/07/2026",
+      "source_date": "04/07/2026",
+      "collected_at": "2026-09-14",
+      "category": "nguong_dau_vao",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/",
+      "source_urls": [
+        "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/nhap_hoc/huong_dan_nhap_hoc_2026.pdf",
+      "sha256": "21c127993c89e849a224f666bcae4a26a59eb97428c7cfb79d28794e72a4d734",
+      "title": "Hình thức và địa điểm nhập học",
+      "year": 2026,
+      "date": "08/08/2026",
+      "source_date": "08/08/2026",
+      "collected_at": "2026-09-14",
+      "category": "nhap_hoc",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026-va-thong-tin-tu-van-vien-ho-tro-tan-sinh-vien/",
+      "source_urls": [
+        "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026-va-thong-tin-tu-van-vien-ho-tro-tan-sinh-vien/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/phuong_thuc_xet_tuyen/phuong_thuc_xet_tuyen_2026.pdf",
+      "sha256": "6fa7a69d22c6189cbd8cf6edd0506fdb25a33504ea5bd28019deb317b93f75fc",
+      "title": "Phương thức xét tuyển",
+      "year": 2026,
+      "date": "Nội dung cổng tuyển sinh 2026 đang công khai",
+      "source_date": "Nội dung cổng tuyển sinh 2026 đang công khai",
+      "collected_at": "2026-09-14",
+      "category": "phuong_thuc_xet_tuyen",
+      "data_role": "",
+      "source_url": "https://tuyensinh.dhv.edu.vn/",
+      "source_urls": [
+        "https://tuyensinh.dhv.edu.vn/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/thong_tin_truong/thong_tin_truong_dhv_2026.pdf",
+      "sha256": "e99a1bf441422a8979215f1c9a0d275caaff4ce0bc085310a0f72c6b56fc703a",
+      "title": "Thông tin trường phục vụ tư vấn",
+      "year": 2026,
+      "date": "trang official đang công khai, kiểm tra live 15/09/2026",
+      "source_date": "trang official đang công khai, kiểm tra live 15/09/2026",
+      "collected_at": "2026-09-15",
+      "category": "thong_tin_truong",
+      "data_role": "",
+      "source_url": "https://tuyensinh.dhv.edu.vn/",
+      "source_urls": [
+        "https://tuyensinh.dhv.edu.vn/",
+        "https://bam.dhv.edu.vn/news-event/news/truong-dai-hoc-hung-vuong-thanh-pho-ho-chi-minh-dhv-30-nam-hanh-trinh-khat-vong-vung-buoc-tuong-lai",
+        "https://tec.dhv.edu.vn/",
+        "https://tec.dhv.edu.vn/faculty-introduction/faculty-overview",
+        "https://dhv.edu.vn/",
+        "https://ipic.dhv.edu.vn/",
+        "https://epdl.dhv.edu.vn/",
+        "https://heal.dhv.edu.vn/",
+        "https://fba.dhv.edu.vn/",
+        "https://bam.dhv.edu.vn/",
+        "https://lan.dhv.edu.vn/",
+        "https://host.dhv.edu.vn/",
+        "https://online.dhv.edu.vn/",
+        "https://law.dhv.edu.vn/",
+        "https://iatai.dhv.edu.vn/",
+        "https://core.dhv.edu.vn/",
+        "https://tek.dhv.edu.vn/",
+        "https://thuvien.dhv.edu.vn/",
+        "https://tapchikhoahoc.dhv.edu.vn/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    },
+    {
+      "raw_file": "data/raw/xet_tuyen_bo_sung/xet_tuyen_bo_sung_2026.pdf",
+      "sha256": "b69165a71fe184d437fcbe7d53aafa492cf40b76573b967c5e2334ace42c40ae",
+      "title": "Xét tuyển bổ sung đại học chính quy",
+      "year": 2026,
+      "date": "10/08/2026",
+      "source_date": "10/08/2026",
+      "collected_at": "2026-09-14",
+      "category": "xet_tuyen_bo_sung",
+      "data_role": "",
+      "source_url": "https://dhv.edu.vn/dhv-nhan-ho-so-xet-tuyen-bo-sung/",
+      "source_urls": [
+        "https://dhv.edu.vn/dhv-nhan-ho-so-xet-tuyen-bo-sung/"
+      ],
+      "verification_status": "verified",
+      "status": "verified",
+      "source_type": "official_website",
+      "document_type": "pdf",
+      "contains_unnecessary_pii": false
+    }
+  ]
+}

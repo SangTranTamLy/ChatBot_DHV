@@ -1,4 +1,4 @@
-"""Small lifecycle helpers for local ChromaDB clients."""
+"""Các hàm hỗ trợ vòng đời nhỏ gọn dành cho client ChromaDB cục bộ."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from typing import Any
 
 
 def close_chroma_store(vector_store: Any) -> None:
-    """Release Chroma resources so persistent files can be removed on Windows.
+    """Giải phóng tài nguyên Chroma để các file lưu trữ có thể được xóa trên Windows.
 
-    Recent ChromaDB releases expose ``Client.close``.  The fallback keeps the
-    helper compatible with older releases supported by this project.
+    Các phiên bản ChromaDB gần đây hỗ trợ ``Client.close``. Cách dự phòng (fallback) giúp
+    hàm này vẫn tương thích với các phiên bản cũ hơn được dự án hỗ trợ.
     """
 
     client = getattr(vector_store, "_client", None)

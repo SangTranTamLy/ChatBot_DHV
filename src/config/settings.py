@@ -1,8 +1,8 @@
-"""Application settings loaded from the project-level ``.env`` file.
+"""Cấu hình ứng dụng được tải từ file ``.env`` cấp dự án.
 
-Task A owns the configuration contract. Existing ingestion modules may still
-read their historical environment variable names until their task integrates
-this module; the aliases below keep that transition backward compatible.
+Task A chịu trách nhiệm quản lý cấu hình này. Các module xử lý dữ liệu (ingestion) cũ
+có thể vẫn đọc các tên biến môi trường cũ cho đến khi chuyển sang dùng module này;
+các bí danh (aliases) bên dưới giúp giữ tính tương thích ngược trong quá trình chuyển đổi.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _read_env(name: str, default: str, *aliases: str) -> str:
-    """Read a non-empty environment value, checking legacy aliases last."""
+    """Đọc giá trị biến môi trường không rỗng, kiểm tra các bí danh cũ ở bước cuối."""
 
     for key in (name, *aliases):
         value = os.getenv(key)
@@ -51,7 +51,7 @@ def _project_path(value: str) -> Path:
 
 @dataclass(frozen=True)
 class Settings:
-    """Immutable configuration shared by the application layers."""
+    """Cấu hình không thể thay đổi (immutable) được chia sẻ giữa các tầng ứng dụng."""
 
     ollama_base_url: str
     ollama_model: str
@@ -93,7 +93,7 @@ class Settings:
 
 
 def load_settings() -> Settings:
-    """Load canonical settings, with safe defaults for local development."""
+    """Tải các thiết lập chuẩn, kèm theo các giá trị mặc định an toàn cho môi trường phát triển cục bộ."""
 
     load_dotenv(PROJECT_ROOT / ".env")
     return Settings(

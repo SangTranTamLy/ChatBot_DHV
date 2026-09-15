@@ -108,6 +108,11 @@ def _check_recommendation(documents: list[Any], text: str) -> bool:
     return bool(documents) and any(target in text for target in targets)
 
 
+def _check_school_info(documents: list[Any], text: str) -> bool:
+    school = _category_documents(documents, "thong_tin_truong")
+    return bool(school) and "thành lập" in text and "1995" in text
+
+
 REGRESSION_CASES: tuple[tuple[str, Callable[[list[Any], str], bool], str], ...] = (
     ("DHV năm 2026 có bao nhiêu ngành?", _check_industry_count, "must retrieve 20 distinct program codes"),
     ("CNTT mã ngành bao nhiêu?", _check_cntt_code, "must retrieve code 7480201"),
@@ -125,6 +130,7 @@ REGRESSION_CASES: tuple[tuple[str, Callable[[list[Any], str], bool], str], ...] 
         _check_recommendation,
         "must retrieve an official CNTT/media/marketing result",
     ),
+    ("Trường thành lập khi nào?", _check_school_info, "must retrieve verified school-information evidence"),
 )
 
 
@@ -135,7 +141,7 @@ def run_regression_tests(
     ollama_base_url: str,
     persist_directory: str,
     collection_name: str,
-    top_k: int = 18,
+    top_k: int = 25,
 ) -> list[dict[str, object]]:
     embedding_function = create_embeddings(
         backend=backend,
@@ -176,7 +182,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ollama-base-url", default=settings.ollama_base_url)
     parser.add_argument("--persist-dir", default=str(settings.chroma_persist_dir))
     parser.add_argument("--collection", default=settings.chroma_collection)
-    parser.add_argument("--top-k", type=int, default=18)
+    parser.add_argument("--top-k", type=int, default=25)
     return parser
 
 

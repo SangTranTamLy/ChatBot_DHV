@@ -1,4 +1,4 @@
-"""Heading-aware chunking for the DHV Markdown corpus."""
+"""Cơ chế chia đoạn (chunking) nhận biết tiêu đề dành cho corpus Markdown DHV."""
 
 from __future__ import annotations
 
@@ -30,10 +30,10 @@ def split_documents(
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
 ) -> list[Document]:
-    """Split documents by headings, then split long heading sections.
+    """Chia tài liệu theo các tiêu đề, sau đó chia nhỏ các phần tiêu đề dài.
 
-    Each heading section is processed independently so content from separate
-    scholarship types, dates or procedures is not merged into one chunk.
+    Mỗi phần tiêu đề được xử lý độc lập để nội dung từ các loại học bổng,
+    ngày tháng hoặc thủ tục khác nhau không bị gộp chung vào một đoạn (chunk).
     """
 
     if chunk_size <= 0:

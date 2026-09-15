@@ -1,4 +1,4 @@
-"""Embedding factory for the configured local Ollama model."""
+"""Factory tạo embedding cho model Ollama cục bộ đã được cấu hình."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ DEFAULT_SENTENCE_TRANSFORMER_MODEL = (
 
 
 class SentenceTransformerEmbeddings(Embeddings):
-    """LangChain embedding adapter backed by Sentence Transformers."""
+    """Adapter embedding của LangChain được hỗ trợ bởi Sentence Transformers."""
 
     def __init__(self, model_name: str) -> None:
         try:
@@ -52,7 +52,7 @@ def create_ollama_embeddings(
     model: str | None = None,
     base_url: str | None = None,
 ) -> OllamaEmbeddings:
-    """Create the Ollama embedding client from arguments or project settings."""
+    """Tạo client embedding Ollama từ các tham số hoặc thiết lập của dự án."""
 
     load_dotenv()
     model_name = model or settings.embedding_model
@@ -67,7 +67,7 @@ def create_embeddings(
     ollama_base_url: str | None = None,
     sentence_transformer_model: str | None = None,
 ) -> Embeddings:
-    """Create the configured Ollama or Sentence Transformers backend."""
+    """Tạo backend Ollama hoặc Sentence Transformers đã được cấu hình."""
 
     load_dotenv()
     selected_backend = (backend or settings.embedding_backend).strip().lower()

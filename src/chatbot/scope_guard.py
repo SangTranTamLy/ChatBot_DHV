@@ -1,4 +1,4 @@
-"""Lightweight scope guard for DHV admissions questions."""
+"""Lớp bảo vệ phạm vi nhỏ gọn dành cho các câu hỏi tuyển sinh DHV."""
 
 from __future__ import annotations
 
@@ -40,6 +40,10 @@ ADMISSIONS_KEYWORDS = frozenset(
         "so dien thoai",
         "dien thoai",
         "email",
+        "website",
+        "trang web",
+        "web",
+        " web",
         "nganh hoc",
         "diem nhan ho so",
         "diem san",
@@ -50,6 +54,32 @@ ADMISSIONS_KEYWORDS = frozenset(
         "nganh",
         "chuong trinh",
         "uu tien",
+        "thong tin truong",
+        "thong tin ve truong",
+        "thong tin ve dhv",
+        "gioi thieu truong",
+        "gioi thieu ve dhv",
+        "dhv la truong",
+        "truong dhv la",
+        "truong dai hoc hung vuong la",
+        "truong thanh lap",
+        "thanh lap khi nao",
+        "thanh lap nam",
+    }
+)
+SCHOOL_DIRECTORY_KEYWORDS = frozenset(
+    {
+        "vien dao tao sau dai hoc",
+        "vien lien ket giao duc va dao tao tu xa",
+        "dao tao tu xa",
+        "khoa khoa hoc suc khoe",
+        "khoa ky thuat cong nghe",
+        "khoa tai chinh ngan hang ke toan",
+        "khoa quan tri kinh doanh marketing",
+        "khoa ngon ngu",
+        "khoa du lich nha hang khach san",
+        "khoa luat",
+        "cong thong tin dao tao",
     }
 )
 SCHOOL_KEYWORDS = frozenset(
@@ -61,6 +91,30 @@ SCHOOL_KEYWORDS = frozenset(
     }
 )
 
+_PERSONAL_ADVICE_PASSION_MARKERS = (
+    "dam me",
+    "yeu thich",
+    "so thich ca nhan",
+    "dieu minh thich",
+    "cong viec minh thich",
+)
+_PERSONAL_ADVICE_CONFLICT_MARKERS = (
+    "theo dam me",
+    "dam me hay",
+    "dam me hoac",
+    "khong dam me",
+    "khong yeu thich",
+    "nganh de xin viec",
+    "cong viec on dinh",
+)
+_PERSONAL_ADVICE_DECISION_MARKERS = (
+    "phan van",
+    "nen ",
+    "khong biet",
+    "tu van",
+    "lua chon",
+)
+
 
 def normalize_scope_text(value: str) -> str:
     text = unicodedata.normalize("NFKD", value or "")
@@ -68,13 +122,28 @@ def normalize_scope_text(value: str) -> str:
     return text.lower().replace("đ", "d")
 
 
-def is_in_scope(question: str) -> bool:
-    """Return whether a question plausibly concerns DHV admissions."""
+def is_personal_life_advice(question: str) -> bool:
+    """Nhận diện yêu cầu lời khuyên cá nhân, không phải tra cứu tuyển sinh."""
+
+    normalized = normalize_scope_text(question).strip()
+    return (
+        any(marker in normalized for marker in _PERSONAL_ADVICE_PASSION_MARKERS)
+        and any(marker in normalized for marker in _PERSONAL_ADVICE_CONFLICT_MARKERS)
+        and any(marker in normalized for marker in _PERSONAL_ADVICE_DECISION_MARKERS)
+    )
+
+
+def is_in_scope(question: str, *, has_admissions_entity: bool = False) -> bool:
+    """Trả về xem một câu hỏi có vẻ liên quan đến tuyển sinh DHV hay không."""
 
     normalized = normalize_scope_text(question).strip()
     if not normalized:
         return False
+    if is_personal_life_advice(normalized) and not has_admissions_entity:
+        return False
     if any(keyword in normalized for keyword in ADMISSIONS_KEYWORDS):
+        return True
+    if any(keyword in normalized for keyword in SCHOOL_DIRECTORY_KEYWORDS):
         return True
     return bool(
         any(keyword in normalized for keyword in SCHOOL_KEYWORDS)
@@ -82,4 +151,4 @@ def is_in_scope(question: str) -> bool:
     )
 
 
-__all__ = ["is_in_scope", "normalize_scope_text"]
+__all__ = ["is_in_scope", "is_personal_life_advice", "normalize_scope_text"]

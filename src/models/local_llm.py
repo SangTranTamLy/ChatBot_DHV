@@ -1,4 +1,4 @@
-"""Small, retrieval-agnostic adapter for the local Ollama chat model."""
+"""Adapter nhỏ gọn, không phụ thuộc vào retrieval, dành cho model chat Ollama cục bộ."""
 
 from __future__ import annotations
 
@@ -8,19 +8,19 @@ from src.config.settings import Settings, settings
 
 
 class OllamaError(RuntimeError):
-    """Base error for a failed or malformed Ollama response."""
+    """Lỗi cơ sở khi phản hồi từ Ollama bị thất bại hoặc sai định dạng."""
 
 
 class OllamaUnavailableError(OllamaError):
-    """Ollama is offline, unreachable, or the configured model is unavailable."""
+    """Ollama đang offline, không thể kết nối, hoặc model được cấu hình không tồn tại."""
 
 
 class LocalLLM:
-    """Generate text with the configured Ollama model.
+    """Sinh văn bản bằng model Ollama đã cấu hình.
 
-    Retrieval is intentionally absent from this class. The service passes one
-    complete RAG prompt, which keeps the local model adapter independently
-    testable and prevents it from inventing a source list.
+    Chức năng truy xuất (Retrieval) cố tình không được đưa vào class này. Service sẽ truyền
+    một prompt RAG hoàn chỉnh, giúp adapter của model nội bộ có thể được kiểm thử
+    độc lập và ngăn nó tự bịa ra danh sách nguồn.
     """
 
     def __init__(
@@ -37,7 +37,7 @@ class LocalLLM:
             return
         try:
             from ollama import Client
-        except ImportError as exc:  # pragma: no cover - dependency is in requirements
+        except ImportError as exc:  # pragma: no cover - thư viện phụ thuộc đã có trong requirements
             raise OllamaUnavailableError(
                 "Ollama Python client is not installed"
             ) from exc
@@ -46,11 +46,11 @@ class LocalLLM:
                 host=self.base_url,
                 timeout=self.timeout_seconds,
             )
-        except Exception as exc:  # pragma: no cover - client construction is external
+        except Exception as exc:  # pragma: no cover - việc khởi tạo client nằm ở bên ngoài
             raise OllamaUnavailableError("Ollama client is unavailable") from exc
 
     def generate(self, prompt: str) -> str:
-        """Return the model's text or a safe, classified Ollama error."""
+        """Trả về văn bản của model hoặc một lỗi Ollama an toàn, đã được phân loại."""
 
         if not isinstance(prompt, str) or not prompt.strip():
             raise OllamaError("prompt must not be empty")
@@ -70,7 +70,7 @@ class LocalLLM:
 
 
 def _extract_content(response: Any) -> str:
-    """Support both the Ollama response object and its dictionary form."""
+    """Hỗ trợ cả đối tượng phản hồi từ Ollama và dạng dictionary của nó."""
 
     message = getattr(response, "message", None)
     if message is not None:

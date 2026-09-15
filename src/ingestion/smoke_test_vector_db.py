@@ -20,6 +20,7 @@ SMOKE_QUERIES: tuple[tuple[str, str], ...] = (
     ("Học phí DHV 2026", "hoc_phi"),
     ("Học bổng DHV 2026", "hoc_bong"),
     ("Nhập học DHV 2026", "nhap_hoc"),
+    ("Thông tin trường DHV 2026", "thong_tin_truong"),
 )
 
 
@@ -92,6 +93,16 @@ def run_smoke_tests(
                 ):
                     raise AssertionError(
                         "tuition result must include source_url and tuition content"
+                    )
+            if expected_category == "thong_tin_truong":
+                if not any(
+                    document.metadata.get("source_url")
+                    and "thành lập" in document.page_content.lower()
+                    and document.metadata.get("verification_status") == "verified"
+                    for document in matching
+                ):
+                    raise AssertionError(
+                        "school-info result must include verified source_url and school content"
                     )
 
             all_results.append(

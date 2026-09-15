@@ -1,7 +1,7 @@
-"""Load verified Markdown documents with YAML front matter.
+"""Tải các tài liệu Markdown đã được xác thực kèm theo phần YAML front matter.
 
-The loader keeps the source metadata attached to each LangChain Document and
-reports malformed or unverified files instead of silently indexing them.
+Trình tải (loader) sẽ giữ lại metadata nguồn đính kèm vào mỗi Document của LangChain và
+báo cáo các file bị lỗi định dạng hoặc chưa được xác thực thay vì âm thầm lập chỉ mục chúng.
 """
 
 from __future__ import annotations
@@ -36,12 +36,12 @@ INTERNAL_DOCUMENT_TYPES = {"internal", "internal_note", "private"}
 
 
 class MetadataError(ValueError):
-    """Raised when a Markdown file has invalid or incomplete metadata."""
+    """Báo lỗi khi một file Markdown có metadata không hợp lệ hoặc không đầy đủ."""
 
 
 @dataclass
 class LoadStats:
-    """Counters collected while scanning the processed corpus."""
+    """Các bộ đếm được thu thập trong quá trình quét corpus đã xử lý."""
 
     files_seen: int = 0
     verified_documents: int = 0
@@ -56,7 +56,7 @@ class LoadStats:
 
 @dataclass
 class LoadResult:
-    """Loaded documents, counters and safe-to-log error details."""
+    """Các tài liệu đã tải, bộ đếm và chi tiết lỗi an toàn để ghi log."""
 
     documents: list[Document] = field(default_factory=list)
     stats: LoadStats = field(default_factory=LoadStats)
@@ -64,7 +64,7 @@ class LoadResult:
 
 
 def _metadata_value(value: Any) -> str | int | float | bool:
-    """Convert YAML values to Chroma-compatible scalar metadata values."""
+    """Chuyển đổi giá trị YAML thành giá trị metadata vô hướng (scalar) tương thích với Chroma."""
 
     if isinstance(value, (datetime, date)):
         return value.isoformat()
@@ -116,7 +116,7 @@ def _parse_front_matter(text: str, path: Path) -> tuple[dict[str, Any], str]:
 
 
 def load_markdown_file(path: Path) -> Document:
-    """Load one Markdown file into a LangChain Document."""
+    """Tải một file Markdown vào một đối tượng Document của LangChain."""
 
     text = path.read_text(encoding="utf-8-sig")
     metadata, body = _parse_front_matter(text, path)
@@ -138,11 +138,11 @@ def load_verified_documents(
     *,
     target_year: int | None = 2026,
 ) -> LoadResult:
-    """Read all Markdown files below ``data_dir`` and keep verified sources.
+    """Đọc tất cả các file Markdown trong ``data_dir`` và giữ lại các nguồn đã xác thực.
 
-    Files that fail metadata validation are reported in ``errors``. Files with
-    a status other than ``verified`` are skipped and never returned. By
-    default, only documents for the 2026 knowledge base are returned.
+    Các file không vượt qua bước kiểm tra metadata sẽ được báo cáo trong ``errors``. Các file
+    có trạng thái (status) khác với ``verified`` sẽ bị bỏ qua và không bao giờ được trả về.
+    Mặc định, chỉ các tài liệu thuộc cơ sở tri thức của năm 2026 mới được trả về.
     """
 
     root = Path(data_dir)

@@ -1,0 +1,144 @@
+{"id": "bosung_01", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Hạn xét tuyển bổ sung là ngày nào?"}
+{"id": "bosung_02", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt tuyển sinh bổ sung đến khi nào?"}
+{"id": "bosung_03", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Điểm xét tuyển bổ sung của trường"}
+{"id": "bosung_06", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Thời hạn của đợt xét tuyển bổ sung"}
+{"id": "bosung_07", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "DHV nhận hồ sơ xét tuyển bổ sung đến ngày nào?"}
+{"id": "bosung_08", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng điểm của đợt bổ sung"}
+{"id": "bosung_09", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung năm 2026"}
+{"id": "bosung_10", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Điểm nhận hồ sơ bổ sung"}
+{"id": "cachtinh_01", "intent": "HOI_CACH_TINH_DIEM", "text": "Cách tính điểm xét tuyển"}
+{"id": "cachtinh_02", "intent": "HOI_CACH_TINH_DIEM", "text": "Công thức quy đổi điểm như thế nào?"}
+{"id": "cachtinh_03", "intent": "HOI_CACH_TINH_DIEM", "text": "Điểm xét tuyển được tính ra sao?"}
+{"id": "cachtinh_05", "intent": "HOI_CACH_TINH_DIEM", "text": "Quy đổi điểm ĐGNL thế nào?"}
+{"id": "cachtinh_06", "intent": "HOI_CACH_TINH_DIEM", "text": "Cách quy đổi điểm xét tuyển"}
+{"id": "cachtinh_07", "intent": "HOI_CACH_TINH_DIEM", "text": "Công thức tính điểm vào đại học"}
+{"id": "cachtinh_08", "intent": "HOI_CACH_TINH_DIEM", "text": "Tính điểm xét tuyển DHV thế nào?"}
+{"id": "cachtinh_09", "intent": "HOI_CACH_TINH_DIEM", "text": "Tính điểm thi để xét tuyển"}
+{"id": "chuong_01", "intent": "HOI_CHUONG_TRINH", "text": "Truyền thông đa phương tiện thuộc ngành nào?"}
+{"id": "chuong_02", "intent": "HOI_CHUONG_TRINH", "text": "Chương trình Công nghệ phần mềm là gì?"}
+{"id": "chuong_03", "intent": "HOI_CHUONG_TRINH", "text": "Cho hỏi chương trình Lập trình AI"}
+{"id": "chuong_04", "intent": "HOI_CHUONG_TRINH", "text": "Thông tin về chương trình đào tạo Marketing"}
+{"id": "chuong_05", "intent": "HOI_CHUONG_TRINH", "text": "Còn chương trình Truyền thông đa phương tiện thì thế nào?"}
+{"id": "chuong_06", "intent": "HOI_CHUONG_TRINH", "text": "Quan hệ của chương trình Truyền thông đa phương tiện là gì?"}
+{"id": "chuong_08", "intent": "HOI_CHUONG_TRINH", "text": "Cho biết chương trình học của ngành CNTT"}
+{"id": "chuong_10", "intent": "HOI_CHUONG_TRINH", "text": "Chương trình Truyền thông số thuộc ngành nào?"}
+{"id": "dangky_01", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Đăng ký xét tuyển DHV ở đâu?"}
+{"id": "dangky_02", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Cổng đăng ký nguyện vọng ở đâu?"}
+{"id": "dangky_03", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Nộp nguyện vọng như thế nào?"}
+{"id": "dangky_05", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Cách đăng ký xét tuyển"}
+{"id": "dangky_07", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Cách đăng ký tuyển sinh DHV"}
+{"id": "dangky_08", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Nộp đăng ký xét tuyển online"}
+{"id": "dangky_09", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Đăng ký nguyện vọng vào trường"}
+{"id": "dangky_10", "intent": "HOI_DANG_KY_XET_TUYEN", "text": "Nộp hồ sơ đăng ký xét tuyển DHV"}
+{"id": "dschuong_01", "intent": "DANH_SACH_CHUONG_TRINH", "text": "Liệt kê chương trình đào tạo của CNTT"}
+{"id": "dschuong_02", "intent": "DANH_SACH_CHUONG_TRINH", "text": "CNTT có bao nhiêu chuyên ngành?"}
+{"id": "dschuong_03", "intent": "DANH_SACH_CHUONG_TRINH", "text": "CNTT gồm những chuyên ngành nào?"}
+{"id": "dschuong_04", "intent": "DANH_SACH_CHUONG_TRINH", "text": "Danh sách các chương trình của trường"}
+{"id": "dschuong_05", "intent": "DANH_SACH_CHUONG_TRINH", "text": "Có những chương trình đào tạo nào?"}
+{"id": "dschuong_08", "intent": "DANH_SACH_CHUONG_TRINH", "text": "Danh mục chương trình đào tạo"}
+{"id": "dschuong_09", "intent": "DANH_SACH_CHUONG_TRINH", "text": "Có bao nhiêu chương trình đào tạo?"}
+{"id": "dschuong_10", "intent": "DANH_SACH_CHUONG_TRINH", "text": "Các chuyên ngành của ngành CNTT"}
+{"id": "dsnganh_01", "intent": "DANH_SACH_NGANH", "text": "Liệt kê tất cả các ngành của trường"}
+{"id": "dsnganh_02", "intent": "DANH_SACH_NGANH", "text": "Danh sách ngành đào tạo DHV"}
+{"id": "dsnganh_03", "intent": "DANH_SACH_NGANH", "text": "DHV có những ngành nào?"}
+{"id": "dsnganh_04", "intent": "DANH_SACH_NGANH", "text": "Trường có bao nhiêu ngành chính?"}
+{"id": "dsnganh_05", "intent": "DANH_SACH_NGANH", "text": "Cho xem các ngành của DHV"}
+{"id": "dsnganh_06", "intent": "DANH_SACH_NGANH", "text": "Các ngành đào tạo của DHV gồm những ngành nào?"}
+{"id": "dsnganh_07", "intent": "DANH_SACH_NGANH", "text": "Danh mục ngành chính của trường"}
+{"id": "dsnganh_09", "intent": "DANH_SACH_NGANH", "text": "Danh sách các ngành chính"}
+{"id": "hocbong_01", "intent": "HOI_HOC_BONG", "text": "Học bổng DHV có những loại nào?"}
+{"id": "hocbong_03", "intent": "HOI_HOC_BONG", "text": "Trường có học bổng cho sinh viên không?"}
+{"id": "hocbong_04", "intent": "HOI_HOC_BONG", "text": "Mức học bổng của DHV"}
+{"id": "hocbong_05", "intent": "HOI_HOC_BONG", "text": "Chính sách học bổng tuyển sinh"}
+{"id": "hocbong_06", "intent": "HOI_HOC_BONG", "text": "Điều kiện xét học bổng của trường"}
+{"id": "hocbong_08", "intent": "HOI_HOC_BONG", "text": "Thông tin học bổng DHV"}
+{"id": "hocbong_09", "intent": "HOI_HOC_BONG", "text": "Sinh viên mới có được học bổng không?"}
+{"id": "hocbong_10", "intent": "HOI_HOC_BONG", "text": "Học bổng đầu vào DHV"}
+{"id": "hocphi_01", "intent": "HOI_HOC_PHI", "text": "Học phí DHV năm 2026 bao nhiêu?"}
+{"id": "hocphi_02", "intent": "HOI_HOC_PHI", "text": "Mỗi học kỳ học phí là bao nhiêu?"}
+{"id": "hocphi_03", "intent": "HOI_HOC_PHI", "text": "Mức học phí ngành CNTT"}
+{"id": "hocphi_04", "intent": "HOI_HOC_PHI", "text": "Tiền học ở DHV bao nhiêu?"}
+{"id": "hocphi_06", "intent": "HOI_HOC_PHI", "text": "Học phí một kỳ tại DHV"}
+{"id": "hocphi_07", "intent": "HOI_HOC_PHI", "text": "Năm 2026 học phí bao nhiêu tiền?"}
+{"id": "hocphi_09", "intent": "HOI_HOC_PHI", "text": "Chi phí học phí DHV"}
+{"id": "hocphi_10", "intent": "HOI_HOC_PHI", "text": "Học phí kỳ đầu tại trường"}
+{"id": "hoso_01", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học cần giấy tờ gì?"}
+{"id": "hoso_02", "intent": "HOI_HO_SO", "text": "Thủ tục nhập học cần chuẩn bị gì?"}
+{"id": "hoso_03", "intent": "HOI_HO_SO", "text": "Cần chuẩn bị giấy tờ nào để nhập học?"}
+{"id": "hoso_04", "intent": "HOI_HO_SO", "text": "Hồ sơ xét tuyển gồm những gì?"}
+{"id": "hoso_06", "intent": "HOI_HO_SO", "text": "Nộp hồ sơ nhập học gồm giấy tờ nào?"}
+{"id": "hoso_07", "intent": "HOI_HO_SO", "text": "Danh sách giấy tờ nhập học"}
+{"id": "hoso_08", "intent": "HOI_HO_SO", "text": "Thủ tục và hồ sơ cần nộp"}
+{"id": "hoso_09", "intent": "HOI_HO_SO", "text": "Hồ sơ để xác nhận nhập học"}
+{"id": "lich_01", "intent": "HOI_LICH_TUYEN_SINH", "text": "Lịch tuyển sinh DHV năm 2026"}
+{"id": "lich_02", "intent": "HOI_LICH_TUYEN_SINH", "text": "Các mốc xét tuyển của trường"}
+{"id": "lich_05", "intent": "HOI_LICH_TUYEN_SINH", "text": "Deadline tuyển sinh năm nay"}
+{"id": "lich_06", "intent": "HOI_LICH_TUYEN_SINH", "text": "Lịch các mốc tuyển sinh năm 2026"}
+{"id": "lich_07", "intent": "HOI_LICH_TUYEN_SINH", "text": "Khi nào đến hạn đăng ký xét tuyển?"}
+{"id": "lich_08", "intent": "HOI_LICH_TUYEN_SINH", "text": "Thời gian các đợt xét tuyển"}
+{"id": "lich_09", "intent": "HOI_LICH_TUYEN_SINH", "text": "Lịch đăng ký xét tuyển DHV"}
+{"id": "lich_10", "intent": "HOI_LICH_TUYEN_SINH", "text": "Mốc thời gian tuyển sinh"}
+{"id": "lienhe_01", "intent": "HOI_CO_SO_LIEN_HE", "text": "Hotline tuyển sinh DHV là số nào?"}
+{"id": "lienhe_02", "intent": "HOI_CO_SO_LIEN_HE", "text": "Địa chỉ cơ sở DHV ở đâu?"}
+{"id": "lienhe_03", "intent": "HOI_CO_SO_LIEN_HE", "text": "Liên hệ phòng tuyển sinh thế nào?"}
+{"id": "lienhe_04", "intent": "HOI_CO_SO_LIEN_HE", "text": "Email tư vấn tuyển sinh của trường"}
+{"id": "lienhe_05", "intent": "HOI_CO_SO_LIEN_HE", "text": "Số điện thoại trường DHV"}
+{"id": "lienhe_07", "intent": "HOI_CO_SO_LIEN_HE", "text": "Website chính thức DHV là gì?"}
+{"id": "lienhe_09", "intent": "HOI_CO_SO_LIEN_HE", "text": "Cổng thông tin tuyển sinh DHV ở đâu?"}
+{"id": "lienhe_10", "intent": "HOI_CO_SO_LIEN_HE", "text": "Đường dẫn trang tuyển sinh chính thức DHV"}
+{"id": "nganh_01", "intent": "HOI_NGANH", "text": "Mã 7480201 tương ứng ngành nào?"}
+{"id": "nganh_02", "intent": "HOI_NGANH", "text": "Cho tôi biết về ngành công nghệ thông tin"}
+{"id": "nganh_03", "intent": "HOI_NGANH", "text": "Mã ngành CNTT của DHV là bao nhiêu?"}
+{"id": "nganh_04", "intent": "HOI_NGANH", "text": "Ngành Marketing của trường học những gì?"}
+{"id": "nganh_06", "intent": "HOI_NGANH", "text": "Tôi muốn tìm hiểu ngành Kỹ thuật máy tính"}
+{"id": "nganh_08", "intent": "HOI_NGANH", "text": "DHV đào tạo ngành gì về kinh doanh?"}
+{"id": "nganh_09", "intent": "HOI_NGANH", "text": "Ngành Quản trị kinh doanh có gì?"}
+{"id": "nganh_10", "intent": "HOI_NGANH", "text": "Giới thiệu ngành Ngôn ngữ Anh"}
+{"id": "nguong_01", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm đầu vào ngành CNTT là bao nhiêu?"}
+{"id": "nguong_04", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm nhận hồ sơ ngành Marketing"}
+{"id": "nguong_05", "intent": "HOI_NGUONG_DAU_VAO", "text": "CNTT lấy bao nhiêu điểm?"}
+{"id": "nguong_06", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng nhận hồ sơ vào DHV là bao nhiêu?"}
+{"id": "nguong_07", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm tối thiểu để đăng ký ngành này"}
+{"id": "nguong_08", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn tuyển sinh của ngành Marketing"}
+{"id": "nguong_09", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn của DHV"}
+{"id": "nguong_10", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngành Luật nhận hồ sơ từ bao nhiêu điểm?"}
+{"id": "nhaphoc_03", "intent": "HOI_NHAP_HOC", "text": "Cách xác nhận nhập học"}
+{"id": "nhaphoc_04", "intent": "HOI_NHAP_HOC", "text": "Nhập học online thế nào?"}
+{"id": "nhaphoc_05", "intent": "HOI_NHAP_HOC", "text": "Khi nào xác nhận nhập học?"}
+{"id": "nhaphoc_06", "intent": "HOI_NHAP_HOC", "text": "Thời gian xác nhận nhập học"}
+{"id": "nhaphoc_07", "intent": "HOI_NHAP_HOC", "text": "Thủ tục xác nhận nhập học online"}
+{"id": "nhaphoc_08", "intent": "HOI_NHAP_HOC", "text": "Tân sinh viên nhập học như thế nào?"}
+{"id": "nhaphoc_09", "intent": "HOI_NHAP_HOC", "text": "Hướng dẫn thủ tục nhập học"}
+{"id": "nhaphoc_10", "intent": "HOI_NHAP_HOC", "text": "Xác nhận việc nhập học tại DHV"}
+{"id": "oos_01", "intent": "OUT_OF_SCOPE", "text": "Dự báo thời tiết hôm nay ra sao?"}
+{"id": "oos_02", "intent": "OUT_OF_SCOPE", "text": "Thời tiết tuyển sinh ngành hôm nay thế nào?"}
+{"id": "oos_03", "intent": "OUT_OF_SCOPE", "text": "Giá vàng hôm nay bao nhiêu?"}
+{"id": "oos_04", "intent": "OUT_OF_SCOPE", "text": "Tôi nên theo đam mê hay chọn công việc ổn định?"}
+{"id": "oos_05", "intent": "OUT_OF_SCOPE", "text": "Tư vấn giúp tôi có nên học ngành mình không yêu thích không"}
+{"id": "oos_06", "intent": "OUT_OF_SCOPE", "text": "Tôi phân vân giữa đam mê cá nhân và một ngành dễ xin việc"}
+{"id": "oos_08", "intent": "OUT_OF_SCOPE", "text": "Kể cho tôi một câu chuyện về ngành du lịch"}
+{"id": "oos_10", "intent": "OUT_OF_SCOPE", "text": "Công thức nấu bún thế nào?"}
+{"id": "phuongthuc_01", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức xét tuyển của DHV?"}
+{"id": "phuongthuc_02", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Tổ hợp môn xét tuyển gồm những gì?"}
+{"id": "phuongthuc_03", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "DHV xét tuyển bằng những hình thức nào?"}
+{"id": "phuongthuc_04", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Có xét học bạ không?"}
+{"id": "phuongthuc_05", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức 1 và 2 là gì?"}
+{"id": "phuongthuc_08", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Tổ hợp xét tuyển của ngành CNTT"}
+{"id": "phuongthuc_09", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Các cách xét tuyển vào DHV"}
+{"id": "phuongthuc_10", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Tổ hợp môn của phương thức xét tuyển"}
+{"id": "trungtuyen_01", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm trúng tuyển Luật năm 2026?"}
+{"id": "trungtuyen_02", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn ngành Marketing là bao nhiêu?"}
+{"id": "trungtuyen_03", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngành này đã lấy bao nhiêu điểm để đậu?"}
+{"id": "trungtuyen_04", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Mức điểm trúng tuyển của DHV"}
+{"id": "trungtuyen_06", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm trúng tuyển ngành CNTT"}
+{"id": "trungtuyen_08", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn DHV năm 2026"}
+{"id": "trungtuyen_09", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn trúng tuyển ngành Công nghệ thông tin"}
+{"id": "trungtuyen_10", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngành Marketing trúng tuyển bao nhiêu điểm?"}
+{"id": "tuvan_02", "intent": "TU_VAN_CHON_NGANH", "text": "Tôi phân vân giữa CNTT và Marketing"}
+{"id": "tuvan_03", "intent": "TU_VAN_CHON_NGANH", "text": "Tôi thích edit video nên học ngành gì?"}
+{"id": "tuvan_04", "intent": "TU_VAN_CHON_NGANH", "text": "Tôi 19 điểm chưa biết chọn ngành nào"}
+{"id": "tuvan_06", "intent": "TU_VAN_CHON_NGANH", "text": "Bạn tư vấn giúp tôi chọn ngành phù hợp"}
+{"id": "tuvan_07", "intent": "TU_VAN_CHON_NGANH", "text": "Tôi nên học ngành nào với sở thích của mình?"}
+{"id": "tuvan_08", "intent": "TU_VAN_CHON_NGANH", "text": "So sánh các ngành để tôi lựa chọn"}
+{"id": "tuvan_09", "intent": "TU_VAN_CHON_NGANH", "text": "Tôi chưa biết nên chọn ngành nào"}
+{"id": "tuvan_10", "intent": "TU_VAN_CHON_NGANH", "text": "Gợi ý ngành học phù hợp với tôi"}

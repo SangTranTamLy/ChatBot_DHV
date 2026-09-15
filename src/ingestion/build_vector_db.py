@@ -1,11 +1,11 @@
-"""Build or rebuild the DHV ChromaDB collection.
+"""Xây dựng hoặc xây dựng lại collection ChromaDB của DHV.
 
-Run from the project root:
+Chạy từ thư mục gốc của dự án:
 
     python -m src.ingestion.build_vector_db --reset
 
-The command uses Ollama embeddings configured in ``.env`` or the command-line
-arguments. It only indexes verified Markdown files from ``data/processed``.
+Lệnh này sử dụng Ollama embeddings được cấu hình trong ``.env`` hoặc qua tham số dòng lệnh.
+Nó chỉ lập chỉ mục các file Markdown đã được xác thực từ thư mục ``data/processed``.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ DEFAULT_KB_YEAR = settings.target_year
 
 @dataclass
 class BuildStats:
-    """Summary printed after a successful build."""
+    """Bản tóm tắt được in ra sau khi xây dựng thành công."""
 
     files_seen: int
     verified_documents: int
@@ -54,7 +54,7 @@ class BuildStats:
 
 
 def _reset_persist_directory(persist_directory: Path) -> None:
-    """Remove only the explicitly configured vector-store directory."""
+    """Chỉ xóa thư mục vector-store đã được cấu hình rõ ràng."""
 
     resolved = persist_directory.resolve()
     if resolved == Path(resolved.anchor) or resolved == Path.cwd().resolve():
@@ -83,7 +83,7 @@ def build_vector_db(
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
     reset: bool = False,
 ) -> BuildStats:
-    """Load, chunk, embed and persist the verified DHV corpus."""
+    """Tải, chia đoạn, nhúng (embed) và lưu trữ corpus DHV đã xác thực."""
 
     load_result = load_verified_documents(data_directory, target_year=target_year)
     if not load_result.documents:

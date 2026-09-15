@@ -1,4 +1,4 @@
-"""Stable service boundary for the future Streamlit UI (Task D)."""
+"""Ranh giới dịch vụ ổn định dành cho giao diện Streamlit (Task D)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .query_analysis import ConversationState
 
 
 class ChatService:
-    """UI-facing service that owns the Task C RAG dependencies."""
+    """Dịch vụ cung cấp cho UI, chịu trách nhiệm quản lý các phụ thuộc RAG (Task C)."""
 
     def __init__(
         self,
@@ -45,7 +45,7 @@ class ChatService:
         *,
         conversation_state: ConversationState | Mapping[str, object] | None = None,
     ) -> dict[str, object]:
-        """Compatibility alias for callers using the service method name."""
+        """Bí danh tương thích cho các hàm gọi sử dụng tên phương thức của dịch vụ."""
 
         return self.ask(question, conversation_state=conversation_state)
 
@@ -54,7 +54,7 @@ _default_service: ChatService | None = None
 
 
 def get_chat_service() -> ChatService:
-    """Lazily create the default service so importing the UI stays cheap."""
+    """Khởi tạo trễ dịch vụ mặc định để việc import UI không tốn nhiều tài nguyên."""
 
     global _default_service
     if _default_service is None:
@@ -67,7 +67,7 @@ def ask_chatbot(
     *,
     conversation_state: ConversationState | Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Public API used by the UI and simple scripts."""
+    """API công khai được sử dụng bởi giao diện (UI) và các script đơn giản."""
 
     return get_chat_service().ask(question, conversation_state=conversation_state)
 
