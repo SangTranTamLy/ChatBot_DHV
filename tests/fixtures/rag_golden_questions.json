@@ -1,0 +1,178 @@
+[
+  {
+    "id": "case_a_application_threshold",
+    "question": "điểm đầu vào ngành công nghệ thông tin",
+    "state": {},
+    "expected_intent": "HOI_NGUONG_DAU_VAO",
+    "expected_entities": {"major_name": "Công nghệ thông tin", "score_type": "application_threshold", "year": 2026},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["Công nghệ thông tin", "7480201", "15", "18", "600"]},
+    "forbidden_claims": ["chắc chắn đậu", "điểm trúng tuyển thay cho điểm sàn"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "case_b_advice_with_scores",
+    "question": "Tôi thi tốt nghiệp xong. Toán 8, Văn 7, Anh 7.5, ĐGNL 720, thích edit video nhưng chưa biết chọn ngành nào",
+    "state": {},
+    "expected_intent": "TU_VAN_CHON_NGANH",
+    "expected_entities": {"interest": "edit video", "student_scores.dgnl": 720, "admission_method": "dgnl"},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["Truyền thông đa phương tiện", "Công nghệ thông tin"]},
+    "forbidden_claims": ["chắc chắn đậu", "đủ điều kiện trúng tuyển"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "case_c_program_followup",
+    "question": "truyền thông đa phương tiện thì sao?",
+    "state": {"current_year": 2026, "current_major": "Công nghệ thông tin", "previous_intent": "TU_VAN_CHON_NGANH"},
+    "expected_intent": "HOI_CHUONG_TRINH",
+    "expected_entities": {"program_name": "Truyền thông đa phương tiện", "parent_major": null, "entity_type": "program"},
+    "expected_category": ["nganh_dao_tao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["Truyền thông đa phương tiện", "Công nghệ thông tin"]},
+    "forbidden_claims": ["là ngành độc lập"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "case_d_ambiguous_list_score",
+    "question": "Cho tôi danh sách các ngành và điểm của DHV 2026",
+    "state": {},
+    "expected_intent": "DANH_SACH_NGANH",
+    "expected_entities": {"year": 2026},
+    "expected_category": ["nganh_dao_tao"],
+    "expected_evidence": {"category": "none", "contains": []},
+    "forbidden_claims": ["Luật = 15/18/600", "Luật Kinh tế = 15/18/600"],
+    "expected_status": "clarification"
+  },
+  {
+    "id": "regression_application_cse",
+    "question": "điểm sàn CNTT 2026",
+    "state": {},
+    "expected_intent": "HOI_NGUONG_DAU_VAO",
+    "expected_entities": {"major_name": "Công nghệ thông tin", "score_type": "application_threshold", "year": 2026},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["15", "18", "600"]},
+    "forbidden_claims": ["ĐGNL không ảnh hưởng"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "regression_ambiguous_cntt",
+    "question": "CNTT bao nhiêu điểm?",
+    "state": {},
+    "expected_intent": "HOI_NGUONG_DAU_VAO",
+    "expected_entities": {"major_name": "Công nghệ thông tin"},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "none", "contains": []},
+    "forbidden_claims": [],
+    "expected_status": "clarification"
+  },
+  {
+    "id": "regression_ambiguous_canonical_major",
+    "question": "Công nghệ thông tin lấy bao nhiêu điểm?",
+    "state": {},
+    "expected_intent": "HOI_NGUONG_DAU_VAO",
+    "expected_entities": {"major_name": "Công nghệ thông tin"},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "none", "contains": []},
+    "forbidden_claims": [],
+    "expected_status": "clarification"
+  },
+  {
+    "id": "regression_admission_law",
+    "question": "Điểm trúng tuyển Luật 2026?",
+    "state": {},
+    "expected_intent": "HOI_DIEM_TRUNG_TUYEN",
+    "expected_entities": {"major_name": "Luật", "score_type": "admission_score", "year": 2026},
+    "expected_category": ["diem_trung_tuyen"],
+    "expected_evidence": {"category": "diem_trung_tuyen", "contains": ["Luật", "20,0"]},
+    "forbidden_claims": ["điểm sàn là 20,0"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "regression_supplementary_deadline",
+    "question": "Hạn xét tuyển bổ sung?",
+    "state": {},
+    "expected_intent": "HOI_XET_TUYEN_BO_SUNG",
+    "expected_entities": {"score_type": "supplementary_threshold"},
+    "expected_category": ["xet_tuyen_bo_sung"],
+    "expected_evidence": {"category": "xet_tuyen_bo_sung", "contains": ["21/08/2026"]},
+    "forbidden_claims": ["hạn xét tuyển chung"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "regression_tuition",
+    "question": "Học phí DHV 2026?",
+    "state": {},
+    "expected_intent": "HOI_HOC_PHI",
+    "expected_entities": {"year": 2026},
+    "expected_category": ["hoc_phi"],
+    "expected_evidence": {"category": "hoc_phi", "contains": ["12.500.000", "14.500.000"]},
+    "forbidden_claims": ["Tổng chi phí là học phí"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "regression_unsupported_year",
+    "question": "Học phí DHV 2027?",
+    "state": {},
+    "expected_intent": "HOI_HOC_PHI",
+    "expected_entities": {"year": 2027},
+    "expected_category": ["hoc_phi"],
+    "expected_evidence": {"category": "none", "contains": []},
+    "forbidden_claims": ["12.500.000", "14.500.000"],
+    "expected_status": "no_data"
+  },
+  {
+    "id": "regression_advice_edit_video",
+    "question": "Tôi 19 điểm thích edit video nên chọn ngành nào?",
+    "state": {},
+    "expected_intent": "TU_VAN_CHON_NGANH",
+    "expected_entities": {"interest": "edit video", "score_value.unspecified": 19},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["Truyền thông đa phương tiện", "Công nghệ thông tin"]},
+    "forbidden_claims": ["chắc chắn đậu", "đủ điều kiện trúng tuyển"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "regression_major_program_confusion",
+    "question": "Tôi phân vân CNTT và Truyền thông đa phương tiện",
+    "state": {},
+    "expected_intent": "TU_VAN_CHON_NGANH",
+    "expected_entities": {"major_name": null, "program_name": null, "entity_type": "ambiguous"},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["Truyền thông đa phương tiện", "Công nghệ thông tin"]},
+    "forbidden_claims": ["là ngành độc lập"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "regression_major_code",
+    "question": "7480201 là ngành gì?",
+    "state": {},
+    "expected_intent": "HOI_NGANH",
+    "expected_entities": {"major_code": "7480201"},
+    "expected_category": ["nganh_dao_tao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["7480201", "Công nghệ thông tin"]},
+    "forbidden_claims": ["7480201 là Truyền thông đa phương tiện"],
+    "expected_status": "ok"
+  },
+  {
+    "id": "regression_out_of_scope",
+    "question": "Thời tiết hôm nay thế nào?",
+    "state": {},
+    "expected_intent": "OUT_OF_SCOPE",
+    "expected_entities": {},
+    "expected_category": [],
+    "expected_evidence": {"category": "none", "contains": []},
+    "forbidden_claims": [],
+    "expected_status": "out_of_scope"
+  },
+  {
+    "id": "e2e_turn_1",
+    "question": "Tôi vừa thi xong, ĐGNL 720, thích edit video, chưa biết chọn ngành nào",
+    "state": {},
+    "expected_intent": "TU_VAN_CHON_NGANH",
+    "expected_entities": {"interest": "edit video", "student_scores.dgnl": 720},
+    "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
+    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["Truyền thông đa phương tiện"]},
+    "forbidden_claims": ["chắc chắn đậu"],
+    "expected_status": "ok"
+  }
+]

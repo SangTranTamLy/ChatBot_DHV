@@ -1,0 +1,41 @@
+# Python environments
+.venv/
+venv/
+env/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local agent metadata and temporary workspace folders
+.agents/
+tmp*/
+
+# Python cache and test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Generated processed data
+data/processed/**
+!data/processed/.gitkeep
+
+# Generated vector store
+chroma_db/*
+!chroma_db/.gitkeep
+
+# Runtime files
+*.log
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
