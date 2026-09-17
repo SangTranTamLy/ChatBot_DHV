@@ -1,9 +1,4 @@
-"""Cấu hình ứng dụng được tải từ file ``.env`` cấp dự án.
-
-Task A chịu trách nhiệm quản lý cấu hình này. Các module xử lý dữ liệu (ingestion) cũ
-có thể vẫn đọc các tên biến môi trường cũ cho đến khi chuyển sang dùng module này;
-các bí danh (aliases) bên dưới giúp giữ tính tương thích ngược trong quá trình chuyển đổi.
-"""
+"""Cấu hình ứng dụng được tải từ file ``.env`` cấp dự án."""
 
 from __future__ import annotations
 
@@ -59,8 +54,7 @@ class Settings:
     embedding_model: str
     chroma_persist_dir: Path
     chroma_collection: str
-    processed_data_dir: Path
-    processed_json_dir: Path
+    processed_data_dir: Path  # generated Structured JSON directory
     retriever_top_k: int
     target_year: int
     ollama_timeout_seconds: float = 90.0
@@ -116,9 +110,6 @@ def load_settings() -> Settings:
             _read_env(
                 "PROCESSED_DATA_DIR", "data/processed", "DATA_PROCESSED_DIRECTORY"
             )
-        ),
-        processed_json_dir=_project_path(
-            _read_env("PROCESSED_JSON_DIR", "data/processed_json")
         ),
         retriever_top_k=_read_int_env("RETRIEVER_TOP_K", 4, "RAG_TOP_K"),
         target_year=_read_int_env("TARGET_YEAR", 2026, "DHV_KB_YEAR"),

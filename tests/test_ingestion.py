@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 import gc
@@ -42,7 +43,7 @@ class KeywordEmbeddings(Embeddings):
         return self._embed(text)
 
 
-def _write_markdown(
+def _write_json(
     path: Path,
     *,
     status: str,
@@ -51,51 +52,62 @@ def _write_markdown(
     year: int = 2026,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "\n".join(
-            [
-                "---",
-                f'title: "{title}"',
-                f'category: "{category}"',
-                f"year: {year}",
-                'source_url: "https://example.test/source"',
-                'source_date: "2026-09-14"',
-                f'status: "{status}"',
-                "---",
-                "",
-                f"# {title}",
-                "",
-                f"Thông tin {category} DHV 2026.",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    document = {
+        "document_id": path.stem,
+        "title": title,
+        "category": category,
+        "year": year,
+        "data_role": "",
+        "source": {
+            "file_name": f"{path.stem}.pdf",
+            "raw_file": f"data/raw/{category}/{path.stem}.pdf",
+            "source_url": "https://dhv.edu.vn/test-source",
+            "source_urls": ["https://dhv.edu.vn/test-source"],
+            "organization": "Trường Đại học Hùng Vương Thành phố Hồ Chí Minh",
+            "verified": status == "verified",
+            "status": status,
+            "verification_status": status,
+        },
+        "extraction": {"method": "test_fixture", "page_count": 1},
+        "pages": [{"page": 1, "text": f"Thông tin {category} DHV {year}."}],
+        "sections": [],
+        "records": [
+            {
+                "record_type": "document_text",
+                "record_id": f"{path.stem}_record",
+                "text": f"Thông tin {category} DHV {year}.",
+                "page": 1,
+            }
+        ],
+        "warnings": [],
+    }
+    path.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 class IngestionTests(unittest.TestCase):
     def test_loader_preserves_metadata_and_filters_unverified_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            _write_markdown(
-                root / "hoc_phi" / "verified.md",
+            _write_json(
+                root / "hoc_phi" / "verified.json",
                 status="verified",
                 category="hoc_phi",
                 title="Học phí DHV 2026",
             )
-            _write_markdown(
-                root / "hoc_bong" / "draft.md",
+            _write_json(
+                root / "hoc_bong" / "draft.json",
                 status="draft",
                 category="hoc_bong",
                 title="Học bổng bản nháp",
             )
-            _write_markdown(
-                root / "hoc_phi" / "old.md",
+            _write_json(
+                root / "hoc_phi" / "old.json",
                 status="verified",
                 category="hoc_phi",
                 title="Học phí DHV 2025",
                 year=2025,
             )
-            (root / "broken.md").write_text("không có front matter", encoding="utf-8")
+            (root / "broken.json").write_text("{broken", encoding="utf-8")
 
             result = load_verified_documents(root)
 
@@ -108,7 +120,7 @@ class IngestionTests(unittest.TestCase):
             self.assertEqual(result.documents[0].metadata["year"], 2026)
             self.assertEqual(
                 result.documents[0].metadata["source_url"],
-                "https://example.test/source",
+                "https://dhv.edu.vn/test-source",
             )
 
     def test_splitter_keeps_heading_sections_separate_and_ids_unique(self) -> None:
@@ -123,7 +135,7 @@ class IngestionTests(unittest.TestCase):
                 "category": "tong_hop",
                 "year": 2026,
                 "source_url": "https://example.test/source",
-                "source_file": "example.md",
+                "source_file": "example.json",
                 "status": "verified",
             },
         )
@@ -144,14 +156,14 @@ class IngestionTests(unittest.TestCase):
             root = Path(temp_dir)
             data_dir = root / "data" / "processed"
             persist_dir = root / "chroma_db"
-            _write_markdown(
-                data_dir / "hoc_phi" / "hoc_phi.md",
+            _write_json(
+                data_dir / "hoc_phi" / "hoc_phi.json",
                 status="verified",
                 category="hoc_phi",
                 title="Học phí DHV 2026",
             )
-            _write_markdown(
-                data_dir / "hoc_bong" / "hoc_bong.md",
+            _write_json(
+                data_dir / "hoc_bong" / "hoc_bong.json",
                 status="verified",
                 category="hoc_bong",
                 title="Học bổng DHV 2026",
@@ -185,7 +197,7 @@ class IngestionTests(unittest.TestCase):
                 self.assertEqual(results[0].metadata["year"], 2026)
                 self.assertEqual(
                     results[0].metadata["source_url"],
-                    "https://example.test/source",
+                    "https://dhv.edu.vn/test-source",
                 )
             finally:
                 close_chroma_store(vector_store)

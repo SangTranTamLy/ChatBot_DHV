@@ -365,16 +365,45 @@ def _entity_matches(document: Document, entity_filters: Mapping[str, object] | N
     return any(term in content for term in terms)
 
 
-def _inferred_entity_filters(query: str) -> dict[str, str]:
-    """Giữ truy vấn mã ngành trực tiếp khỏi bị prose mô tả che khuất.
+def _inferred_entity_filters(query: str) -> dict[str, object]:
+    """Giữ entity annotation khỏi bị prose mô tả che khuất.
 
-    Adapter cũ có thể không truyền ``entity_filters``. Trong trường hợp đó,
-    chỉ suy ra mã ngành có định dạng cố định; không suy đoán tên ngành hay
-    tạo fact từ ngôn ngữ tự nhiên.
+    Khi caller không truyền filter riêng, chỉ đọc mã ngành hoặc các
+    annotation do QueryPlan serialize sau ``intent:``; không suy đoán entity
+    từ ngôn ngữ tự nhiên.
     """
 
     match = _MAJOR_CODE_RE.search(query or "")
-    return {"major_code": match.group(0)} if match else {}
+    filters: dict[str, object] = {"major_code": match.group(0)} if match else {}
+
+    # QueryPlan serializes canonical entities after the ``intent:`` marker.
+    # Read those annotations when a caller only supplies ``retrieval_query``
+    # (for example a Chroma audit/retrieval adapter), without guessing names
+    # from arbitrary prose.
+    annotation = (query or "").partition("intent:")[2]
+    if annotation:
+        fields = {
+            "major_name",
+            "major_code",
+            "program_name",
+            "parent_major",
+            "candidate_majors",
+            "candidate_programs",
+        }
+        for part in re.split(r"\s+(?=[a-z_]+:)", annotation):
+            key, separator, value = part.partition(":")
+            value = value.strip()
+            if separator != ":" or key not in fields or not value:
+                continue
+            if key in {"candidate_majors", "candidate_programs"}:
+                current = filters.get(key)
+                values = list(current) if isinstance(current, list) else []
+                if value not in values:
+                    values.append(value)
+                filters[key] = values
+            else:
+                filters[key] = value
+    return filters
 
 
 def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters: Mapping[str, object]) -> bool:
@@ -385,7 +414,7 @@ def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters:
     cầu liệt kê thuần catalog mới bỏ prose khỏi candidate pool.
     """
 
-    if categories != ("nganh_dao_tao",) or entity_filters:
+    if "nganh_dao_tao" not in categories or entity_filters:
         return False
     normalized = _normalize(query)
     return any(
@@ -398,6 +427,7 @@ def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters:
             "co nhung nganh",
             "chuong trinh nao",
             "co may chuong trinh",
+            "intent:tu_van_chon_nganh",
         )
     )
 
@@ -466,6 +496,14 @@ def _rank_hybrid_candidates_with_audit(
     for rank, document in enumerate(vector_documents, start=1):
         identity = _document_identity(document)
         if identity in rrf_scores:
+            rrf_scores[identity] += 1.0 / (_RRF_K + rank)
+    # A dense search can miss an exact structured record while the collection
+    # keyword pass recovers it. Give that lexical vote a second, bounded
+    # contribution only when no dense vote exists for the same document.
+    # This keeps hybrid retrieval useful for dates/codes without replacing the
+    # normal BM25+dense fusion for documents found by both paths.
+    for identity, rank in bm25_rank.items():
+        if identity not in dense_rank:
             rrf_scores[identity] += 1.0 / (_RRF_K + rank)
 
     ranking = sorted(
@@ -639,20 +677,26 @@ class DHVRetriever:
             candidates = self._collection_candidates(vector_store, metadata_filter)
             if not candidates:
                 candidates = list(vector_documents)
-            if _catalog_list_query(query, requested_categories, effective_entity_filters):
+            expand_catalog_results = _catalog_list_query(
+                query,
+                requested_categories,
+                effective_entity_filters,
+            )
+            if expand_catalog_results:
                 candidates = [
                     candidate
                     for candidate in candidates
                     if str((candidate.metadata or {}).get("data_role") or "").strip().casefold()
                     != "description"
                 ]
+            ranking_limit = len(candidates) if expand_catalog_results else effective_top_k
             documents, fusion = _rank_hybrid_candidates_with_audit(
                 query,
                 candidates,
                 vector_documents,
                 vector_scores,
                 self.settings.target_year,
-                effective_top_k,
+                ranking_limit,
                 categories=requested_categories,
                 entity_filters=effective_entity_filters,
             )

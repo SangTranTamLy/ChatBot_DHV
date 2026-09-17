@@ -31,7 +31,7 @@ class StructuredJSONPipelineTests(unittest.TestCase):
                 output_root=Path(temp_dir),
                 markdown_root=None,
             )
-            document = load_structured_json(result.json_path or result.output_path)
+            document = load_structured_json(result.output_path)
 
         self.assertEqual(document["extraction"]["method"], "pypdf_text")
         self.assertEqual(document["extraction"]["page_count"], 2)

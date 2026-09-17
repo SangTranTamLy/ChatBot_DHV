@@ -413,6 +413,33 @@ def parse_scholarship(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "page": int(page["page"]),
                     }
                 )
+    summary_lines: list[str] = []
+    for record in records:
+        record_type = record.get("record_type")
+        if record_type == "scholarship_fund":
+            summary_lines.append(f"Quỹ học bổng: {record.get('raw_value', '')}.")
+        elif record_type == "scholarship":
+            basis = str(record.get("basis_label") or "Điều kiện")
+            operator = str(record.get("threshold_operator") or "")
+            if operator == "between":
+                threshold = f"từ {record.get('threshold_min')} đến {record.get('threshold_max')}"
+            else:
+                threshold = f"{operator} {record.get('threshold_value')}".strip()
+            summary_lines.append(
+                f"{basis}: {threshold}; hỗ trợ {record.get('support_percent')}%."
+            )
+        elif record_type == "scholarship_policy":
+            summary_lines.append(str(record.get("policy_text") or ""))
+    if summary_lines:
+        records.insert(
+            0,
+            {
+                "record_type": "scholarship_summary",
+                "record_id": "scholarship_summary_2026",
+                "summary_lines": summary_lines,
+                "page": 1,
+            },
+        )
     return records
 
 
@@ -996,12 +1023,19 @@ def _record_text(record: Mapping[str, Any]) -> str:
             ("english_test_fee_vnd", "Kiểm tra năng lực Tiếng Anh"),
             ("total_cost_vnd", "Tổng chi phí học kỳ I"),
         )
+        amount = record.get("tuition_amount_vnd")
+        credits = record.get("credits", "")
         lines = [f"{label}: {_format_vnd(record[key])} đồng" for key, label in labels if isinstance(record.get(key), int)]
-        return f"Học phí {record.get('semester', '')} ({record.get('credits', '')} tín chỉ):\n" + "\n".join(lines)
+        summary = (
+            f"Học phí HKI ({credits} tín chỉ): {_format_vnd(amount)} đồng"
+            if isinstance(amount, int)
+            else f"Học phí {record.get('semester', '')} ({credits} tín chỉ):"
+        )
+        return summary + "\n" + "\n".join(lines)
     if record_type == "official_website":
         return f"Đơn vị: {record.get('unit_name', '')}\nWebsite: {record.get('url', '')}"
     if record_type == "school_information":
-        return f"Thông tin nhận diện trường: {record.get('information_text', '')}"
+        return str(record.get("information_text") or "").strip()
     if record_type == "application_threshold":
         return f"Ngưỡng đảm bảo chất lượng đầu vào (điểm sàn, {record.get('method', '')}): {record.get('raw_value', record.get('value'))} điểm."
     if record_type in {"admission_score", "admission_score_rule"}:
@@ -1010,13 +1044,28 @@ def _record_text(record: Mapping[str, Any]) -> str:
         scope = record.get("major_name") or record.get("scope") or ""
         return f"Ngưỡng xét tuyển bổ sung ({record.get('method', '')}) {scope}: {record.get('raw_value', record.get('value'))} điểm."
     if record_type == "scholarship_fund":
-        return f"Quỹ học bổng 2026: {_format_vnd(int(record.get('fund_amount_vnd')))} đồng."
+        return f"• Quỹ học bổng 2026: {_format_vnd(int(record.get('fund_amount_vnd')))} đồng."
     if record_type == "scholarship":
-        return "Học bổng tuyển sinh: " + "; ".join(f"{key}={value}" for key, value in record.items() if key not in {"record_type", "record_id", "page"})
+        details = [
+            str(record.get("basis_label") or "Điều kiện"),
+            f"ngưỡng {record.get('threshold_operator', '')} {record.get('threshold_value', '')}".strip(),
+        ]
+        if record.get("threshold_min") is not None or record.get("threshold_max") is not None:
+            details.append(
+                f"khoảng {record.get('threshold_min', '')}–{record.get('threshold_max', '')}"
+            )
+        details.append(f"mức hỗ trợ {record.get('support_percent')}%")
+        if isinstance(record.get("support_amount_vnd"), int):
+            details.append(f"tương đương {_format_vnd(record['support_amount_vnd'])} đồng")
+        return "• Học bổng tuyển sinh: " + "; ".join(detail for detail in details if detail)
     if record_type == "scholarship_policy":
-        return f"Chính sách học bổng: {record.get('policy_text', '')}"
+        return f"• Chính sách học bổng: {record.get('policy_text', '')}"
+    if record_type == "scholarship_summary":
+        lines = ["• Điều kiện nhận học bổng tuyển sinh DHV 2026:"]
+        lines.extend(f"• {line}" for line in record.get("summary_lines", []) if line)
+        return "\n".join(lines)
     if record_type == "score_formula":
-        return f"Công thức điểm xét tuyển ({record.get('method') or 'phương thức tương ứng'}): {record.get('formula_text', '')}"
+        return str(record.get("formula_text") or "").strip()
     if record_type == "admission_method":
         return f"Phương thức xét tuyển {record.get('method_number')}: {record.get('method_text', '')}"
     if record_type == "registration_field":
@@ -1072,7 +1121,8 @@ def build_chunk_documents(structured_document: Mapping[str, Any]) -> list[Docume
         # 2026").  This improves dense retrieval without embedding the whole
         # JSON object or relying on runtime parsing.
         category_label = _CATEGORY_LABELS.get(str(structured_document["category"]), str(structured_document["category"]))
-        text = f"{category_label}\nDHV {structured_document['year']} - {structured_document['title']}\n{text}"
+        if record.get("record_type") != "major_catalog_summary":
+            text = f"{category_label}\nDHV {structured_document['year']} - {structured_document['title']}\n{text}"
         metadata = dict(base_metadata)
         metadata.update(
             {
@@ -1091,6 +1141,13 @@ def build_chunk_documents(structured_document: Mapping[str, Any]) -> list[Docume
             scalar = _scalar_metadata(record.get(key))
             if scalar is not None:
                 metadata[key] = scalar
+        if record.get("record_type") == "major":
+            program_names = [
+                program.get("program_name")
+                for program in record.get("programs", [])
+                if isinstance(program, Mapping) and program.get("program_name")
+            ]
+            metadata["program_names"] = json.dumps(program_names, ensure_ascii=False)
         thresholds = record.get("thresholds")
         if isinstance(thresholds, Mapping):
             for key, value in thresholds.items():

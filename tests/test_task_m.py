@@ -68,30 +68,37 @@ class TaskMRawDataTests(unittest.TestCase):
         self.assertNotRegex(registration_text, r"\b\d{12}\b")
 
     def test_processed_metadata_and_new_career_evidence_are_present(self) -> None:
-        school = (
-            PROJECT_ROOT
-            / "data"
-            / "processed"
-            / "thong_tin_truong"
-            / "thong_tin_truong_dhv_2026.md"
-        ).read_text(encoding="utf-8")
-        career = (
-            PROJECT_ROOT
-            / "data"
-            / "processed"
-            / "nganh_dao_tao"
-            / "mo_ta_cntt_co_hoi_nghe_nghiep_2026.md"
-        ).read_text(encoding="utf-8")
+        school = json.loads(
+            (
+                PROJECT_ROOT
+                / "data"
+                / "processed"
+                / "thong_tin_truong"
+                / "thong_tin_truong_dhv_2026.json"
+            ).read_text(encoding="utf-8")
+        )
+        career = json.loads(
+            (
+                PROJECT_ROOT
+                / "data"
+                / "processed"
+                / "nganh_dao_tao"
+                / "mo_ta_cntt_co_hoi_nghe_nghiep_2026.json"
+            ).read_text(encoding="utf-8")
+        )
 
-        for text in (school, career):
-            self.assertIn('verification_status: "verified"', text)
-            self.assertIn('collected_at: "2026-09-15"', text)
-            self.assertIn('date:', text)
-            self.assertIn('source_urls:', text)
-        self.assertIn("info@dhv.edu.vn", school)
-        self.assertIn('data_role: "description"', career)
-        self.assertIn("Cơ hội nghề nghiệp", career)
-        self.assertIn("Không suy diễn", career)
+        for document in (school, career):
+            source = document["source"]
+            self.assertEqual(source["verification_status"], "verified")
+            self.assertEqual(source["collected_at"], "2026-09-15")
+            self.assertTrue(source["source_date"])
+            self.assertTrue(source["source_urls"])
+            self.assertTrue(document["pages"])
+        self.assertTrue(any("info@dhv.edu.vn" in page["text"] for page in school["pages"]))
+        self.assertEqual(career["data_role"], "description")
+        career_text = "\n".join(page["text"] for page in career["pages"])
+        self.assertIn("Cơ hội nghề nghiệp", career_text)
+        self.assertIn("Không suy diễn", career_text)
 
     def test_official_host_policy_rejects_non_dhv_and_lookalike_urls(self) -> None:
         self.assertTrue(is_official_dhv_url("https://dhv.edu.vn/"))

@@ -5,8 +5,8 @@ Chạy từ thư mục gốc của dự án:
     python -m src.ingestion.build_vector_db --reset
 
 Lệnh này sử dụng Ollama embeddings được cấu hình trong ``.env`` hoặc qua tham số dòng lệnh.
-The primary input is validated JSON in ``data/processed_json``.  The loader
-still accepts the legacy Markdown directory for backwards compatibility.
+The input is validated JSON in ``data/processed``.  Generated Markdown is no
+longer an accepted corpus representation.
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ def _load_stats(load_result: LoadResult) -> dict[str, int]:
 
 def build_vector_db(
     *,
-    data_directory: str | Path = settings.processed_json_dir,
+    data_directory: str | Path = settings.processed_data_dir,
     persist_directory: str | Path = settings.chroma_persist_dir,
     collection_name: str = DEFAULT_COLLECTION,
     embeddings: Any | None = None,
@@ -159,8 +159,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--data-dir",
-        default=str(settings.processed_json_dir),
-        help="validated processed JSON directory (legacy Markdown is also supported)",
+        default=str(settings.processed_data_dir),
+        help="validated processed JSON directory",
     )
     parser.add_argument(
         "--persist-dir",

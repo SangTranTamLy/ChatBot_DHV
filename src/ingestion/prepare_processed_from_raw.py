@@ -8,7 +8,6 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 from urllib.parse import urlparse
 
 from pypdf import PdfReader
@@ -25,8 +24,6 @@ from .structured_json import (
 LOGGER = logging.getLogger(__name__)
 DEFAULT_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "processed"
-DEFAULT_JSON_OUTPUT_DIR = PROJECT_ROOT / "data" / "processed_json"
-YEAR = settings.target_year
 TITLE_RE = re.compile(r"^DHV(?:\s+2026)?\s*-\s*(?P<title>.+?)\s*$")
 URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 DATE_LINE_RE = re.compile(
@@ -42,12 +39,7 @@ ALLOWED_SOURCE_HOST = "dhv.edu.vn"
 
 @dataclass(frozen=True)
 class ProcessedDocument:
-    """A generated representation and the RAW PDF it came from.
-
-    ``output_path`` remains the Markdown path for the legacy ``convert_pdf``
-    API.  The structured pipeline fills ``json_path`` and ``markdown_path``
-    explicitly so callers can tell which artifact is authoritative.
-    """
+    """A generated Structured JSON representation and its RAW PDF source."""
 
     raw_path: Path
     output_path: Path
@@ -59,8 +51,6 @@ class ProcessedDocument:
     source_urls: tuple[str, ...] = ()
     collected_at: str = ""
     data_role: str = ""
-    json_path: Path | None = None
-    markdown_path: Path | None = None
     records_count: int = 0
     warnings_count: int = 0
     pages_count: int = 0
@@ -181,93 +171,6 @@ def _data_role_from_path(raw_path: Path, category: str) -> str:
     return "catalog"
 
 
-def _quote_yaml(value: str) -> str:
-    return value.replace(chr(92), chr(92) + chr(92)).replace(chr(34), chr(92) + chr(34))
-
-
-def _front_matter(
-    *,
-    title: str,
-    category: str,
-    source_url: str,
-    source_urls: tuple[str, ...],
-    source_date: str,
-    collected_at: str,
-    data_role: str,
-    raw_file: str,
-) -> str:
-    values = [
-        "---",
-        f'title: "{_quote_yaml(title)}"',
-        f'category: "{category}"',
-        f'subcategory: "{category}"',
-        f"year: {YEAR}",
-        'school: "Trường Đại học Hùng Vương TP.HCM"',
-        'school_code: "DHV"',
-        'source_type: "official_website"',
-        'source_name: "DHV"',
-        f'source_url: "{source_url}"',
-        "source_urls:",
-        *[f'  - "{_quote_yaml(url)}"' for url in source_urls],
-        f'source_date: "{_quote_yaml(source_date)}"',
-        f'date: "{_quote_yaml(source_date)}"',
-        f'collected_at: "{collected_at}"',
-        f'data_role: "{data_role}"',
-        'document_type: "pdf_derived_markdown"',
-        'status: "verified"',
-        'verification_status: "verified"',
-        'language: "vi"',
-        f'raw_file: "{raw_file}"',
-        "---",
-        "",
-    ]
-    return "\n".join(values)
-
-
-def _output_name(raw_path: Path) -> str:
-    return f"{raw_path.stem}.md"
-
-
-def convert_pdf(raw_path: Path, *, raw_root: Path, output_root: Path) -> ProcessedDocument:
-    text = _extract_pdf_text(raw_path)
-    category = raw_path.parent.relative_to(raw_root).as_posix()
-    if "/" in category:
-        raise ValueError("RAW PDF must be directly below one category directory")
-    title = _title_from_text(text)
-    source_urls = _source_urls_from_text(text)
-    source_url = source_urls[0]
-    source_date = _source_date_from_text(text)
-    collected_at = _collected_at_from_text(text)
-    data_role = _data_role_from_path(raw_path, category)
-    raw_file = raw_path.relative_to(PROJECT_ROOT).as_posix()
-    output_path = output_root / category / _output_name(raw_path)
-    body = f"# {title}\n\n{text}"
-    output = _front_matter(
-        title=title,
-        category=category,
-        source_url=source_url,
-        source_urls=source_urls,
-        source_date=source_date,
-        collected_at=collected_at,
-        data_role=data_role,
-        raw_file=raw_file,
-    ) + body + "\n"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(output, encoding="utf-8")
-    return ProcessedDocument(
-        raw_path=raw_path,
-        output_path=output_path,
-        title=title,
-        category=category,
-        source_url=source_url,
-        source_date=source_date,
-        text=text,
-        source_urls=source_urls,
-        collected_at=collected_at,
-        data_role=data_role,
-    )
-
-
 def convert_pdf_to_structured_json(
     raw_path: Path,
     *,
@@ -275,11 +178,16 @@ def convert_pdf_to_structured_json(
     output_root: Path,
     markdown_root: Path | None = None,
 ) -> ProcessedDocument:
-    """Generate one structured JSON document directly from one RAW PDF.
+    """Generate one Structured JSON document directly from one RAW PDF.
 
-    Markdown is an optional compatibility export from the same structured
-    extraction.  It is never an input to JSON generation or vector indexing.
+    ``markdown_root`` remains an explicit compatibility argument for callers
+    from the previous task, but Markdown generation is intentionally removed.
+    Passing a non-null path fails loudly instead of silently recreating the
+    retired generated Markdown layer.
     """
+
+    if markdown_root is not None:
+        raise ValueError("generated Markdown output was removed; use Structured JSON")
 
     pages = _extract_pdf_pages(raw_path)
     structured = build_structured_document(
@@ -292,25 +200,6 @@ def convert_pdf_to_structured_json(
     json_path = output_root / category / f"{raw_path.stem}.json"
     write_structured_json(structured, json_path)
 
-    markdown_path: Path | None = None
-    if markdown_root is not None:
-        markdown_path = markdown_root / category / f"{raw_path.stem}.md"
-        source = structured["source"]
-        markdown = _front_matter(
-            title=str(structured["title"]),
-            category=category,
-            source_url=str(source["source_url"]),
-            source_urls=tuple(str(url) for url in source.get("source_urls", [])),
-            source_date=str(source.get("source_date", "")),
-            collected_at=str(source.get("collected_at", "")),
-            data_role=str(structured.get("data_role", "")),
-            raw_file=str(source.get("raw_file", raw_path.as_posix())),
-        )
-        markdown += f"# {structured['title']}\n\n"
-        markdown += "\n\n".join(str(page["text"]) for page in structured["pages"] if str(page["text"]).strip())
-        markdown_path.parent.mkdir(parents=True, exist_ok=True)
-        markdown_path.write_text(markdown.rstrip() + "\n", encoding="utf-8")
-
     return ProcessedDocument(
         raw_path=raw_path,
         output_path=json_path,
@@ -322,8 +211,6 @@ def convert_pdf_to_structured_json(
         source_urls=tuple(str(url) for url in structured["source"].get("source_urls", [])),
         collected_at=str(structured["source"].get("collected_at", "")),
         data_role=str(structured.get("data_role", "")),
-        json_path=json_path,
-        markdown_path=markdown_path,
         records_count=len(structured.get("records", [])),
         warnings_count=len(structured.get("warnings", [])),
         pages_count=len(structured.get("pages", [])),
@@ -347,11 +234,10 @@ def _safe_reset_generated_directory(path: Path, *, raw_root: Path) -> None:
 def rebuild_structured_json(
     *,
     raw_directory: str | Path = DEFAULT_RAW_DIR,
-    output_directory: str | Path = DEFAULT_JSON_OUTPUT_DIR,
-    markdown_directory: str | Path | None = settings.processed_data_dir,
+    output_directory: str | Path = DEFAULT_OUTPUT_DIR,
     reset: bool = True,
 ) -> list[ProcessedDocument]:
-    """Scan RAW PDFs and generate validated JSON documents.
+    """Scan all RAW PDFs and generate validated JSON under ``data/processed``.
 
     A failed source is not represented as a successful output.  The scan
     continues so the final exception reports every failed PDF in one run.
@@ -359,20 +245,13 @@ def rebuild_structured_json(
 
     raw_root = Path(raw_directory).resolve()
     output_root = Path(output_directory).resolve()
-    markdown_root = Path(markdown_directory).resolve() if markdown_directory is not None else None
     if not raw_root.exists() or not raw_root.is_dir():
         raise FileNotFoundError(f"RAW directory does not exist: {raw_root}")
     if output_root == raw_root or output_root == Path(output_root.anchor):
         raise ValueError("refusing to use RAW directory or a filesystem root as JSON output")
-    if markdown_root is not None and (markdown_root == raw_root or markdown_root == Path(markdown_root.anchor)):
-        raise ValueError("refusing to use RAW directory or a filesystem root as Markdown output")
     if reset:
         _safe_reset_generated_directory(output_root, raw_root=raw_root)
-        if markdown_root is not None and markdown_root != output_root:
-            _safe_reset_generated_directory(markdown_root, raw_root=raw_root)
     output_root.mkdir(parents=True, exist_ok=True)
-    if markdown_root is not None:
-        markdown_root.mkdir(parents=True, exist_ok=True)
 
     raw_files = sorted(raw_root.rglob("*.pdf"))
     if not raw_files:
@@ -386,7 +265,6 @@ def rebuild_structured_json(
                 path,
                 raw_root=raw_root,
                 output_root=output_root,
-                markdown_root=markdown_root,
             )
         except (OSError, ValueError, StructuredJSONValidationError) as exc:
             failures.append(f"{path.relative_to(raw_root).as_posix()}: {exc}")
@@ -399,7 +277,7 @@ def rebuild_structured_json(
             document.pages_count,
             document.records_count,
             document.warnings_count,
-            document.json_path,
+            document.output_path,
         )
     LOGGER.info(
         "structured JSON rebuild summary: raw_pdfs=%d success=%d failed=%d records=%d warnings=%d",
@@ -420,45 +298,23 @@ def rebuild_processed(
     output_directory: str | Path = DEFAULT_OUTPUT_DIR,
     reset: bool = True,
 ) -> list[ProcessedDocument]:
-    """Tạo lại Markdown đã xử lý hoàn toàn từ các file RAW PDF."""
+    """Backward-compatible name for the canonical JSON rebuild."""
 
-    raw_root = Path(raw_directory).resolve()
-    output_root = Path(output_directory).resolve()
-    if not raw_root.exists() or not raw_root.is_dir():
-        raise FileNotFoundError(f"RAW directory does not exist: {raw_root}")
-    if output_root == raw_root or output_root == Path(output_root.anchor):
-        raise ValueError("refusing to use RAW directory or a filesystem root as output")
-    if reset and output_root.exists():
-        shutil.rmtree(output_root)
-    output_root.mkdir(parents=True, exist_ok=True)
-
-    raw_files = sorted(raw_root.rglob("*.pdf"))
-    if not raw_files:
-        raise RuntimeError(f"no RAW PDF files found in {raw_root}")
-
-    documents = [
-        convert_pdf(path, raw_root=raw_root, output_root=output_root)
-        for path in raw_files
-    ]
-    LOGGER.info(
-        "processed rebuild complete: raw_pdfs=%d processed_documents=%d output=%s",
-        len(raw_files),
-        len(documents),
-        output_root,
+    return rebuild_structured_json(
+        raw_directory=raw_directory,
+        output_directory=output_directory,
+        reset=reset,
     )
-    return documents
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-dir", default=str(DEFAULT_RAW_DIR))
-    parser.add_argument("--output-dir", default=str(settings.processed_json_dir))
     parser.add_argument(
-        "--markdown-dir",
+        "--output-dir",
         default=str(settings.processed_data_dir),
-        help="optional legacy Markdown export directory (use --no-markdown to disable)",
+        help="generated Structured JSON directory",
     )
-    parser.add_argument("--no-markdown", action="store_true")
     parser.add_argument("--no-reset", action="store_true")
     parser.add_argument("--log-level", default="INFO", choices=("DEBUG", "INFO", "WARNING", "ERROR"))
     return parser
@@ -474,7 +330,6 @@ def main() -> int:
         documents = rebuild_structured_json(
             raw_directory=args.raw_dir,
             output_directory=args.output_dir,
-            markdown_directory=None if args.no_markdown else args.markdown_dir,
             reset=not args.no_reset,
         )
     except Exception as exc:
@@ -486,8 +341,7 @@ def main() -> int:
             "json_documents": len(documents),
             "records": sum(document.records_count for document in documents),
             "warnings": sum(document.warnings_count for document in documents),
-            "json_output": str(Path(args.output_dir).resolve()),
-            "markdown_output": None if args.no_markdown else str(Path(args.markdown_dir).resolve()),
+            "processed_output": str(Path(args.output_dir).resolve()),
         }
     )
     return 0
@@ -500,7 +354,6 @@ if __name__ == "__main__":
 __all__ = [
     "ProcessedDocument",
     "_extract_pdf_pages",
-    "convert_pdf",
     "convert_pdf_to_structured_json",
     "main",
     "rebuild_processed",

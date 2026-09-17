@@ -19,12 +19,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_SCHOOL_PDF = (
     PROJECT_ROOT / "data" / "raw" / "thong_tin_truong" / "thong_tin_truong_dhv_2026.pdf"
 )
-PROCESSED_SCHOOL_MD = (
+PROCESSED_SCHOOL_JSON = (
     PROJECT_ROOT
     / "data"
     / "processed"
     / "thong_tin_truong"
-    / "thong_tin_truong_dhv_2026.md"
+    / "thong_tin_truong_dhv_2026.json"
 )
 MANIFEST = PROJECT_ROOT / "data" / "raw" / "manifest.json"
 
@@ -33,7 +33,7 @@ class Task09DataTests(unittest.TestCase):
     def test_school_pdf_is_manifested_and_processed_by_pipeline(self) -> None:
         self.assertTrue(RAW_SCHOOL_PDF.exists())
         self.assertEqual(RAW_SCHOOL_PDF.suffix.lower(), ".pdf")
-        self.assertTrue(PROCESSED_SCHOOL_MD.exists())
+        self.assertTrue(PROCESSED_SCHOOL_JSON.exists())
 
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
         entry = next(
@@ -45,7 +45,11 @@ class Task09DataTests(unittest.TestCase):
         self.assertEqual(entry["year"], 2026)
         self.assertEqual(entry["verification_status"], "verified")
         self.assertGreaterEqual(len(entry["source_urls"]), 1)
-        self.assertIn('category: "thong_tin_truong"', PROCESSED_SCHOOL_MD.read_text(encoding="utf-8"))
+        document = json.loads(PROCESSED_SCHOOL_JSON.read_text(encoding="utf-8"))
+        self.assertEqual(document["category"], "thong_tin_truong")
+        self.assertEqual(document["year"], 2026)
+        self.assertEqual(document["source"]["verification_status"], "verified")
+        self.assertTrue(document["pages"])
 
     def test_loader_keeps_school_metadata(self) -> None:
         result = load_verified_documents(PROJECT_ROOT / "data" / "processed")
@@ -55,7 +59,7 @@ class Task09DataTests(unittest.TestCase):
             if document.metadata.get("category") == "thong_tin_truong"
         ]
 
-        self.assertEqual(len(school_documents), 1)
+        self.assertGreaterEqual(len(school_documents), 1)
         metadata = school_documents[0].metadata
         self.assertEqual(metadata["year"], 2026)
         self.assertEqual(metadata["status"], "verified")

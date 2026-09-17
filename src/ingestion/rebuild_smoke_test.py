@@ -69,16 +69,24 @@ def _check_cntt_threshold(documents: list[Any], text: str) -> bool:
 
 
 def _check_law_threshold(documents: list[Any], text: str) -> bool:
-    for document in documents:
-        document_text = _SPACE_RE.sub(" ", document.page_content).lower()
-        if "luật 7380101" in document_text and "luật kinh tế 7380107" in document_text:
-            law_start = document_text.index("luật 7380101")
-            law_end = document_text.find("quản lý bệnh viện", law_start)
-            law_segment = document_text[law_start:] if law_end < 0 else document_text[law_start:law_end]
-            return all(dash in law_segment for dash in ("- - -",)) and not all(
-                value in law_segment for value in ("15", "18", "600")
-            )
-    return False
+    # Structured JSON keeps one major per semantic record; do not require the
+    # two Law rows to share a legacy Markdown table/chunk.
+    law_rows = {
+        str(document.metadata.get("major_name") or "").strip(): document.page_content
+        for document in documents
+        if str(document.metadata.get("record_type") or "") == "major"
+        and str(document.metadata.get("major_name") or "").strip()
+        in {"Luật", "Luật Kinh tế"}
+    }
+    if set(law_rows) != {"Luật", "Luật Kinh tế"}:
+        return False
+    for row in law_rows.values():
+        normalized = _SPACE_RE.sub(" ", row).lower()
+        if normalized.count(": -") < 3:
+            return False
+        if any(f": {value}" in normalized for value in ("15", "18", "600")):
+            return False
+    return True
 
 
 def _check_admission_score(documents: list[Any], text: str) -> bool:

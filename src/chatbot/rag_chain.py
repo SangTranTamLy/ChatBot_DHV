@@ -289,13 +289,12 @@ def _retrieve(
         if (
             getattr(plan, "intent", "") in {"SCHOOL_INFO", "HOI_CO_SO_LIEN_HE"}
             and "thong_tin_truong" in tuple(getattr(plan, "categories", ()) or ())
-            and _requested_website_entry(str(getattr(plan, "retrieval_query", ""))) is not None
         ):
-            # The directory is intentionally one school document split into
-            # several chunks. Retrieve the complete small directory so a
-            # verified unit can be selected deterministically after Evidence
-            # Selection instead of depending on one dense top-4 hit.
-            expanded_directory_top_k = 8
+            # The directory is intentionally one school document represented
+            # by several verified JSON records. Retrieve the complete small
+            # directory so an overview record cannot be hidden behind the
+            # first few alphabetically ordered website records.
+            expanded_directory_top_k = 64
         try:
             kwargs = {
                 "categories": plan.categories,
@@ -629,11 +628,13 @@ def _bullet_content_lines(evidence: Any) -> list[str]:
 def _evidence_overview_answer(evidence: Any) -> str | None:
     lines = _evidence_text_lines(evidence)
 
-    def sentence_starting_with(fragment: str) -> str | None:
+    def sentence_containing(fragment: str) -> str | None:
         for index, line in enumerate(lines):
-            if not line.lower().startswith(fragment):
+            lower_line = line.lower()
+            marker_index = lower_line.find(fragment)
+            if marker_index < 0:
                 continue
-            parts = [line]
+            parts = [line[marker_index:]]
             for continuation in lines[index + 1 :]:
                 if continuation.startswith(("#", "•")):
                     break
@@ -644,12 +645,16 @@ def _evidence_overview_answer(evidence: Any) -> str | None:
             return re.split(r"(?<=\.)\s+", sentence, maxsplit=1)[0]
         return None
 
-    school_name = next(
-        (line.split(":", 1)[1].strip() for line in lines if line.lower().startswith("tên trường:")),
-        None,
-    )
-    founded = sentence_starting_with("cổng tuyển sinh 2026 giới thiệu dhv được thành lập từ năm")
-    direction = sentence_starting_with("các trang chính thức mô tả định hướng")
+    school_name = None
+    for line in lines:
+        marker_index = line.lower().find("tên trường:")
+        if marker_index < 0:
+            continue
+        value = line[marker_index + len("tên trường:") :].strip()
+        school_name = value.split(". Tên viết tắt", 1)[0].strip()
+        break
+    founded = sentence_containing("cổng tuyển sinh 2026 giới thiệu dhv được thành lập từ năm")
+    direction = sentence_containing("các trang chính thức mô tả định hướng")
     if not school_name and not founded and not direction:
         return None
     intro = (

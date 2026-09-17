@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -110,6 +111,7 @@ def build_evidence(
         raise ValueError("max_chars must be at least 100")
 
     chunks: list[EvidenceChunk] = []
+    fact_chunks: list[EvidenceChunk] = []
     context_parts: list[str] = []
     seen_chunks: set[str] = set()
     remaining = limit
@@ -128,6 +130,8 @@ def build_evidence(
         url = _valid_http_url(metadata.get("source_url"))
         if not url:
             continue
+        full_chunk = EvidenceChunk(text=text, metadata=metadata)
+        fact_chunks.append(full_chunk)
         separator = "\n\n" if context_parts else ""
         static_context = "\n".join(
             [
@@ -141,16 +145,21 @@ def build_evidence(
         )
         available = remaining - len(separator) - len(static_context)
         if available <= 0:
-            break
+            # Keep scanning validated selected chunks for deterministic
+            # record facts (for example all 20 catalog majors), while the
+            # prompt context remains bounded by ``max_chars``.
+            seen_chunks.add(identity)
+            continue
         clipped = text[:available]
         if not clipped.strip():
-            break
+            seen_chunks.add(identity)
+            continue
         seen_chunks.add(identity)
         chunks.append(EvidenceChunk(text=clipped, metadata=metadata))
         context_parts.append(static_context + clipped)
         remaining -= len(separator) + len(static_context) + len(clipped)
 
-    score_facts, entity_relations = _extract_structured_facts(chunks)
+    score_facts, entity_relations = _extract_structured_facts(fact_chunks)
     return EvidenceBundle(
         chunks=tuple(chunks),
         context="\n\n".join(context_parts),
@@ -269,7 +278,11 @@ def _entity_row_subset(text: str, entity_values: tuple[str, ...]) -> str:
 
 def _selection_preview(document: Document, *, text: str | None = None) -> str:
     value = text if text is not None else document.page_content
-    return value[:220].replace("\n", " | ")
+    # Structured major records keep the parent and all child programs in one
+    # small record. Preserve enough of that row in the audit preview for
+    # callers to inspect the selected program relation, while the prompt
+    # context limit remains enforced by build_evidence().
+    return value[:512].replace("\n", " | ")
 
 
 def select_evidence_documents(
@@ -376,6 +389,17 @@ def select_evidence_documents(
         kept: list[Document] = []
         removed: list[dict[str, object]] = []
         for document, audit in zip(selected, candidate_audits):
+            data_role = str((document.metadata or {}).get("data_role") or "").strip().casefold()
+            record_type = str((document.metadata or {}).get("record_type") or "").strip()
+            if data_role == "description" or record_type == "major_catalog_summary":
+                audit["selected"] = False
+                audit["filter_reason"] = (
+                    "description_shadowed_by_entity_row"
+                    if data_role == "description"
+                    else "catalog_summary_shadowed_by_entity_row"
+                )
+                removed.append(audit)
+                continue
             if str((document.metadata or {}).get("category") or "") == "nguong_dau_vao":
                 audit["selected"] = False
                 audit["filter_reason"] = "generic_rule_shadowed_by_entity_row"
@@ -471,9 +495,93 @@ def _extract_structured_facts(
     seen_facts: set[tuple[object, ...]] = set()
     seen_relations: set[tuple[str, str]] = set()
     for chunk in chunks:
+        metadata = chunk.metadata
         category = str(chunk.metadata.get("category") or "")
         data_role = str(chunk.metadata.get("data_role") or "").strip().casefold()
         text = chunk.text
+
+        # Structured JSON records already carry the parsed semantic values.
+        # Consume those scalar metadata fields directly so migration away from
+        # generated Markdown does not force Evidence Selection to reverse
+        # engineer a table from natural-language chunk text.
+        record_type = str(metadata.get("record_type") or "")
+        if record_type == "major":
+            major_name = str(metadata.get("major_name") or "").strip() or None
+            major_code = str(metadata.get("major_code") or "").strip() or None
+            threshold_keys = {
+                "thpt": "application_threshold_thpt",
+                "hoc_ba": "application_threshold_hoc_ba",
+                "dgnl": "application_threshold_dgnl",
+            }
+            for method, key in threshold_keys.items():
+                if key not in metadata:
+                    continue
+                value = metadata.get(key)
+                raw_value = "-" if value == "-" else str(value)
+                fact = {
+                    "major_name": major_name,
+                    "major_code": major_code,
+                    "score_type": "application_threshold",
+                    "method": method,
+                    "raw_value": raw_value,
+                    "value": _structured_numeric(value),
+                    "category": category,
+                    **_fact_provenance(chunk),
+                }
+                if _remember_fact(seen_facts, fact):
+                    facts.append(fact)
+
+            raw_program_names = metadata.get("program_names")
+            if isinstance(raw_program_names, str):
+                try:
+                    program_names = json.loads(raw_program_names)
+                except json.JSONDecodeError:
+                    program_names = []
+            else:
+                program_names = []
+            if isinstance(program_names, list):
+                for program_name in program_names:
+                    program = str(program_name or "").strip()
+                    if not program or not major_name:
+                        continue
+                    identity = (major_name, program)
+                    if identity not in seen_relations:
+                        seen_relations.add(identity)
+                        relations.append(
+                            {"parent_major": major_name, "program_name": program}
+                        )
+            continue
+
+        if record_type in {
+            "application_threshold",
+            "admission_score",
+            "admission_score_rule",
+            "supplementary_threshold",
+        }:
+            semantic_type = (
+                "application_threshold"
+                if record_type == "application_threshold"
+                else "admission_score"
+                if record_type == "admission_score_rule"
+                else record_type
+            )
+            raw_value = metadata.get("raw_value")
+            if raw_value is None:
+                raw_value = metadata.get("value")
+            fact = {
+                "major_name": metadata.get("major_name"),
+                "major_code": metadata.get("major_code"),
+                "score_type": semantic_type,
+                "method": metadata.get("method"),
+                "raw_value": str(raw_value) if raw_value is not None else "-",
+                "value": _structured_numeric(metadata.get("value")),
+                "category": category,
+                **_fact_provenance(chunk),
+            }
+            if _remember_fact(seen_facts, fact):
+                facts.append(fact)
+            continue
+
         parses_catalog_table = category == "nguong_dau_vao" or (
             category == "nganh_dao_tao" and data_role != "description"
         )
@@ -563,6 +671,18 @@ def _numeric_or_none(value: str) -> int | float | None:
     except ValueError:
         return None
     return int(parsed) if parsed.is_integer() else parsed
+
+
+def _structured_numeric(value: object) -> int | float | None:
+    """Normalize a validated JSON numeric field for score evidence."""
+
+    if value is None or value == "-":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    return _numeric_or_none(str(value))
 
 
 def _fact_provenance(chunk: EvidenceChunk) -> dict[str, object]:
