@@ -1,11 +1,12 @@
-"""Xây dựng hoặc xây dựng lại collection ChromaDB của DHV.
+"""Build or rebuild the DHV ChromaDB collection from structured JSON.
 
 Chạy từ thư mục gốc của dự án:
 
     python -m src.ingestion.build_vector_db --reset
 
 Lệnh này sử dụng Ollama embeddings được cấu hình trong ``.env`` hoặc qua tham số dòng lệnh.
-Nó chỉ lập chỉ mục các file Markdown đã được xác thực từ thư mục ``data/processed``.
+The primary input is validated JSON in ``data/processed_json``.  The loader
+still accepts the legacy Markdown directory for backwards compatibility.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ def _load_stats(load_result: LoadResult) -> dict[str, int]:
 
 def build_vector_db(
     *,
-    data_directory: str | Path = settings.processed_data_dir,
+    data_directory: str | Path = settings.processed_json_dir,
     persist_directory: str | Path = settings.chroma_persist_dir,
     collection_name: str = DEFAULT_COLLECTION,
     embeddings: Any | None = None,
@@ -89,7 +90,7 @@ def build_vector_db(
     if not load_result.documents:
         stats = _load_stats(load_result)
         raise RuntimeError(
-            "no verified Markdown documents found in "
+            "no verified structured documents found in "
             f"{data_directory}; load stats: {stats}"
         )
 
@@ -158,8 +159,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--data-dir",
-        default=str(settings.processed_data_dir),
-        help="processed Markdown directory",
+        default=str(settings.processed_json_dir),
+        help="validated processed JSON directory (legacy Markdown is also supported)",
     )
     parser.add_argument(
         "--persist-dir",

@@ -8,8 +8,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
-
 from src.config.settings import PROJECT_ROOT, settings
 
 from .prepare_processed_from_raw import (
@@ -20,25 +18,11 @@ from .prepare_processed_from_raw import (
     _source_urls_from_text,
     _title_from_text,
 )
+from .structured_json import is_official_dhv_url
 
 
 DEFAULT_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 DEFAULT_MANIFEST = DEFAULT_RAW_DIR / "manifest.json"
-
-
-def is_official_dhv_url(value: object) -> bool:
-    """Chỉ chấp nhận HTTPS đến domain DHV hoặc subdomain của DHV."""
-
-    if not isinstance(value, str) or not value.strip():
-        return False
-    parsed = urlparse(value.strip())
-    host = (parsed.hostname or "").lower().rstrip(".")
-    return (
-        parsed.scheme.lower() == "https"
-        and not parsed.username
-        and not parsed.password
-        and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
-    )
 
 
 def _sha256(path: Path) -> str:

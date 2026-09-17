@@ -1,4 +1,4 @@
-"""Tải các tài liệu Markdown đã được xác thực kèm theo phần YAML front matter.
+"""Load verified Markdown or structured JSON documents into LangChain Documents.
 
 Trình tải (loader) sẽ giữ lại metadata nguồn đính kèm vào mỗi Document của LangChain và
 báo cáo các file bị lỗi định dạng hoặc chưa được xác thực thay vì âm thầm lập chỉ mục chúng.
@@ -16,6 +16,8 @@ from typing import Any
 
 import yaml
 from langchain_core.documents import Document
+
+from .structured_json import build_chunk_documents, load_structured_json
 
 
 LOGGER = logging.getLogger(__name__)
@@ -123,6 +125,17 @@ def load_markdown_file(path: Path) -> Document:
     return Document(page_content=body, metadata=metadata)
 
 
+def load_structured_json_file(path: Path) -> list[Document]:
+    """Load one validated JSON document as natural-language record documents.
+
+    The JSON object itself is never used as ``page_content``.  Each record is
+    rendered by the structured chunk builder and carries flattened provenance
+    suitable for Chroma metadata.
+    """
+
+    return build_chunk_documents(load_structured_json(path))
+
+
 def _is_internal(metadata: dict[str, Any]) -> bool:
     document_type = str(metadata.get("document_type", "")).strip().lower()
     source_type = str(metadata.get("source_type", "")).strip().lower()
@@ -138,7 +151,7 @@ def load_verified_documents(
     *,
     target_year: int | None = 2026,
 ) -> LoadResult:
-    """Đọc tất cả các file Markdown trong ``data_dir`` và giữ lại các nguồn đã xác thực.
+    """Read verified Markdown or structured JSON files in ``data_dir``.
 
     Các file không vượt qua bước kiểm tra metadata sẽ được báo cáo trong ``errors``. Các file
     có trạng thái (status) khác với ``verified`` sẽ bị bỏ qua và không bao giờ được trả về.
@@ -152,7 +165,51 @@ def load_verified_documents(
         raise NotADirectoryError(f"data path is not a directory: {root}")
 
     result = LoadResult()
+    json_files = sorted(path for path in root.rglob("*.json") if path.is_file())
     markdown_files = sorted(path for path in root.rglob("*.md") if path.is_file())
+
+    # A processed JSON directory is the primary representation for the new
+    # pipeline.  Markdown remains supported for existing tests and consumers;
+    # when both exist in one directory, prefer JSON so the vector builder can
+    # never silently index the legacy representation instead.
+    if json_files:
+        for path in json_files:
+            result.stats.files_seen += 1
+            relative_path = path.relative_to(root).as_posix()
+            try:
+                structured = load_structured_json(path)
+                source = structured.get("source", {})
+                status = str(source.get("status", "")).strip().lower()
+                if _is_internal(dict(source)):
+                    result.stats.skipped_internal += 1
+                    continue
+                if status != "verified" or source.get("verified") is not True:
+                    result.stats.skipped_unverified += 1
+                    continue
+                if target_year is not None and structured.get("year") != target_year:
+                    result.stats.skipped_other_year += 1
+                    continue
+                documents = load_structured_json_file(path)
+                if not documents:
+                    raise MetadataError("structured JSON produced zero record documents")
+                result.documents.extend(documents)
+                result.stats.verified_documents += 1
+            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+                result.stats.metadata_errors += 1
+                error = {"file": relative_path, "error": str(exc)}
+                result.errors.append(error)
+                LOGGER.error("structured JSON error in %s: %s", relative_path, exc)
+        LOGGER.info(
+            "loaded structured JSON files=%d verified_documents=%d skipped_unverified=%d "
+            "skipped_internal=%d skipped_other_year=%d metadata_errors=%d",
+            result.stats.files_seen,
+            result.stats.verified_documents,
+            result.stats.skipped_unverified,
+            result.stats.skipped_internal,
+            result.stats.skipped_other_year,
+            result.stats.metadata_errors,
+        )
+        return result
 
     for path in markdown_files:
         result.stats.files_seen += 1
@@ -205,6 +262,7 @@ __all__ = [
     "LoadResult",
     "LoadStats",
     "MetadataError",
+    "load_structured_json_file",
     "load_markdown_file",
     "load_verified_documents",
 ]

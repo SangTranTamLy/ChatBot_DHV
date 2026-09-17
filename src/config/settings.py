@@ -60,6 +60,7 @@ class Settings:
     chroma_persist_dir: Path
     chroma_collection: str
     processed_data_dir: Path
+    processed_json_dir: Path
     retriever_top_k: int
     target_year: int
     ollama_timeout_seconds: float = 90.0
@@ -115,6 +116,9 @@ def load_settings() -> Settings:
             _read_env(
                 "PROCESSED_DATA_DIR", "data/processed", "DATA_PROCESSED_DIRECTORY"
             )
+        ),
+        processed_json_dir=_project_path(
+            _read_env("PROCESSED_JSON_DIR", "data/processed_json")
         ),
         retriever_top_k=_read_int_env("RETRIEVER_TOP_K", 4, "RAG_TOP_K"),
         target_year=_read_int_env("TARGET_YEAR", 2026, "DHV_KB_YEAR"),

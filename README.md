@@ -78,14 +78,14 @@ Trong kết quả `ollama list` cần thấy `qwen2.5:3b` và `nomic-embed-text`
 
 ### 5. Tạo dữ liệu xử lý và cơ sở dữ liệu tìm kiếm
 
-Sau khi clone/tải ZIP, bắt buộc chạy hai lệnh dưới đây một lần. `data/processed/` và `chroma_db/` là dữ liệu sinh tự động nên không lưu trong Git:
+Sau khi clone/tải ZIP, bắt buộc chạy hai lệnh dưới đây một lần. `data/processed_json/`, `data/processed/` và `chroma_db/` là dữ liệu sinh tự động nên không lưu trong Git:
 
 ```powershell
 python -m src.ingestion.prepare_processed_from_raw
-python -m src.ingestion.build_vector_db --embedding-backend ollama --embedding-model nomic-embed-text --reset
+python -m src.ingestion.build_vector_db --data-dir data/processed_json --embedding-backend ollama --embedding-model nomic-embed-text --reset
 ```
 
-Nếu thêm hoặc thay file PDF trong `data/raw/`, chạy lại cả hai lệnh trên. Không đổi embedding model sau khi build index; nếu đổi thì phải build lại với `--reset`.
+Nếu thêm hoặc thay file PDF trong `data/raw/`, chạy lại cả hai lệnh trên. Lệnh prepare sinh JSON có cấu trúc từ PDF và đồng thời xuất Markdown tương thích cho consumer cũ; JSON là input chính của vector builder. Không đổi embedding model sau khi build index; nếu đổi thì phải build lại với `--reset`.
 
 ### 6. Khởi động chatbot
 
@@ -175,25 +175,28 @@ Các thành phần chính:
 - `app.py`: giao diện Streamlit.
 - `src/chatbot/`: service, phân tích câu hỏi, intent, evidence, prompt và validator.
 - `src/retrieval/`: truy xuất dữ liệu từ ChromaDB.
-- `src/ingestion/`: đọc PDF, tạo Markdown, chia chunk và build vector database.
+- `src/ingestion/`: đọc PDF, tạo JSON có cấu trúc (và Markdown tương thích), chia chunk và build vector database.
 - `data/raw/`: PDF nguồn DHV đã được thu thập để đối chiếu.
 - `data/intent/`: dữ liệu huấn luyện và holdout cho intent model.
 - `models/intent_classifier.json`: model intent offline dùng lúc runtime.
-- `data/processed/`: Markdown sinh tự động, không commit.
+- `data/processed_json/`: JSON có cấu trúc sinh tự động từ RAW PDF, không commit.
+- `data/processed/`: Markdown tương thích sinh tự động, không commit.
 - `chroma_db/`: vector database sinh tự động, không commit.
 - `tests/`: unit test và regression test.
 
 ## 🔄 Pipeline dữ liệu
 
 ```text
-PDF trong data/raw/
-    ↓ prepare_processed_from_raw
-Markdown có YAML metadata
-    ↓ loader lọc đúng năm + verified
-Chunking + embedding
+RAW PDF trong data/raw/
+    ↓ extraction hiện tại (pypdf text layer)
+Structured JSON + schema/domain validation
+    ↓ record-level chunk builder
+LangChain Documents + embedding
     ↓ build_vector_db
-ChromaDB
+ChromaDB → Retriever → Evidence → RAG
 ```
+
+JSON là lớp dữ liệu xử lý trung gian có cấu trúc: giữ metadata nguồn, page traceability, sections, records, quan hệ ngành–chương trình và các trường deterministic trước khi tạo chunk. RAW PDF vẫn là source of truth; runtime chatbot không parse PDF/JSON lớn.
 
 `data/raw/manifest.json` lưu checksum SHA-256, nguồn, ngày kiểm tra và trạng thái xác minh. Chỉ tài liệu chính thức, đúng năm và đã xác minh mới được đưa vào index. Metadata nguồn được giữ ở backend để audit; chatbot không tự đoán số liệu, ngày tháng hoặc URL.
 
@@ -209,6 +212,7 @@ EMBEDDING_BACKEND=ollama
 EMBEDDING_MODEL=nomic-embed-text
 CHROMA_PERSIST_DIR=chroma_db
 CHROMA_COLLECTION=dhv_admissions_2026
+PROCESSED_JSON_DIR=data/processed_json
 PROCESSED_DATA_DIR=data/processed
 RETRIEVER_TOP_K=4
 TARGET_YEAR=2026
@@ -224,7 +228,7 @@ Không cần chỉnh cấu hình nếu chỉ muốn chạy bản demo. Nếu dù
 | `python` không được nhận diện | Cài Python 3.11+, mở lại PowerShell và kiểm tra `python --version`. |
 | `Ollama offline` hoặc không kết nối được | Mở Ollama Desktop hoặc chạy `ollama serve`; kiểm tra `ollama list`. |
 | `model not found` | Chạy lại `ollama pull qwen2.5:3b` và `ollama pull nomic-embed-text`. |
-| ChromaDB bị thiếu/rỗng | Chạy lại bước tạo `data/processed` và build vector database với `--reset`. |
+| ChromaDB bị thiếu/rỗng | Chạy lại bước tạo `data/processed_json` và build vector database với `--reset`. |
 | Chatbot trả lời thiếu dữ liệu | Kiểm tra câu hỏi có thuộc tuyển sinh DHV năm 2026 không; dữ liệu ngoài corpus sẽ được từ chối an toàn. |
 | Đã sửa PDF nhưng kết quả chưa đổi | Rebuild lại processed data và ChromaDB như ở bước 5. |
 
@@ -246,4 +250,4 @@ Nếu chatbot khác với thông báo chính thức, ưu tiên thông tin do DHV
 - `data/intent/` và `models/intent_classifier.json`.
 - `evaluation/` và `tests/` nếu muốn mọi người chạy test.
 
-Không commit `.env`, `.venv/`, `data/processed/` hoặc `chroma_db/`; thành viên sẽ tự tạo hai thư mục generated này theo hướng dẫn ở trên.
+Không commit `.env`, `.venv/`, `data/processed_json/`, `data/processed/` hoặc `chroma_db/`; thành viên sẽ tự tạo các thư mục generated này theo hướng dẫn ở trên.

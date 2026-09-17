@@ -26,6 +26,8 @@ htmlcov/
 # Generated processed data
 data/processed/**
 !data/processed/.gitkeep
+data/processed_json/**
+!data/processed_json/.gitkeep
 
 # Generated vector store
 chroma_db/*
