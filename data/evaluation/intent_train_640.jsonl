@@ -1,0 +1,636 @@
+{"id": "Q0009", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Ngôn ngữ Anh theo ĐGNL là bao nhiêu?"}
+{"id": "Q0010", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Anh điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0011", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Ngôn ngữ Anh theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0012", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Anh ĐGNL điểm chuẩn bn?"}
+{"id": "Q0013", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Giảng dạy Tiếng Anh theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0014", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Giảng dạy Tiếng Anh điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0015", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Giảng dạy Tiếng Anh theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0016", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Giảng dạy Tiếng Anh thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0017", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Giảng dạy Tiếng Anh theo học bạ là bao nhiêu?"}
+{"id": "Q0018", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Giảng dạy Tiếng Anh điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0019", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Giảng dạy Tiếng Anh theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0020", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Giảng dạy Tiếng Anh học bạ điểm chuẩn bn?"}
+{"id": "Q0025", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Ngôn ngữ Trung Quốc theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0026", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Trung Quốc điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0027", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Ngôn ngữ Trung Quốc theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0028", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Trung Quốc thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0033", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Ngôn ngữ Trung Quốc theo ĐGNL là bao nhiêu?"}
+{"id": "Q0034", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Trung Quốc điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0035", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Ngôn ngữ Trung Quốc theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0036", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Trung Quốc ĐGNL điểm chuẩn bn?"}
+{"id": "Q0037", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Ngôn ngữ Nhật theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0038", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Nhật điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0039", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Ngôn ngữ Nhật theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0040", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Nhật thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0045", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Ngôn ngữ Nhật theo ĐGNL là bao nhiêu?"}
+{"id": "Q0046", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Nhật điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0047", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Ngôn ngữ Nhật theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0048", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Nhật ĐGNL điểm chuẩn bn?"}
+{"id": "Q0049", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Ngôn ngữ Hàn Quốc theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0050", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Hàn Quốc điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0051", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Ngôn ngữ Hàn Quốc theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0052", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Hàn Quốc thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0057", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Ngôn ngữ Hàn Quốc theo ĐGNL là bao nhiêu?"}
+{"id": "Q0058", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Hàn Quốc điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0059", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Ngôn ngữ Hàn Quốc theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0060", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Ngôn ngữ Hàn Quốc ĐGNL điểm chuẩn bn?"}
+{"id": "Q0065", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Kinh tế quốc tế theo học bạ là bao nhiêu?"}
+{"id": "Q0066", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kinh tế quốc tế điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0067", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Kinh tế quốc tế theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0068", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kinh tế quốc tế học bạ điểm chuẩn bn?"}
+{"id": "Q0069", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Kinh tế quốc tế theo ĐGNL là bao nhiêu?"}
+{"id": "Q0070", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kinh tế quốc tế điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0071", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Kinh tế quốc tế theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0072", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kinh tế quốc tế ĐGNL điểm chuẩn bn?"}
+{"id": "Q0073", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Tâm lý học theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0074", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Tâm lý học điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0075", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Tâm lý học theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0076", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Tâm lý học thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0085", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Quản trị Kinh doanh theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0086", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị Kinh doanh điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0087", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Quản trị Kinh doanh theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0088", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị Kinh doanh thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0089", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Quản trị Kinh doanh theo học bạ là bao nhiêu?"}
+{"id": "Q0090", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị Kinh doanh điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0091", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Quản trị Kinh doanh theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0092", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị Kinh doanh học bạ điểm chuẩn bn?"}
+{"id": "Q0093", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Quản trị Kinh doanh theo ĐGNL là bao nhiêu?"}
+{"id": "Q0094", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị Kinh doanh điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0095", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Quản trị Kinh doanh theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0096", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị Kinh doanh ĐGNL điểm chuẩn bn?"}
+{"id": "Q0097", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Quản trị logistics theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0098", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị logistics điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0099", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Quản trị logistics theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0100", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Quản trị logistics thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0109", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Marketing theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0110", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Marketing điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0111", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Marketing theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0112", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Marketing thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0113", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Marketing theo học bạ là bao nhiêu?"}
+{"id": "Q0114", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Marketing điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0115", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Marketing theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0116", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Marketing học bạ điểm chuẩn bn?"}
+{"id": "Q0117", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Marketing theo ĐGNL là bao nhiêu?"}
+{"id": "Q0118", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Marketing điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0119", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Marketing theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0120", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Marketing ĐGNL điểm chuẩn bn?"}
+{"id": "Q0125", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Truyền thông và Quan hệ công chúng theo học bạ là bao nhiêu?"}
+{"id": "Q0126", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Truyền thông và Quan hệ công chúng điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0127", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Truyền thông và Quan hệ công chúng theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0128", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Truyền thông và Quan hệ công chúng học bạ điểm chuẩn bn?"}
+{"id": "Q0133", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Thương mại điện tử theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0134", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Thương mại điện tử điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0135", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Thương mại điện tử theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0136", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Thương mại điện tử thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0137", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Thương mại điện tử theo học bạ là bao nhiêu?"}
+{"id": "Q0138", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Thương mại điện tử điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0139", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Thương mại điện tử theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0140", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Thương mại điện tử học bạ điểm chuẩn bn?"}
+{"id": "Q0145", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Tài chính Ngân hàng theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0146", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Tài chính Ngân hàng điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0147", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Tài chính Ngân hàng theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0148", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Tài chính Ngân hàng thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0149", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Tài chính Ngân hàng theo học bạ là bao nhiêu?"}
+{"id": "Q0150", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Tài chính Ngân hàng điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0151", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Tài chính Ngân hàng theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0152", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Tài chính Ngân hàng học bạ điểm chuẩn bn?"}
+{"id": "Q0157", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Công nghệ tài chính theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0158", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Công nghệ tài chính điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0159", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Công nghệ tài chính theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0160", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Công nghệ tài chính thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0165", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Công nghệ tài chính theo ĐGNL là bao nhiêu?"}
+{"id": "Q0166", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Công nghệ tài chính điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0167", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Công nghệ tài chính theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0168", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Công nghệ tài chính ĐGNL điểm chuẩn bn?"}
+{"id": "Q0169", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Kế Toán theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0170", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kế Toán điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0171", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Kế Toán theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0172", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kế Toán thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0173", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Kế Toán theo học bạ là bao nhiêu?"}
+{"id": "Q0174", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kế Toán điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0175", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Kế Toán theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0176", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Kế Toán học bạ điểm chuẩn bn?"}
+{"id": "Q0185", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Luật theo học bạ là bao nhiêu?"}
+{"id": "Q0186", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0187", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Luật theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0188", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật học bạ điểm chuẩn bn?"}
+{"id": "Q0189", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Luật theo ĐGNL là bao nhiêu?"}
+{"id": "Q0190", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật điểm chuẩn ĐGNL năm 2026 mức nào?"}
+{"id": "Q0191", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Luật theo ĐGNL, mức nào vậy ạ?"}
+{"id": "Q0192", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật ĐGNL điểm chuẩn bn?"}
+{"id": "Q0193", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Luật kinh tế theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0194", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật kinh tế điểm chuẩn thi tốt nghiệp THPT năm 2026 mức nào?"}
+{"id": "Q0195", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Luật kinh tế theo thi tốt nghiệp THPT, mức nào vậy ạ?"}
+{"id": "Q0196", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật kinh tế thi tốt nghiệp THPT điểm chuẩn bn?"}
+{"id": "Q0197", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn Luật kinh tế theo học bạ là bao nhiêu?"}
+{"id": "Q0198", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật kinh tế điểm chuẩn học bạ năm 2026 mức nào?"}
+{"id": "Q0199", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em hỏi điểm chuẩn Luật kinh tế theo học bạ, mức nào vậy ạ?"}
+{"id": "Q0200", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Luật kinh tế học bạ điểm chuẩn bn?"}
+{"id": "Q0201", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em được 18 điểm có đủ điều kiện nộp không?"}
+{"id": "Q0202", "intent": "HOI_NGUONG_DAU_VAO", "text": "Cho em biết giúp: Em được 18 điểm có đủ điều kiện nộp không?"}
+{"id": "Q0203", "intent": "HOI_NGUONG_DAU_VAO", "text": "Theo kết quả này, Em được 18 điểm có đủ điều kiện nộp không?"}
+{"id": "Q0204", "intent": "HOI_NGUONG_DAU_VAO", "text": "Năm 2026, Em được 18 điểm có đủ điều kiện nộp không?"}
+{"id": "Q0209", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em được 720 điểm, xét được không?"}
+{"id": "Q0210", "intent": "HOI_NGUONG_DAU_VAO", "text": "Cho em biết giúp: Em được 720 điểm, xét được không?"}
+{"id": "Q0211", "intent": "HOI_NGUONG_DAU_VAO", "text": "Theo kết quả này, Em được 720 điểm, xét được không?"}
+{"id": "Q0212", "intent": "HOI_NGUONG_DAU_VAO", "text": "Năm 2026, Em được 720 điểm, xét được không?"}
+{"id": "Q0217", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm của em có đủ điều kiện nộp hồ sơ không?"}
+{"id": "Q0218", "intent": "HOI_NGUONG_DAU_VAO", "text": "Cho em biết giúp: Điểm của em có đủ điều kiện nộp hồ sơ không?"}
+{"id": "Q0219", "intent": "HOI_NGUONG_DAU_VAO", "text": "Theo kết quả này, Điểm của em có đủ điều kiện nộp hồ sơ không?"}
+{"id": "Q0220", "intent": "HOI_NGUONG_DAU_VAO", "text": "Năm 2026, Điểm của em có đủ điều kiện nộp hồ sơ không?"}
+{"id": "Q0221", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Cơ sở 1: 194 Lê Đức Thọ, P. An Nhơn, TP.HCM không?"}
+{"id": "Q0222", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Cơ sở 1: 194 Lê Đức Thọ, P. An Nhơn, TP.HCM chứ ạ?"}
+{"id": "Q0223", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Cơ sở 1: 194 Lê Đức Thọ, P. An Nhơn, TP.HCM không?"}
+{"id": "Q0224", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can co so 1 194 le duc tho p an nhon tp hcm khong?"}
+{"id": "Q0225", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Cơ sở 2: 37 Kinh Dương Vương, P. Phú Lâm, TP.HCM không?"}
+{"id": "Q0226", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Cơ sở 2: 37 Kinh Dương Vương, P. Phú Lâm, TP.HCM chứ ạ?"}
+{"id": "Q0227", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Cơ sở 2: 37 Kinh Dương Vương, P. Phú Lâm, TP.HCM không?"}
+{"id": "Q0228", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can co so 2 37 kinh duong vuong p phu lam tp hcm khong?"}
+{"id": "Q0233", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Hướng dẫn thanh toán học phí. không?"}
+{"id": "Q0234", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Hướng dẫn thanh toán học phí. chứ ạ?"}
+{"id": "Q0235", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Hướng dẫn thanh toán học phí. không?"}
+{"id": "Q0236", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can huong dan thanh toan hoc phi khong?"}
+{"id": "Q0241", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Giải đáp những thắc mắc trước khi chính thức trở thành sinh viên DHV . không?"}
+{"id": "Q0242", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Giải đáp những thắc mắc trước khi chính thức trở thành sinh viên DHV . chứ ạ?"}
+{"id": "Q0243", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Giải đáp những thắc mắc trước khi chính thức trở thành sinh viên DHV . không?"}
+{"id": "Q0244", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can giai dap nhung thac mac truoc khi chinh thuc tro thanh sinh vien dhv khong?"}
+{"id": "Q0245", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học. không?"}
+{"id": "Q0246", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học. chứ ạ?"}
+{"id": "Q0247", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học. không?"}
+{"id": "Q0248", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can thu moi nhap hoc ban chinh hoac tin nhan zalo xac nhan du dieu kien nhap hoc khong?"}
+{"id": "Q0253", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Căn cước/Căn cước công dân. không?"}
+{"id": "Q0254", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Căn cước/Căn cước công dân. chứ ạ?"}
+{"id": "Q0255", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Căn cước/Căn cước công dân. không?"}
+{"id": "Q0256", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can can cuoc can cuoc cong dan khong?"}
+{"id": "Q0257", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Giấy chứng nhận kết quả thi tốt nghiệp THPT năm 2026. không?"}
+{"id": "Q0258", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Giấy chứng nhận kết quả thi tốt nghiệp THPT năm 2026. chứ ạ?"}
+{"id": "Q0259", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Giấy chứng nhận kết quả thi tốt nghiệp THPT năm 2026. không?"}
+{"id": "Q0260", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can giay chung nhan ket qua thi tot nghiep thpt nam 2026 khong?"}
+{"id": "Q0265", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Cơ sở 2: 194 Lê Đức Thọ, Phường An Nhơn, TP.HCM. không?"}
+{"id": "Q0266", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Cơ sở 2: 194 Lê Đức Thọ, Phường An Nhơn, TP.HCM. chứ ạ?"}
+{"id": "Q0267", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Cơ sở 2: 194 Lê Đức Thọ, Phường An Nhơn, TP.HCM. không?"}
+{"id": "Q0268", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can co so 2 194 le duc tho phuong an nhon tp hcm khong?"}
+{"id": "Q0273", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần 6.250.000 đồng không?"}
+{"id": "Q0274", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm 6.250.000 đồng chứ ạ?"}
+{"id": "Q0275", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang 6.250.000 đồng không?"}
+{"id": "Q0276", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can 6 250 000 dong khong?"}
+{"id": "Q0277", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần 7.500.000 đồng không?"}
+{"id": "Q0278", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm 7.500.000 đồng chứ ạ?"}
+{"id": "Q0279", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang 7.500.000 đồng không?"}
+{"id": "Q0280", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can 7 500 000 dong khong?"}
+{"id": "Q0281", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần 8.750.000 đồng không?"}
+{"id": "Q0282", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm 8.750.000 đồng chứ ạ?"}
+{"id": "Q0283", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang 8.750.000 đồng không?"}
+{"id": "Q0284", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can 8 750 000 dong khong?"}
+{"id": "Q0293", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Nguyện vọng 1: 10.000.000 đồng không?"}
+{"id": "Q0294", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Nguyện vọng 1: 10.000.000 đồng chứ ạ?"}
+{"id": "Q0295", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Nguyện vọng 1: 10.000.000 đồng không?"}
+{"id": "Q0296", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can nguyen vong 1 10 000 000 dong khong?"}
+{"id": "Q0297", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Nguyện vọng 2: 9.000.000 đồng không?"}
+{"id": "Q0298", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Nguyện vọng 2: 9.000.000 đồng chứ ạ?"}
+{"id": "Q0299", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Nguyện vọng 2: 9.000.000 đồng không?"}
+{"id": "Q0300", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can nguyen vong 2 9 000 000 dong khong?"}
+{"id": "Q0301", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Nguyện vọng 3: 9.000.000 đồng không?"}
+{"id": "Q0302", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Nguyện vọng 3: 9.000.000 đồng chứ ạ?"}
+{"id": "Q0303", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Nguyện vọng 3: 9.000.000 đồng không?"}
+{"id": "Q0304", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can nguyen vong 3 9 000 000 dong khong?"}
+{"id": "Q0305", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học có cần Các nguyện vọng còn lại: 8.000.000 đồng không?"}
+{"id": "Q0306", "intent": "HOI_HO_SO", "text": "Cho em hỏi giấy tờ nhập học gồm Các nguyện vọng còn lại: 8.000.000 đồng chứ ạ?"}
+{"id": "Q0307", "intent": "HOI_HO_SO", "text": "Làm thủ tục DHV cần mang Các nguyện vọng còn lại: 8.000.000 đồng không?"}
+{"id": "Q0308", "intent": "HOI_HO_SO", "text": "Ho so nhap hoc can cac nguyen vong con lai 8 000 000 dong khong?"}
+{"id": "Q0317", "intent": "HOI_LICH_TUYEN_SINH", "text": "Theo tài liệu Hồ sơ nhập học DHV 2026, hạn tuyển sinh/nhập học là ngày nào?"}
+{"id": "Q0318", "intent": "HOI_LICH_TUYEN_SINH", "text": "DHV nhận hồ sơ đến 13/8/2026 theo tài liệu Hồ sơ nhập học DHV 2026 phải không?"}
+{"id": "Q0319", "intent": "HOI_LICH_TUYEN_SINH", "text": "Cho mình hỏi mốc thời gian tuyển sinh DHV trong tài liệu Hồ sơ nhập học DHV 2026."}
+{"id": "Q0320", "intent": "HOI_LICH_TUYEN_SINH", "text": "Han tuyen sinh DHV theo tai lieu ho so nhap hoc dhv 2026 den ngay nao?"}
+{"id": "Q0321", "intent": "HOI_LICH_TUYEN_SINH", "text": "Theo tài liệu Phương thức xét tuyển và học bổng DHV 2026, hạn tuyển sinh/nhập học là ngày nào?"}
+{"id": "Q0322", "intent": "HOI_LICH_TUYEN_SINH", "text": "DHV nhận hồ sơ đến 13/08/2026 theo tài liệu Phương thức xét tuyển và học bổng DHV 2026 phải không?"}
+{"id": "Q0323", "intent": "HOI_LICH_TUYEN_SINH", "text": "Cho mình hỏi mốc thời gian tuyển sinh DHV trong tài liệu Phương thức xét tuyển và học bổng DHV 2026."}
+{"id": "Q0324", "intent": "HOI_LICH_TUYEN_SINH", "text": "Han tuyen sinh DHV theo tai lieu phuong thuc xet tuyen va hoc bong dhv 2026 den ngay nao?"}
+{"id": "Q0325", "intent": "HOI_NHAP_HOC", "text": "Làm thủ tục nhập học DHV có liên quan đến Cơ sở 1: 194 Lê Đức Thọ, P. An Nhơn, TP.HCM thế nào?"}
+{"id": "Q0326", "intent": "HOI_NHAP_HOC", "text": "Địa điểm/thành phần nhập học có ghi Cơ sở 1: 194 Lê Đức Thọ, P. An Nhơn, TP.HCM không?"}
+{"id": "Q0327", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Cơ sở 1: 194 Lê Đức Thọ, P. An Nhơn, TP.HCM chứ?"}
+{"id": "Q0328", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: co so 1 194 le duc tho p an nhon tp hcm?"}
+{"id": "Q0333", "intent": "HOI_NHAP_HOC", "text": "Làm thủ tục nhập học DHV có liên quan đến Hướng dẫn hoàn thiện hồ sơ nhập học. thế nào?"}
+{"id": "Q0334", "intent": "HOI_NHAP_HOC", "text": "Địa điểm/thành phần nhập học có ghi Hướng dẫn hoàn thiện hồ sơ nhập học. không?"}
+{"id": "Q0335", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Hướng dẫn hoàn thiện hồ sơ nhập học. chứ?"}
+{"id": "Q0336", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: huong dan hoan thien ho so nhap hoc?"}
+{"id": "Q0341", "intent": "HOI_NHAP_HOC", "text": "Làm thủ tục nhập học DHV có liên quan đến Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học. thế nào?"}
+{"id": "Q0342", "intent": "HOI_NHAP_HOC", "text": "Địa điểm/thành phần nhập học có ghi Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học. không?"}
+{"id": "Q0343", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học. chứ?"}
+{"id": "Q0344", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: thu moi nhap hoc ban chinh hoac tin nhan zalo xac nhan du dieu kien nhap hoc?"}
+{"id": "Q0345", "intent": "HOI_NHAP_HOC", "text": "Làm thủ tục nhập học DHV có liên quan đến Cơ sở 1: 37 Kinh Dương Vương, Phường Phú Lâm, TP.HCM. thế nào?"}
+{"id": "Q0346", "intent": "HOI_NHAP_HOC", "text": "Địa điểm/thành phần nhập học có ghi Cơ sở 1: 37 Kinh Dương Vương, Phường Phú Lâm, TP.HCM. không?"}
+{"id": "Q0347", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Cơ sở 1: 37 Kinh Dương Vương, Phường Phú Lâm, TP.HCM. chứ?"}
+{"id": "Q0348", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: co so 1 37 kinh duong vuong phuong phu lam tp hcm?"}
+{"id": "Q0353", "intent": "HOI_NHAP_HOC", "text": "Làm thủ tục nhập học DHV có liên quan đến Cập nhật thông tin về học bổng và các chương trình hỗ trợ tài chính. thế nào?"}
+{"id": "Q0354", "intent": "HOI_NHAP_HOC", "text": "Địa điểm/thành phần nhập học có ghi Cập nhật thông tin về học bổng và các chương trình hỗ trợ tài chính. không?"}
+{"id": "Q0355", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Cập nhật thông tin về học bổng và các chương trình hỗ trợ tài chính. chứ?"}
+{"id": "Q0356", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: cap nhat thong tin ve hoc bong va cac chuong trinh ho tro tai chinh?"}
+{"id": "Q0357", "intent": "HOI_NHAP_HOC", "text": "Làm thủ tục nhập học DHV có liên quan đến Giải đáp những thắc mắc trước khi chính thức trở thành sinh viên DHV . thế nào?"}
+{"id": "Q0358", "intent": "HOI_NHAP_HOC", "text": "Địa điểm/thành phần nhập học có ghi Giải đáp những thắc mắc trước khi chính thức trở thành sinh viên DHV . không?"}
+{"id": "Q0359", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Giải đáp những thắc mắc trước khi chính thức trở thành sinh viên DHV . chứ?"}
+{"id": "Q0360", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: giai dap nhung thac mac truoc khi chinh thuc tro thanh sinh vien dhv?"}
+{"id": "Q0365", "intent": "HOI_NHAP_HOC", "text": "Làm thủ tục nhập học DHV có liên quan đến Căn cước/Căn cước công dân. thế nào?"}
+{"id": "Q0366", "intent": "HOI_NHAP_HOC", "text": "Địa điểm/thành phần nhập học có ghi Căn cước/Căn cước công dân. không?"}
+{"id": "Q0367", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Căn cước/Căn cước công dân. chứ?"}
+{"id": "Q0368", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: can cuoc can cuoc cong dan?"}
+{"id": "Q0373", "intent": "HOI_CACH_TINH_DIEM", "text": "Điểm xét tuyển DHV được tính theo nội dung Điểm xét tuyển được tính theo t ổ hợp như thế nào?"}
+{"id": "Q0374", "intent": "HOI_CACH_TINH_DIEM", "text": "Cho em hỏi công thức tính điểm xét tuyển, phần Điểm xét tuyển được tính theo t ổ hợp."}
+{"id": "Q0375", "intent": "HOI_CACH_TINH_DIEM", "text": "Cách quy đổi điểm vào DHV theo Điểm xét tuyển được tính theo t ổ hợp ra sao ạ?"}
+{"id": "Q0376", "intent": "HOI_CACH_TINH_DIEM", "text": "Cach tinh diem xet tuyen DHV theo diem xet tuyen duoc tinh theo t o hop?"}
+{"id": "Q0377", "intent": "HOI_CACH_TINH_DIEM", "text": "Điểm xét tuyển DHV được tính theo nội dung Cách 1: Điểm xét tuyển = Toán hoặc Ngữ như thế nào?"}
+{"id": "Q0378", "intent": "HOI_CACH_TINH_DIEM", "text": "Cho em hỏi công thức tính điểm xét tuyển, phần Cách 1: Điểm xét tuyển = Toán hoặc Ngữ."}
+{"id": "Q0379", "intent": "HOI_CACH_TINH_DIEM", "text": "Cách quy đổi điểm vào DHV theo Cách 1: Điểm xét tuyển = Toán hoặc Ngữ ra sao ạ?"}
+{"id": "Q0380", "intent": "HOI_CACH_TINH_DIEM", "text": "Cach tinh diem xet tuyen DHV theo cach 1 diem xet tuyen toan hoac ngu?"}
+{"id": "Q0389", "intent": "HOI_NGANH", "text": "Mã ngành Kinh tế quốc tế của DHV là bao nhiêu?"}
+{"id": "Q0390", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Kinh tế quốc tế mã nào ạ?"}
+{"id": "Q0391", "intent": "HOI_NGANH", "text": "Kinh tế quốc tế ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0392", "intent": "HOI_NGANH", "text": "Ma nganh kinh te quoc te DHV?"}
+{"id": "Q0393", "intent": "HOI_NGANH", "text": "Mã ngành Marketing của DHV là bao nhiêu?"}
+{"id": "Q0394", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Marketing mã nào ạ?"}
+{"id": "Q0395", "intent": "HOI_NGANH", "text": "Marketing ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0396", "intent": "HOI_NGANH", "text": "Ma nganh marketing DHV?"}
+{"id": "Q0401", "intent": "HOI_NGANH", "text": "Mã ngành Tài chính ngân hàng của DHV là bao nhiêu?"}
+{"id": "Q0402", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Tài chính ngân hàng mã nào ạ?"}
+{"id": "Q0403", "intent": "HOI_NGANH", "text": "Tài chính ngân hàng ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0404", "intent": "HOI_NGANH", "text": "Ma nganh tai chinh ngan hang DHV?"}
+{"id": "Q0409", "intent": "HOI_NGANH", "text": "Mã ngành Công nghệ tài chính của DHV là bao nhiêu?"}
+{"id": "Q0410", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Công nghệ tài chính mã nào ạ?"}
+{"id": "Q0411", "intent": "HOI_NGANH", "text": "Công nghệ tài chính ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0412", "intent": "HOI_NGANH", "text": "Ma nganh cong nghe tai chinh DHV?"}
+{"id": "Q0413", "intent": "HOI_NGANH", "text": "Mã ngành Kỹ thuật máy tính của DHV là bao nhiêu?"}
+{"id": "Q0414", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Kỹ thuật máy tính mã nào ạ?"}
+{"id": "Q0415", "intent": "HOI_NGANH", "text": "Kỹ thuật máy tính ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0416", "intent": "HOI_NGANH", "text": "Ma nganh ky thuat may tinh DHV?"}
+{"id": "Q0417", "intent": "HOI_NGANH", "text": "Mã ngành Công nghệ thông tin của DHV là bao nhiêu?"}
+{"id": "Q0418", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Công nghệ thông tin mã nào ạ?"}
+{"id": "Q0419", "intent": "HOI_NGANH", "text": "Công nghệ thông tin ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0420", "intent": "HOI_NGANH", "text": "Ma nganh cong nghe thong tin DHV?"}
+{"id": "Q0429", "intent": "HOI_NGANH", "text": "Mã ngành Ngôn ngữ Nhật của DHV là bao nhiêu?"}
+{"id": "Q0430", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Ngôn ngữ Nhật mã nào ạ?"}
+{"id": "Q0431", "intent": "HOI_NGANH", "text": "Ngôn ngữ Nhật ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0432", "intent": "HOI_NGANH", "text": "Ma nganh ngon ngu nhat DHV?"}
+{"id": "Q0433", "intent": "HOI_NGANH", "text": "Mã ngành Ngôn ngữ Trung Quốc của DHV là bao nhiêu?"}
+{"id": "Q0434", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Ngôn ngữ Trung Quốc mã nào ạ?"}
+{"id": "Q0435", "intent": "HOI_NGANH", "text": "Ngôn ngữ Trung Quốc ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0436", "intent": "HOI_NGANH", "text": "Ma nganh ngon ngu trung quoc DHV?"}
+{"id": "Q0437", "intent": "HOI_NGANH", "text": "Mã ngành Ngôn ngữ Hàn Quốc của DHV là bao nhiêu?"}
+{"id": "Q0438", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Ngôn ngữ Hàn Quốc mã nào ạ?"}
+{"id": "Q0439", "intent": "HOI_NGANH", "text": "Ngôn ngữ Hàn Quốc ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0440", "intent": "HOI_NGANH", "text": "Ma nganh ngon ngu han quoc DHV?"}
+{"id": "Q0441", "intent": "HOI_NGANH", "text": "Mã ngành Quản trị Khách sạn của DHV là bao nhiêu?"}
+{"id": "Q0442", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Quản trị Khách sạn mã nào ạ?"}
+{"id": "Q0443", "intent": "HOI_NGANH", "text": "Quản trị Khách sạn ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0444", "intent": "HOI_NGANH", "text": "Ma nganh quan tri khach san DHV?"}
+{"id": "Q0453", "intent": "HOI_NGANH", "text": "Mã ngành Luật Kinh tế của DHV là bao nhiêu?"}
+{"id": "Q0454", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Luật Kinh tế mã nào ạ?"}
+{"id": "Q0455", "intent": "HOI_NGANH", "text": "Luật Kinh tế ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0456", "intent": "HOI_NGANH", "text": "Ma nganh luat kinh te DHV?"}
+{"id": "Q0457", "intent": "HOI_NGANH", "text": "Mã ngành Quản lý bệnh viện của DHV là bao nhiêu?"}
+{"id": "Q0458", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Quản lý bệnh viện mã nào ạ?"}
+{"id": "Q0459", "intent": "HOI_NGANH", "text": "Quản lý bệnh viện ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0460", "intent": "HOI_NGANH", "text": "Ma nganh quan ly benh vien DHV?"}
+{"id": "Q0461", "intent": "HOI_NGANH", "text": "Mã ngành Tâm lý học của DHV là bao nhiêu?"}
+{"id": "Q0462", "intent": "HOI_NGANH", "text": "Cho em hỏi ngành Tâm lý học mã nào ạ?"}
+{"id": "Q0463", "intent": "HOI_NGANH", "text": "Tâm lý học ở DHV là ngành gì, mã tuyển sinh bao nhiêu?"}
+{"id": "Q0464", "intent": "HOI_NGANH", "text": "Ma nganh tam ly hoc DHV?"}
+{"id": "Q0465", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "DHV năm 2026 có những phương thức xét tuyển nào?"}
+{"id": "Q0466", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Trường xét tuyển bằng thi tốt nghiệp THPT không ạ?"}
+{"id": "Q0467", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Cho em hỏi phương thức tuyển sinh DHV 2026."}
+{"id": "Q0468", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "DHV co xet diem thi THPT khong?"}
+{"id": "Q0473", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Ngôn ngữ Trung Quốc có xét theo ĐGNL không?"}
+{"id": "Q0474", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Ngôn ngữ Trung Quốc chứ?"}
+{"id": "Q0475", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Ngôn ngữ Trung Quốc được không ạ?"}
+{"id": "Q0476", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Ngôn ngữ Trung Quốc xet dgnl duoc khong?"}
+{"id": "Q0477", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Ngôn ngữ Nhật có xét theo ĐGNL không?"}
+{"id": "Q0478", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Ngôn ngữ Nhật chứ?"}
+{"id": "Q0479", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Ngôn ngữ Nhật được không ạ?"}
+{"id": "Q0480", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Ngôn ngữ Nhật xet dgnl duoc khong?"}
+{"id": "Q0481", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Ngôn ngữ Hàn Quốc có xét theo ĐGNL không?"}
+{"id": "Q0482", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Ngôn ngữ Hàn Quốc chứ?"}
+{"id": "Q0483", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Ngôn ngữ Hàn Quốc được không ạ?"}
+{"id": "Q0484", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Ngôn ngữ Hàn Quốc xet dgnl duoc khong?"}
+{"id": "Q0485", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Kinh tế quốc tế có xét theo ĐGNL không?"}
+{"id": "Q0486", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Kinh tế quốc tế chứ?"}
+{"id": "Q0487", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Kinh tế quốc tế được không ạ?"}
+{"id": "Q0488", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Kinh tế quốc tế xet dgnl duoc khong?"}
+{"id": "Q0497", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Marketing có xét theo ĐGNL không?"}
+{"id": "Q0498", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Marketing chứ?"}
+{"id": "Q0499", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Marketing được không ạ?"}
+{"id": "Q0500", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Marketing xet dgnl duoc khong?"}
+{"id": "Q0501", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Thương mại điện tử có xét theo ĐGNL không?"}
+{"id": "Q0502", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Thương mại điện tử chứ?"}
+{"id": "Q0503", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Thương mại điện tử được không ạ?"}
+{"id": "Q0504", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Thương mại điện tử xet dgnl duoc khong?"}
+{"id": "Q0505", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Tài chính ngân hàng có xét theo ĐGNL không?"}
+{"id": "Q0506", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Tài chính ngân hàng chứ?"}
+{"id": "Q0507", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Tài chính ngân hàng được không ạ?"}
+{"id": "Q0508", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Tài chính ngân hàng xet dgnl duoc khong?"}
+{"id": "Q0513", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Kế toán có xét theo ĐGNL không?"}
+{"id": "Q0514", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Kế toán chứ?"}
+{"id": "Q0515", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Kế toán được không ạ?"}
+{"id": "Q0516", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Kế toán xet dgnl duoc khong?"}
+{"id": "Q0521", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Trí tuệ nhân tạo có xét theo ĐGNL không?"}
+{"id": "Q0522", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Trí tuệ nhân tạo chứ?"}
+{"id": "Q0523", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Trí tuệ nhân tạo được không ạ?"}
+{"id": "Q0524", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Trí tuệ nhân tạo xet dgnl duoc khong?"}
+{"id": "Q0525", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Công nghệ thông tin có xét theo ĐGNL không?"}
+{"id": "Q0526", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Phương thức ĐGNL có áp dụng cho Công nghệ thông tin chứ?"}
+{"id": "Q0527", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Em muốn dùng ĐGNL đăng ký Công nghệ thông tin được không ạ?"}
+{"id": "Q0528", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "Công nghệ thông tin xet dgnl duoc khong?"}
+{"id": "Q0533", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em xét thi tốt nghiệp THPT được 16 điểm cho Marketing"}
+{"id": "Q0534", "intent": "HOI_HOC_PHI", "text": "Còn học phí năm 2026 cho lựa chọn số 2 thì sao?"}
+{"id": "Q0535", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em có 16 điểm thi tốt nghiệp THPT, đang tính vào Marketing"}
+{"id": "Q0536", "intent": "HOI_HOC_PHI", "text": "Vậy khoản học phí năm nay của lựa chọn 2 bao nhiêu?"}
+{"id": "Q0537", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em xét học bạ được 19 điểm cho Quản trị kinh doanh"}
+{"id": "Q0538", "intent": "HOI_HOC_PHI", "text": "Còn học phí năm 2026 cho lựa chọn số 3 thì sao?"}
+{"id": "Q0539", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em có 19 điểm học bạ, đang tính vào Quản trị kinh doanh"}
+{"id": "Q0540", "intent": "HOI_HOC_PHI", "text": "Vậy khoản học phí năm nay của lựa chọn 3 bao nhiêu?"}
+{"id": "Q0541", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em xét thi tốt nghiệp THPT được 18 điểm cho Luật"}
+{"id": "Q0542", "intent": "HOI_HOC_PHI", "text": "Còn học phí năm 2026 cho lựa chọn số 4 thì sao?"}
+{"id": "Q0543", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em có 18 điểm thi tốt nghiệp THPT, đang tính vào Luật"}
+{"id": "Q0544", "intent": "HOI_HOC_PHI", "text": "Vậy khoản học phí năm nay của lựa chọn 4 bao nhiêu?"}
+{"id": "Q0545", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em xét ĐGNL được 650 điểm cho Trí tuệ nhân tạo"}
+{"id": "Q0546", "intent": "HOI_HOC_PHI", "text": "Còn học phí năm 2026 cho lựa chọn số 5 thì sao?"}
+{"id": "Q0547", "intent": "HOI_NGUONG_DAU_VAO", "text": "Em có 650 điểm ĐGNL, đang tính vào Trí tuệ nhân tạo"}
+{"id": "Q0548", "intent": "HOI_HOC_PHI", "text": "Vậy khoản học phí năm nay của lựa chọn 5 bao nhiêu?"}
+{"id": "Q0549", "intent": "HOI_HOC_PHI", "text": "Học phí DHV năm 2027 bao nhiêu?"}
+{"id": "Q0550", "intent": "HOI_HOC_PHI", "text": "Cho em biết giúp: Học phí DHV năm 2027 bao nhiêu?"}
+{"id": "Q0551", "intent": "HOI_HOC_PHI", "text": "Theo dữ liệu đang có, Học phí DHV năm 2027 bao nhiêu?"}
+{"id": "Q0552", "intent": "HOI_HOC_PHI", "text": "Với năm được hỏi, Học phí DHV năm 2027 bao nhiêu?"}
+{"id": "Q0553", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn CNTT năm 2024 là bao nhiêu?"}
+{"id": "Q0554", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em biết giúp: Điểm chuẩn CNTT năm 2024 là bao nhiêu?"}
+{"id": "Q0555", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Theo dữ liệu đang có, Điểm chuẩn CNTT năm 2024 là bao nhiêu?"}
+{"id": "Q0556", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Với năm được hỏi, Điểm chuẩn CNTT năm 2024 là bao nhiêu?"}
+{"id": "Q0557", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Điểm chuẩn ngành Y khoa DHV 2026?"}
+{"id": "Q0558", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Cho em biết giúp: Điểm chuẩn ngành Y khoa DHV 2026?"}
+{"id": "Q0559", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Theo dữ liệu đang có, Điểm chuẩn ngành Y khoa DHV 2026?"}
+{"id": "Q0560", "intent": "HOI_DIEM_TRUNG_TUYEN", "text": "Với năm được hỏi, Điểm chuẩn ngành Y khoa DHV 2026?"}
+{"id": "Q0565", "intent": "HOI_HOC_PHI", "text": "Học phí ngành CNTT năm 2024 có được xác nhận không?"}
+{"id": "Q0566", "intent": "HOI_HOC_PHI", "text": "Cho em biết giúp: Học phí ngành CNTT năm 2024 có được xác nhận không?"}
+{"id": "Q0567", "intent": "HOI_HOC_PHI", "text": "Theo dữ liệu đang có, Học phí ngành CNTT năm 2024 có được xác nhận không?"}
+{"id": "Q0568", "intent": "HOI_HOC_PHI", "text": "Với năm được hỏi, Học phí ngành CNTT năm 2024 có được xác nhận không?"}
+{"id": "Q0573", "intent": "OUT_OF_SCOPE", "text": "Công thức nấu phở bò như thế nào?"}
+{"id": "Q0574", "intent": "OUT_OF_SCOPE", "text": "Cho mình hỏi: Công thức nấu phở bò như thế nào?"}
+{"id": "Q0575", "intent": "OUT_OF_SCOPE", "text": "Bạn có thể trả lời giúp: Công thức nấu phở bò như thế nào?"}
+{"id": "Q0576", "intent": "OUT_OF_SCOPE", "text": "Mình muốn biết, Công thức nấu phở bò như thế nào?"}
+{"id": "Q0577", "intent": "OUT_OF_SCOPE", "text": "Cho em hỏi việc làm sau tốt nghiệp ở trường khác."}
+{"id": "Q0578", "intent": "OUT_OF_SCOPE", "text": "Cho mình hỏi: Cho em hỏi việc làm sau tốt nghiệp ở trường khác."}
+{"id": "Q0579", "intent": "OUT_OF_SCOPE", "text": "Bạn có thể trả lời giúp: Cho em hỏi việc làm sau tốt nghiệp ở trường khác."}
+{"id": "Q0580", "intent": "OUT_OF_SCOPE", "text": "Mình muốn biết, Cho em hỏi việc làm sau tốt nghiệp ở trường khác."}
+{"id": "Q0585", "intent": "OUT_OF_SCOPE", "text": "Bạn tư vấn chuyện tình cảm giúp mình được không?"}
+{"id": "Q0586", "intent": "OUT_OF_SCOPE", "text": "Cho mình hỏi: Bạn tư vấn chuyện tình cảm giúp mình được không?"}
+{"id": "Q0587", "intent": "OUT_OF_SCOPE", "text": "Bạn có thể trả lời giúp: Bạn tư vấn chuyện tình cảm giúp mình được không?"}
+{"id": "Q0588", "intent": "OUT_OF_SCOPE", "text": "Mình muốn biết, Bạn tư vấn chuyện tình cảm giúp mình được không?"}
+{"id": "Q0593", "intent": "HOI_CHUONG_TRINH", "text": "Quản trị Nhân lực thuộc ngành nào ở DHV?"}
+{"id": "Q0594", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Quản trị Nhân lực là của ngành nào?"}
+{"id": "Q0595", "intent": "HOI_CHUONG_TRINH", "text": "Quản trị Nhân lực có phải là một ngành riêng không ạ?"}
+{"id": "Q0596", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh quan tri nhan luc thuoc nganh nao?"}
+{"id": "Q0601", "intent": "HOI_CHUONG_TRINH", "text": "Khởi nghiệp và Phát triển bền vững thuộc ngành nào ở DHV?"}
+{"id": "Q0602", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Khởi nghiệp và Phát triển bền vững là của ngành nào?"}
+{"id": "Q0603", "intent": "HOI_CHUONG_TRINH", "text": "Khởi nghiệp và Phát triển bền vững có phải là một ngành riêng không ạ?"}
+{"id": "Q0604", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh khoi nghiep va phat trien ben vung thuoc nganh nao?"}
+{"id": "Q0605", "intent": "HOI_CHUONG_TRINH", "text": "Quản trị công nghệ và Đổi mới sáng tạo thuộc ngành nào ở DHV?"}
+{"id": "Q0606", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Quản trị công nghệ và Đổi mới sáng tạo là của ngành nào?"}
+{"id": "Q0607", "intent": "HOI_CHUONG_TRINH", "text": "Quản trị công nghệ và Đổi mới sáng tạo có phải là một ngành riêng không ạ?"}
+{"id": "Q0608", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh quan tri cong nghe va doi moi sang tao thuoc nganh nao?"}
+{"id": "Q0613", "intent": "HOI_CHUONG_TRINH", "text": "Digital Marketing thuộc ngành nào ở DHV?"}
+{"id": "Q0614", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Digital Marketing là của ngành nào?"}
+{"id": "Q0615", "intent": "HOI_CHUONG_TRINH", "text": "Digital Marketing có phải là một ngành riêng không ạ?"}
+{"id": "Q0616", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh digital marketing thuoc nganh nao?"}
+{"id": "Q0617", "intent": "HOI_CHUONG_TRINH", "text": "Truyền thông và quan hệ công chúng thuộc ngành nào ở DHV?"}
+{"id": "Q0618", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Truyền thông và quan hệ công chúng là của ngành nào?"}
+{"id": "Q0619", "intent": "HOI_CHUONG_TRINH", "text": "Truyền thông và quan hệ công chúng có phải là một ngành riêng không ạ?"}
+{"id": "Q0620", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh truyen thong va quan he cong chung thuoc nganh nao?"}
+{"id": "Q0625", "intent": "HOI_CHUONG_TRINH", "text": "Quản trị thương mại điện tử thuộc ngành nào ở DHV?"}
+{"id": "Q0626", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Quản trị thương mại điện tử là của ngành nào?"}
+{"id": "Q0627", "intent": "HOI_CHUONG_TRINH", "text": "Quản trị thương mại điện tử có phải là một ngành riêng không ạ?"}
+{"id": "Q0628", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh quan tri thuong mai dien tu thuoc nganh nao?"}
+{"id": "Q0633", "intent": "HOI_CHUONG_TRINH", "text": "Phân tích dữ liệu kinh doan thuộc ngành nào ở DHV?"}
+{"id": "Q0634", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Phân tích dữ liệu kinh doan là của ngành nào?"}
+{"id": "Q0635", "intent": "HOI_CHUONG_TRINH", "text": "Phân tích dữ liệu kinh doan có phải là một ngành riêng không ạ?"}
+{"id": "Q0636", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh phan tich du lieu kinh doan thuoc nganh nao?"}
+{"id": "Q0637", "intent": "HOI_CHUONG_TRINH", "text": "Ngân hàng số thuộc ngành nào ở DHV?"}
+{"id": "Q0638", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Ngân hàng số là của ngành nào?"}
+{"id": "Q0639", "intent": "HOI_CHUONG_TRINH", "text": "Ngân hàng số có phải là một ngành riêng không ạ?"}
+{"id": "Q0640", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh ngan hang so thuoc nganh nao?"}
+{"id": "Q0641", "intent": "HOI_CHUONG_TRINH", "text": "Tài chính doanh nghiệp thuộc ngành nào ở DHV?"}
+{"id": "Q0642", "intent": "HOI_CHUONG_TRINH", "text": "Cho em hỏi chương trình Tài chính doanh nghiệp là của ngành nào?"}
+{"id": "Q0643", "intent": "HOI_CHUONG_TRINH", "text": "Tài chính doanh nghiệp có phải là một ngành riêng không ạ?"}
+{"id": "Q0644", "intent": "HOI_CHUONG_TRINH", "text": "Chuong trinh tai chinh doanh nghiep thuoc nganh nao?"}
+{"id": "Q0645", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 1 không?"}
+{"id": "Q0646", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 1."}
+{"id": "Q0647", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 1 năm 2026."}
+{"id": "Q0648", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 1 sao ạ?"}
+{"id": "Q0653", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 3 không?"}
+{"id": "Q0654", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 3."}
+{"id": "Q0655", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 3 năm 2026."}
+{"id": "Q0656", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 3 sao ạ?"}
+{"id": "Q0661", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 5 không?"}
+{"id": "Q0662", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 5."}
+{"id": "Q0663", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 5 năm 2026."}
+{"id": "Q0664", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 5 sao ạ?"}
+{"id": "Q0665", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 6 không?"}
+{"id": "Q0666", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 6."}
+{"id": "Q0667", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 6 năm 2026."}
+{"id": "Q0668", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 6 sao ạ?"}
+{"id": "Q0673", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 8 không?"}
+{"id": "Q0674", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 8."}
+{"id": "Q0675", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 8 năm 2026."}
+{"id": "Q0676", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 8 sao ạ?"}
+{"id": "Q0677", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 9 không?"}
+{"id": "Q0678", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 9."}
+{"id": "Q0679", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 9 năm 2026."}
+{"id": "Q0680", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 9 sao ạ?"}
+{"id": "Q0685", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 11 không?"}
+{"id": "Q0686", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 11."}
+{"id": "Q0687", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 11 năm 2026."}
+{"id": "Q0688", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 11 sao ạ?"}
+{"id": "Q0693", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 13 không?"}
+{"id": "Q0694", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 13."}
+{"id": "Q0695", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 13 năm 2026."}
+{"id": "Q0696", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 13 sao ạ?"}
+{"id": "Q0697", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 14 không?"}
+{"id": "Q0698", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 14."}
+{"id": "Q0699", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 14 năm 2026."}
+{"id": "Q0700", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 14 sao ạ?"}
+{"id": "Q0701", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 15 không?"}
+{"id": "Q0702", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 15."}
+{"id": "Q0703", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 15 năm 2026."}
+{"id": "Q0704", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 15 sao ạ?"}
+{"id": "Q0713", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 18 không?"}
+{"id": "Q0714", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 18."}
+{"id": "Q0715", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 18 năm 2026."}
+{"id": "Q0716", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 18 sao ạ?"}
+{"id": "Q0717", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 19 không?"}
+{"id": "Q0718", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 19."}
+{"id": "Q0719", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 19 năm 2026."}
+{"id": "Q0720", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 19 sao ạ?"}
+{"id": "Q0721", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 20 không?"}
+{"id": "Q0722", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 20."}
+{"id": "Q0723", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 20 năm 2026."}
+{"id": "Q0724", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 20 sao ạ?"}
+{"id": "Q0725", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 21 không?"}
+{"id": "Q0726", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 21."}
+{"id": "Q0727", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 21 năm 2026."}
+{"id": "Q0728", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 21 sao ạ?"}
+{"id": "Q0737", "intent": "HOI_HOC_BONG", "text": "DHV có thông tin học bổng mục tham chiếu 24 không?"}
+{"id": "Q0738", "intent": "HOI_HOC_BONG", "text": "Cho em hỏi chính sách học bổng DHV mục 24."}
+{"id": "Q0739", "intent": "HOI_HOC_BONG", "text": "Phụ huynh muốn biết gói học bổng tham chiếu 24 năm 2026."}
+{"id": "Q0740", "intent": "HOI_HOC_BONG", "text": "Hoc bong DHV muc tham chieu 24 sao ạ?"}
+{"id": "Q0749", "intent": "DANH_SACH_NGANH", "text": "DHV có ngành chính vậy?"}
+{"id": "Q0750", "intent": "DANH_SACH_NGANH", "text": "Cho mình hỏi ngành chính của trường."}
+{"id": "Q0751", "intent": "DANH_SACH_NGANH", "text": "Thông tin cơ bản về ngành chính DHV 2026 là gì?"}
+{"id": "Q0752", "intent": "DANH_SACH_NGANH", "text": "DHV nganh chinh?"}
+{"id": "Q0753", "intent": "DANH_SACH_NGANH", "text": "DHV có mã ngành vậy?"}
+{"id": "Q0754", "intent": "DANH_SACH_NGANH", "text": "Cho mình hỏi mã ngành của trường."}
+{"id": "Q0755", "intent": "DANH_SACH_NGANH", "text": "Thông tin cơ bản về mã ngành DHV 2026 là gì?"}
+{"id": "Q0756", "intent": "DANH_SACH_NGANH", "text": "DHV ma nganh?"}
+{"id": "Q0757", "intent": "DANH_SACH_NGANH", "text": "DHV có ngành đào tạo vậy?"}
+{"id": "Q0758", "intent": "DANH_SACH_NGANH", "text": "Cho mình hỏi ngành đào tạo của trường."}
+{"id": "Q0759", "intent": "DANH_SACH_NGANH", "text": "Thông tin cơ bản về ngành đào tạo DHV 2026 là gì?"}
+{"id": "Q0760", "intent": "DANH_SACH_NGANH", "text": "DHV nganh dao tao?"}
+{"id": "Q0761", "intent": "DANH_SACH_NGANH", "text": "DHV có toàn bộ ngành vậy?"}
+{"id": "Q0762", "intent": "DANH_SACH_NGANH", "text": "Cho mình hỏi toàn bộ ngành của trường."}
+{"id": "Q0763", "intent": "DANH_SACH_NGANH", "text": "Thông tin cơ bản về toàn bộ ngành DHV 2026 là gì?"}
+{"id": "Q0764", "intent": "DANH_SACH_NGANH", "text": "DHV toan bo nganh?"}
+{"id": "Q0777", "intent": "OUT_OF_SCOPE", "text": "Cảm ơn bạn"}
+{"id": "Q0778", "intent": "OUT_OF_SCOPE", "text": "Em cảm ơn ạ"}
+{"id": "Q0779", "intent": "OUT_OF_SCOPE", "text": "Thanks nhé"}
+{"id": "Q0780", "intent": "OUT_OF_SCOPE", "text": "Cảm ơn nhiều nha"}
+{"id": "Q0785", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Ngôn ngữ Anh bằng thi tốt nghiệp THPT cần bao nhiêu điểm?"}
+{"id": "Q0786", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Ngôn ngữ Anh, phương thức thi tốt nghiệp THPT, là bao nhiêu?"}
+{"id": "Q0787", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Ngôn ngữ Anh theo thi tốt nghiệp THPT lấy từ mức nào vậy?"}
+{"id": "Q0788", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngôn ngữ Anh xét bs thi tốt nghiệp THPT bn điểm?"}
+{"id": "Q0789", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Ngôn ngữ Anh bằng học bạ cần bao nhiêu điểm?"}
+{"id": "Q0790", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Ngôn ngữ Anh, phương thức học bạ, là bao nhiêu?"}
+{"id": "Q0791", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Ngôn ngữ Anh theo học bạ lấy từ mức nào vậy?"}
+{"id": "Q0792", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngôn ngữ Anh xét bs học bạ bn điểm?"}
+{"id": "Q0793", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Ngôn ngữ Trung Quốc bằng thi tốt nghiệp THPT cần bao nhiêu điểm?"}
+{"id": "Q0794", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Ngôn ngữ Trung Quốc, phương thức thi tốt nghiệp THPT, là bao nhiêu?"}
+{"id": "Q0795", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Ngôn ngữ Trung Quốc theo thi tốt nghiệp THPT lấy từ mức nào vậy?"}
+{"id": "Q0796", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngôn ngữ Trung Quốc xét bs thi tốt nghiệp THPT bn điểm?"}
+{"id": "Q0805", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Ngôn ngữ Nhật bằng học bạ cần bao nhiêu điểm?"}
+{"id": "Q0806", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Ngôn ngữ Nhật, phương thức học bạ, là bao nhiêu?"}
+{"id": "Q0807", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Ngôn ngữ Nhật theo học bạ lấy từ mức nào vậy?"}
+{"id": "Q0808", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngôn ngữ Nhật xét bs học bạ bn điểm?"}
+{"id": "Q0809", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Ngôn ngữ Hàn Quốc bằng thi tốt nghiệp THPT cần bao nhiêu điểm?"}
+{"id": "Q0810", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Ngôn ngữ Hàn Quốc, phương thức thi tốt nghiệp THPT, là bao nhiêu?"}
+{"id": "Q0811", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Ngôn ngữ Hàn Quốc theo thi tốt nghiệp THPT lấy từ mức nào vậy?"}
+{"id": "Q0812", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngôn ngữ Hàn Quốc xét bs thi tốt nghiệp THPT bn điểm?"}
+{"id": "Q0813", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Ngôn ngữ Hàn Quốc bằng học bạ cần bao nhiêu điểm?"}
+{"id": "Q0814", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Ngôn ngữ Hàn Quốc, phương thức học bạ, là bao nhiêu?"}
+{"id": "Q0815", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Ngôn ngữ Hàn Quốc theo học bạ lấy từ mức nào vậy?"}
+{"id": "Q0816", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngôn ngữ Hàn Quốc xét bs học bạ bn điểm?"}
+{"id": "Q0821", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Quản trị logistics bằng học bạ cần bao nhiêu điểm?"}
+{"id": "Q0822", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Quản trị logistics, phương thức học bạ, là bao nhiêu?"}
+{"id": "Q0823", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Quản trị logistics theo học bạ lấy từ mức nào vậy?"}
+{"id": "Q0824", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Quản trị logistics xét bs học bạ bn điểm?"}
+{"id": "Q0829", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Thương mại điện tử bằng học bạ cần bao nhiêu điểm?"}
+{"id": "Q0830", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Thương mại điện tử, phương thức học bạ, là bao nhiêu?"}
+{"id": "Q0831", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Thương mại điện tử theo học bạ lấy từ mức nào vậy?"}
+{"id": "Q0832", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Thương mại điện tử xét bs học bạ bn điểm?"}
+{"id": "Q0833", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Công nghệ tài chính bằng thi tốt nghiệp THPT cần bao nhiêu điểm?"}
+{"id": "Q0834", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Công nghệ tài chính, phương thức thi tốt nghiệp THPT, là bao nhiêu?"}
+{"id": "Q0835", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Công nghệ tài chính theo thi tốt nghiệp THPT lấy từ mức nào vậy?"}
+{"id": "Q0836", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Công nghệ tài chính xét bs thi tốt nghiệp THPT bn điểm?"}
+{"id": "Q0841", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Trí tuệ nhân tạo bằng thi tốt nghiệp THPT cần bao nhiêu điểm?"}
+{"id": "Q0842", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Trí tuệ nhân tạo, phương thức thi tốt nghiệp THPT, là bao nhiêu?"}
+{"id": "Q0843", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Trí tuệ nhân tạo theo thi tốt nghiệp THPT lấy từ mức nào vậy?"}
+{"id": "Q0844", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Trí tuệ nhân tạo xét bs thi tốt nghiệp THPT bn điểm?"}
+{"id": "Q0845", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Trí tuệ nhân tạo bằng học bạ cần bao nhiêu điểm?"}
+{"id": "Q0846", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Trí tuệ nhân tạo, phương thức học bạ, là bao nhiêu?"}
+{"id": "Q0847", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Trí tuệ nhân tạo theo học bạ lấy từ mức nào vậy?"}
+{"id": "Q0848", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Trí tuệ nhân tạo xét bs học bạ bn điểm?"}
+{"id": "Q0853", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Xét tuyển bổ sung Công nghệ Thông tin bằng học bạ cần bao nhiêu điểm?"}
+{"id": "Q0854", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Ngưỡng bổ sung của Công nghệ Thông tin, phương thức học bạ, là bao nhiêu?"}
+{"id": "Q0855", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Đợt bổ sung Công nghệ Thông tin theo học bạ lấy từ mức nào vậy?"}
+{"id": "Q0856", "intent": "HOI_XET_TUYEN_BO_SUNG", "text": "Công nghệ Thông tin xét bs học bạ bn điểm?"}
+{"id": "Q0865", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Ngôn ngữ Nhật theo ĐGNL là bao nhiêu?"}
+{"id": "Q0866", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Ngôn ngữ Nhật bằng ĐGNL là mức nào?"}
+{"id": "Q0867", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Ngôn ngữ Nhật theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0868", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngôn ngữ Nhật ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0869", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Ngôn ngữ Hàn Quốc theo ĐGNL là bao nhiêu?"}
+{"id": "Q0870", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Ngôn ngữ Hàn Quốc bằng ĐGNL là mức nào?"}
+{"id": "Q0871", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Ngôn ngữ Hàn Quốc theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0872", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngôn ngữ Hàn Quốc ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0873", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Kinh tế quốc tế theo ĐGNL là bao nhiêu?"}
+{"id": "Q0874", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Kinh tế quốc tế bằng ĐGNL là mức nào?"}
+{"id": "Q0875", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Kinh tế quốc tế theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0876", "intent": "HOI_NGUONG_DAU_VAO", "text": "Kinh tế quốc tế ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0881", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Quản trị kinh doanh theo ĐGNL là bao nhiêu?"}
+{"id": "Q0882", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Quản trị kinh doanh bằng ĐGNL là mức nào?"}
+{"id": "Q0883", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Quản trị kinh doanh theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0884", "intent": "HOI_NGUONG_DAU_VAO", "text": "Quản trị kinh doanh ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0889", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Thương mại điện tử theo ĐGNL là bao nhiêu?"}
+{"id": "Q0890", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Thương mại điện tử bằng ĐGNL là mức nào?"}
+{"id": "Q0891", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Thương mại điện tử theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0892", "intent": "HOI_NGUONG_DAU_VAO", "text": "Thương mại điện tử ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0893", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Tài chính ngân hàng theo ĐGNL là bao nhiêu?"}
+{"id": "Q0894", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Tài chính ngân hàng bằng ĐGNL là mức nào?"}
+{"id": "Q0895", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Tài chính ngân hàng theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0896", "intent": "HOI_NGUONG_DAU_VAO", "text": "Tài chính ngân hàng ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0901", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Kế toán theo ĐGNL là bao nhiêu?"}
+{"id": "Q0902", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Kế toán bằng ĐGNL là mức nào?"}
+{"id": "Q0903", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Kế toán theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0904", "intent": "HOI_NGUONG_DAU_VAO", "text": "Kế toán ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0905", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Kỹ thuật máy tính theo ĐGNL là bao nhiêu?"}
+{"id": "Q0906", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Kỹ thuật máy tính bằng ĐGNL là mức nào?"}
+{"id": "Q0907", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Kỹ thuật máy tính theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0908", "intent": "HOI_NGUONG_DAU_VAO", "text": "Kỹ thuật máy tính ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0913", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Công nghệ thông tin theo ĐGNL là bao nhiêu?"}
+{"id": "Q0914", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Công nghệ thông tin bằng ĐGNL là mức nào?"}
+{"id": "Q0915", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Công nghệ thông tin theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0916", "intent": "HOI_NGUONG_DAU_VAO", "text": "Công nghệ thông tin ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0921", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Quản trị Dịch vụ Du lịch & Lữ hành theo ĐGNL là bao nhiêu?"}
+{"id": "Q0922", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Quản trị Dịch vụ Du lịch & Lữ hành bằng ĐGNL là mức nào?"}
+{"id": "Q0923", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Quản trị Dịch vụ Du lịch & Lữ hành theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0924", "intent": "HOI_NGUONG_DAU_VAO", "text": "Quản trị Dịch vụ Du lịch & Lữ hành ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0925", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Quản trị Khách sạn theo ĐGNL là bao nhiêu?"}
+{"id": "Q0926", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Quản trị Khách sạn bằng ĐGNL là mức nào?"}
+{"id": "Q0927", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Quản trị Khách sạn theo ĐGNL cần tối thiểu mấy điểm?"}
+{"id": "Q0928", "intent": "HOI_NGUONG_DAU_VAO", "text": "Quản trị Khách sạn ĐGNL điểm nhận hồ sơ bn?"}
+{"id": "Q0929", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Ngôn ngữ Anh theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0930", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Ngôn ngữ Anh bằng thi tốt nghiệp THPT là mức nào?"}
+{"id": "Q0931", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Ngôn ngữ Anh theo thi tốt nghiệp THPT cần tối thiểu mấy điểm?"}
+{"id": "Q0932", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngôn ngữ Anh thi tốt nghiệp THPT điểm nhận hồ sơ bn?"}
+{"id": "Q0941", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đầu vào Ngôn ngữ Hàn Quốc theo thi tốt nghiệp THPT là bao nhiêu?"}
+{"id": "Q0942", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn để nộp Ngôn ngữ Hàn Quốc bằng thi tốt nghiệp THPT là mức nào?"}
+{"id": "Q0943", "intent": "HOI_NGUONG_DAU_VAO", "text": "Muốn đăng ký Ngôn ngữ Hàn Quốc theo thi tốt nghiệp THPT cần tối thiểu mấy điểm?"}
+{"id": "Q0944", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngôn ngữ Hàn Quốc thi tốt nghiệp THPT điểm nhận hồ sơ bn?"}
+{"id": "Q0949", "intent": "HOI_HOC_PHI", "text": "Em cho hỏi học phí học kỳ I ở DHV là bao nhiêu?"}
+{"id": "Q0950", "intent": "HOI_HOC_PHI", "text": "Em muốn biết học phí học kỳ I năm 2026 mức nào vậy?"}
+{"id": "Q0951", "intent": "HOI_HOC_PHI", "text": "Em hỏi DHV học phí kỳ I bao nhiêu ạ?"}
+{"id": "Q0952", "intent": "HOI_HOC_PHI", "text": "Em cần biết học phí kỳ I DHV bn?"}
+{"id": "Q0953", "intent": "HOI_HOC_PHI", "text": "Em cho hỏi số tín chỉ tối thiểu học kỳ I ở DHV là bao nhiêu?"}
+{"id": "Q0954", "intent": "HOI_HOC_PHI", "text": "Em muốn biết số tín chỉ tối thiểu học kỳ I năm 2026 mức nào vậy?"}
+{"id": "Q0955", "intent": "HOI_HOC_PHI", "text": "Em hỏi DHV tín chỉ tối thiểu bao nhiêu ạ?"}
+{"id": "Q0956", "intent": "HOI_HOC_PHI", "text": "Em cần biết tín chỉ tối thiểu DHV bn?"}
+{"id": "Q0957", "intent": "HOI_HOC_PHI", "text": "Em cho hỏi phí nhập học ở DHV là bao nhiêu?"}
+{"id": "Q0958", "intent": "HOI_HOC_PHI", "text": "Em muốn biết phí nhập học năm 2026 mức nào vậy?"}
+{"id": "Q0959", "intent": "HOI_HOC_PHI", "text": "Em hỏi DHV phí nhập học bao nhiêu ạ?"}
+{"id": "Q0960", "intent": "HOI_HOC_PHI", "text": "Em cần biết phí nhập học DHV bn?"}
+{"id": "Q0969", "intent": "HOI_HOC_PHI", "text": "Em cho hỏi tổng chi phí học kỳ I ở DHV là bao nhiêu?"}
+{"id": "Q0970", "intent": "HOI_HOC_PHI", "text": "Em muốn biết tổng chi phí học kỳ I năm 2026 mức nào vậy?"}
+{"id": "Q0971", "intent": "HOI_HOC_PHI", "text": "Em hỏi DHV tổng chi phí bao nhiêu ạ?"}
+{"id": "Q0972", "intent": "HOI_HOC_PHI", "text": "Em cần biết tổng chi phí DHV bn?"}
+{"id": "Q0973", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cho hỏi mỗi tín chỉ ở DHV là bao nhiêu?"}
+{"id": "Q0974", "intent": "HOI_HOC_PHI", "text": "Phụ huynh muốn biết mỗi tín chỉ năm 2026 mức nào vậy?"}
+{"id": "Q0975", "intent": "HOI_HOC_PHI", "text": "Phụ huynh hỏi DHV mỗi tín chỉ bao nhiêu ạ?"}
+{"id": "Q0976", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cần biết mỗi tín chỉ DHV bn?"}
+{"id": "Q0977", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cho hỏi học phí học kỳ I ở DHV là bao nhiêu?"}
+{"id": "Q0978", "intent": "HOI_HOC_PHI", "text": "Phụ huynh muốn biết học phí học kỳ I năm 2026 mức nào vậy?"}
+{"id": "Q0979", "intent": "HOI_HOC_PHI", "text": "Phụ huynh hỏi DHV học phí kỳ I bao nhiêu ạ?"}
+{"id": "Q0980", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cần biết học phí kỳ I DHV bn?"}
+{"id": "Q0981", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cho hỏi số tín chỉ tối thiểu học kỳ I ở DHV là bao nhiêu?"}
+{"id": "Q0982", "intent": "HOI_HOC_PHI", "text": "Phụ huynh muốn biết số tín chỉ tối thiểu học kỳ I năm 2026 mức nào vậy?"}
+{"id": "Q0983", "intent": "HOI_HOC_PHI", "text": "Phụ huynh hỏi DHV tín chỉ tối thiểu bao nhiêu ạ?"}
+{"id": "Q0984", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cần biết tín chỉ tối thiểu DHV bn?"}
+{"id": "Q0993", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cho hỏi phí kiểm tra tiếng Anh ở DHV là bao nhiêu?"}
+{"id": "Q0994", "intent": "HOI_HOC_PHI", "text": "Phụ huynh muốn biết phí kiểm tra tiếng Anh năm 2026 mức nào vậy?"}
+{"id": "Q0995", "intent": "HOI_HOC_PHI", "text": "Phụ huynh hỏi DHV phí tiếng Anh bao nhiêu ạ?"}
+{"id": "Q0996", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cần biết phí tiếng Anh DHV bn?"}
+{"id": "Q0997", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cho hỏi tổng chi phí học kỳ I ở DHV là bao nhiêu?"}
+{"id": "Q0998", "intent": "HOI_HOC_PHI", "text": "Phụ huynh muốn biết tổng chi phí học kỳ I năm 2026 mức nào vậy?"}
+{"id": "Q0999", "intent": "HOI_HOC_PHI", "text": "Phụ huynh hỏi DHV tổng chi phí bao nhiêu ạ?"}
+{"id": "Q1000", "intent": "HOI_HOC_PHI", "text": "Phụ huynh cần biết tổng chi phí DHV bn?"}

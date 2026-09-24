@@ -17,5 +17,9 @@ PyYAML>=6.0,<7.0
 python-dotenv>=1.0,<2.0
 pypdf>=6.0,<7.0
 
+# OCR fallback for scanned PDF pages (Tesseract binary is installed separately)
+PyMuPDF>=1.24,<2.0
+pytesseract>=0.3.10,<1.0
+
 # Optional local embedding backend for offline testing or when Ollama is absent
 sentence-transformers>=3.0,<6.0

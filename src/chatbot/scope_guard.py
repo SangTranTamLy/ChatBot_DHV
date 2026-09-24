@@ -27,6 +27,12 @@ ADMISSIONS_KEYWORDS = frozenset(
         "phuong thuc",
         "to hop",
         "hinh thuc xet tuyen",
+        "hoc ba",
+        "hoc tap thpt",
+        "danh gia nang luc",
+        "dgnl",
+        "thi tot nghiep thpt",
+        "thi thpt",
         "cach tinh diem",
         "cong thuc diem",
         "quy doi diem",
@@ -46,6 +52,8 @@ ADMISSIONS_KEYWORDS = frozenset(
         " web",
         "nganh hoc",
         "diem nhan ho so",
+        "diem nhan ho so bo sung",
+        "nhan ho so bo sung",
         "diem san",
         "diem trung tuyen",
         "diem chuan",
@@ -133,6 +141,22 @@ def is_personal_life_advice(question: str) -> bool:
     )
 
 
+def _is_tuition_unit_question(normalized: str) -> bool:
+    """Nhận diện câu hỏi học phí theo đơn vị tín chỉ.
+
+    ``tín chỉ`` tự nó không mở phạm vi; chỉ mở khi câu hỏi cũng có tín hiệu
+    hỏi giá/phí. Nhờ vậy một câu hỏi chung về tín chỉ không bị coi là câu hỏi
+    tuyển sinh một cách quá rộng.
+    """
+
+    has_unit = "tin chi" in normalized
+    asks_price = any(
+        marker in normalized
+        for marker in ("bao nhieu tien", "gia bao nhieu", "bao nhieu", "hoc phi", "phi moi")
+    )
+    return has_unit and asks_price
+
+
 def is_in_scope(question: str, *, has_admissions_entity: bool = False) -> bool:
     """Trả về xem một câu hỏi có vẻ liên quan đến tuyển sinh DHV hay không."""
 
@@ -141,6 +165,8 @@ def is_in_scope(question: str, *, has_admissions_entity: bool = False) -> bool:
         return False
     if is_personal_life_advice(normalized) and not has_admissions_entity:
         return False
+    if _is_tuition_unit_question(normalized):
+        return True
     if any(keyword in normalized for keyword in ADMISSIONS_KEYWORDS):
         return True
     if any(keyword in normalized for keyword in SCHOOL_DIRECTORY_KEYWORDS):

@@ -49,6 +49,7 @@ class BuildStats:
     persist_directory: str
     embedding_backend: str
     embedding_model: str
+    collection_count: int
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -133,11 +134,17 @@ def build_vector_db(
         persist_directory=str(persist_path),
         embedding_function=embedding_function,
     )
+    collection_count = 0
     try:
         vector_store.add_documents(
             chunks,
             ids=[chunk.metadata["chunk_id"] for chunk in chunks],
         )
+        collection_count = int(vector_store._collection.count())
+        if collection_count <= 0:
+            raise RuntimeError(
+                f"Chroma collection {collection_name!r} is empty after indexing"
+            )
     finally:
         close_chroma_store(vector_store)
 
@@ -148,6 +155,7 @@ def build_vector_db(
         persist_directory=str(persist_path),
         embedding_backend=resolved_backend,
         embedding_model=resolved_model,
+        collection_count=collection_count,
     )
     LOGGER.info("vector database build complete: %s", result.as_dict())
     for error in load_result.errors:
@@ -176,7 +184,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--year",
         type=int,
         default=settings.target_year,
-        help="knowledge-base year to index (default: 2026)",
+        help=f"knowledge-base year to index (default: {settings.target_year})",
     )
     parser.add_argument(
         "--embedding-backend",

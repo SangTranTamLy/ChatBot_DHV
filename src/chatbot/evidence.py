@@ -39,6 +39,15 @@ _SUPPLEMENTARY_DATE_FACT_RE = re.compile(
     r"(?:đến\s+hết\s+ngày|đến\s+ngày)\s*(\d{1,2}/\d{1,2}/\d{4})",
     re.IGNORECASE,
 )
+_ADMISSION_TABLE_ROW_START_RE = re.compile(r"(?m)^\s*\d+\s+(\d{7,9})\s+")
+_ADMISSION_TABLE_ROW_RE = re.compile(
+    r"^\d+\s+(?P<code>\d{7,9})\s+"
+    r"(?P<major>.+?)\s+"
+    r"(?P<thpt>\d+(?:[.,]\d+)?)\s+"
+    r"(?P<hoc_ba>\d+(?:[.,]\d+)?)(?:\(\*\))?\s+"
+    r"(?P<dgnl>\d+(?:[.,]\d+)?)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -51,7 +60,13 @@ class EvidenceChunk:
 
 @dataclass(frozen=True)
 class EvidenceBundle:
-    """Ngữ cảnh đã khử trùng lặp cộng với metadata nguồn gốc được truy xuất chính xác."""
+    """Ngữ cảnh đã khử trùng lặp kèm provenance từ metadata backend.
+
+    ``sources`` được tạo từ ``metadata.source_url`` (thường đến từ manifest),
+    không phải từ URL được nhúng trong nội dung PDF. Vì vậy PDF không cần tự
+    chứa URL để evidence usable; URL trong nội dung chỉ là văn bản tham khảo
+    và còn được loại khỏi context trước khi đưa vào prompt.
+    """
 
     chunks: tuple[EvidenceChunk, ...]
     context: str
@@ -310,6 +325,7 @@ def select_evidence_documents(
     candidate_audits: list[dict[str, object]] = []
     filtered_audits: list[dict[str, object]] = []
     row_selected_by_category: set[str] = set()
+    row_selected_with_score_mapping = False
 
     for rank, document in enumerate(materialized, start=1):
         metadata = dict(document.metadata or {})
@@ -357,6 +373,15 @@ def select_evidence_documents(
             ]
             selection_reason = "entity_row_match"
             row_selected_by_category.add(category)
+            row_selected_with_score_mapping = row_selected_with_score_mapping or any(
+                key in metadata
+                for key in (
+                    "application_threshold_thpt",
+                    "application_threshold_hoc_ba",
+                    "application_threshold_dgnl",
+                    "score_type",
+                )
+            )
         elif entity_values and category in {"diem_trung_tuyen", "xet_tuyen_bo_sung"}:
             folded_text = _fold_text(document.page_content)
             if not matched_entities and not any(
@@ -368,6 +393,14 @@ def select_evidence_documents(
         elif entity_values and category == "nguong_dau_vao":
             # A generic threshold note contains an unrelated Luật caveat. Keep
             # it only when no entity-specific catalogue row is available.
+            metadata_major = str(metadata.get("major_name") or "").strip()
+            if metadata_major and not any(
+                _fold_text(value) == _fold_text(metadata_major)
+                for value in entity_values
+            ):
+                base["filter_reason"] = "entity_not_in_document"
+                filtered_audits.append(base)
+                continue
             selection_reason = "generic_rule_match"
 
         base.update(
@@ -400,7 +433,10 @@ def select_evidence_documents(
                 )
                 removed.append(audit)
                 continue
-            if str((document.metadata or {}).get("category") or "") == "nguong_dau_vao":
+            if (
+                str((document.metadata or {}).get("category") or "") == "nguong_dau_vao"
+                and row_selected_with_score_mapping
+            ):
                 audit["selected"] = False
                 audit["filter_reason"] = "generic_rule_shadowed_by_entity_row"
                 removed.append(audit)
@@ -508,6 +544,21 @@ def _extract_structured_facts(
         if record_type == "major":
             major_name = str(metadata.get("major_name") or "").strip() or None
             major_code = str(metadata.get("major_code") or "").strip() or None
+            # Catalog records can legitimately carry no score columns.  Keep
+            # the verified major/code identity available to entity enrichment
+            # without turning it into an application/admission score fact.
+            identity_fact = {
+                "major_name": major_name,
+                "major_code": major_code,
+                "score_type": "major_catalog",
+                "method": None,
+                "raw_value": "-",
+                "value": None,
+                "category": category,
+                **_fact_provenance(chunk),
+            }
+            if _remember_fact(seen_facts, identity_fact):
+                facts.append(identity_fact)
             threshold_keys = {
                 "thpt": "application_threshold_thpt",
                 "hoc_ba": "application_threshold_hoc_ba",
@@ -615,6 +666,9 @@ def _extract_structured_facts(
                         if _remember_fact(seen_facts, fact):
                             facts.append(fact)
         elif category == "diem_trung_tuyen":
+            for fact in _parse_admission_table_facts(text, chunk):
+                if _remember_fact(seen_facts, fact):
+                    facts.append(fact)
             for match in _ADMISSION_FACT_RE.finditer(text):
                 fact = {
                     "major_name": match.group("major").strip(" •*-").strip(),
@@ -646,6 +700,47 @@ def _extract_structured_facts(
                 if _remember_fact(seen_facts, fact):
                     facts.append(fact)
     return tuple(facts), tuple(relations)
+
+
+def _parse_admission_table_facts(
+    text: str,
+    chunk: EvidenceChunk,
+) -> list[dict[str, object]]:
+    """Parse compact native-PDF admission rows without treating prose as facts.
+
+    Some verified admission PDFs are represented in the runtime collection as
+    ``document_text`` rather than one structured record per row. Their native
+    extraction keeps rows in the form ``STT + code + name + 3 values``. This
+    parser recovers only that row structure; it does not infer values from
+    nearby paragraphs or from the language model.
+    """
+
+    starts = list(_ADMISSION_TABLE_ROW_START_RE.finditer(text))
+    facts: list[dict[str, object]] = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
+        row = " ".join(text[start.start() : end].split())
+        match = _ADMISSION_TABLE_ROW_RE.match(row)
+        if not match:
+            continue
+        major_name = match.group("major").strip(" •*-")
+        if not major_name:
+            continue
+        for method in ("thpt", "hoc_ba", "dgnl"):
+            raw_value = match.group(method)
+            facts.append(
+                {
+                    "major_name": major_name,
+                    "major_code": match.group("code"),
+                    "score_type": "admission_score",
+                    "method": method,
+                    "raw_value": raw_value,
+                    "value": _numeric_or_none(raw_value),
+                    "category": "diem_trung_tuyen",
+                    **_fact_provenance(chunk),
+                }
+            )
+    return facts
 
 
 def _remember_fact(seen: set[tuple[object, ...]], fact: dict[str, object]) -> bool:

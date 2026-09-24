@@ -6,7 +6,7 @@
     "expected_intent": "HOI_NGUONG_DAU_VAO",
     "expected_entities": {"major_name": "Công nghệ thông tin", "score_type": "application_threshold", "year": 2026},
     "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
-    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["Công nghệ thông tin", "7480201", "15", "18", "600"]},
+    "expected_evidence": {"category": "nguong_dau_vao", "contains": ["Công nghệ thông tin", "7480201", "15", "600"]},
     "forbidden_claims": ["chắc chắn đậu", "điểm trúng tuyển thay cho điểm sàn"],
     "expected_status": "ok"
   },
@@ -50,7 +50,7 @@
     "expected_intent": "HOI_NGUONG_DAU_VAO",
     "expected_entities": {"major_name": "Công nghệ thông tin", "score_type": "application_threshold", "year": 2026},
     "expected_category": ["nganh_dao_tao", "nguong_dau_vao"],
-    "expected_evidence": {"category": "nganh_dao_tao", "contains": ["15", "18", "600"]},
+    "expected_evidence": {"category": "nguong_dau_vao", "contains": ["15", "600"]},
     "forbidden_claims": ["ĐGNL không ảnh hưởng"],
     "expected_status": "ok"
   },
@@ -83,7 +83,7 @@
     "expected_intent": "HOI_DIEM_TRUNG_TUYEN",
     "expected_entities": {"major_name": "Luật", "score_type": "admission_score", "year": 2026},
     "expected_category": ["diem_trung_tuyen"],
-    "expected_evidence": {"category": "diem_trung_tuyen", "contains": ["Luật", "20,0"]},
+    "expected_evidence": {"category": "diem_trung_tuyen", "contains": ["Luật", "20"]},
     "forbidden_claims": ["điểm sàn là 20,0"],
     "expected_status": "ok"
   },
@@ -94,7 +94,7 @@
     "expected_intent": "HOI_XET_TUYEN_BO_SUNG",
     "expected_entities": {"score_type": "supplementary_threshold"},
     "expected_category": ["xet_tuyen_bo_sung"],
-    "expected_evidence": {"category": "xet_tuyen_bo_sung", "contains": ["21/08/2026"]},
+    "expected_evidence": {"category": "xet_tuyen_bo_sung", "contains": ["21/8/2026"]},
     "forbidden_claims": ["hạn xét tuyển chung"],
     "expected_status": "ok"
   },
@@ -105,7 +105,7 @@
     "expected_intent": "HOI_HOC_PHI",
     "expected_entities": {"year": 2026},
     "expected_category": ["hoc_phi"],
-    "expected_evidence": {"category": "hoc_phi", "contains": ["12.500.000", "14.500.000"]},
+    "expected_evidence": {"category": "hoc_phi", "contains": ["12.500.000", "1.250.000", "14.250.000"]},
     "forbidden_claims": ["Tổng chi phí là học phí"],
     "expected_status": "ok"
   },
@@ -117,7 +117,7 @@
     "expected_entities": {"year": 2027},
     "expected_category": ["hoc_phi"],
     "expected_evidence": {"category": "none", "contains": []},
-    "forbidden_claims": ["12.500.000", "14.500.000"],
+    "forbidden_claims": ["12.500.000", "1.250.000", "14.250.000"],
     "expected_status": "no_data"
   },
   {

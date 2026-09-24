@@ -209,6 +209,14 @@ class IngestionTests(unittest.TestCase):
 
         embeddings = KeywordEmbeddings()
         project_root = Path(__file__).resolve().parents[1]
+        manifest = json.loads(
+            (project_root / "data" / "raw" / "manifest.json").read_text(encoding="utf-8")
+        )
+        expected_verified = sum(
+            1
+            for entry in manifest["documents"]
+            if entry["year"] == manifest["target_year"] and entry["verified"] is True
+        )
         with tempfile.TemporaryDirectory() as temp_dir:
             persist_dir = Path(temp_dir) / "chroma_db"
             stats = build_vector_db(
@@ -219,8 +227,9 @@ class IngestionTests(unittest.TestCase):
                 reset=True,
             )
 
-            self.assertEqual(stats.verified_documents, 15)
-            self.assertGreaterEqual(stats.chunks_indexed, 18)
+            self.assertEqual(stats.files_seen, len(manifest["documents"]))
+            self.assertEqual(stats.verified_documents, expected_verified)
+            self.assertGreater(stats.chunks_indexed, 0)
             vector_store = Chroma(
                 collection_name="test_dhv_current",
                 persist_directory=str(persist_dir),

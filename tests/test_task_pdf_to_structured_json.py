@@ -23,7 +23,7 @@ RAW_ROOT = PROJECT_ROOT / "data" / "raw"
 
 class StructuredJSONPipelineTests(unittest.TestCase):
     def test_catalog_json_has_pages_records_and_parent_child_programs(self) -> None:
-        raw = RAW_ROOT / "nganh_dao_tao" / "danh_muc_nganh_chuong_trinh_va_diem_san_2026.pdf"
+        raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
         with tempfile.TemporaryDirectory() as temp_dir:
             result = convert_pdf_to_structured_json(
                 raw,
@@ -33,9 +33,9 @@ class StructuredJSONPipelineTests(unittest.TestCase):
             )
             document = load_structured_json(result.output_path)
 
-        self.assertEqual(document["extraction"]["method"], "pypdf_text")
-        self.assertEqual(document["extraction"]["page_count"], 2)
-        self.assertEqual(len(document["pages"]), 2)
+        self.assertEqual(document["extraction"]["method"], "native")
+        self.assertEqual(document["extraction"]["page_count"], 10)
+        self.assertEqual(len(document["pages"]), 10)
         majors = {
             record["major_name"]: record
             for record in document["records"]
@@ -55,46 +55,50 @@ class StructuredJSONPipelineTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all(program["parent_major"] == "Công nghệ thông tin" for program in cntt["programs"]))
-        self.assertEqual(cntt["thresholds"], {"thpt": 15, "hoc_ba": 18, "dgnl": 600})
+        self.assertEqual(len(majors), 20)
+        self.assertEqual(cntt["fact_category"], "nganh_dao_tao")
         self.assertEqual(validate_structured_document(document), [])
 
     def test_score_types_are_separate_and_numeric_values_are_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_root = Path(temp_dir)
-            for category, name in (("nguong_dau_vao", "diem_san_2026.pdf"), ("diem_trung_tuyen", "diem_trung_tuyen_dot_1_2026.pdf"), ("xet_tuyen_bo_sung", "xet_tuyen_bo_sung_2026.pdf")):
-                convert_pdf_to_structured_json(
-                    RAW_ROOT / category / name,
-                    raw_root=RAW_ROOT,
-                    output_root=output_root,
-                    markdown_root=None,
-                )
-            threshold = load_structured_json(output_root / "nguong_dau_vao" / "diem_san_2026.json")
-            admission = load_structured_json(output_root / "diem_trung_tuyen" / "diem_trung_tuyen_dot_1_2026.json")
-            supplementary = load_structured_json(output_root / "xet_tuyen_bo_sung" / "xet_tuyen_bo_sung_2026.json")
+            for category, name in (
+                ("phuong_thuc_xet_tuyen", "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"),
+                ("diem_trung_tuyen", "DIEM_TRUNG_TUYEN_VA_NHAP_HOC_DHV_2026.pdf"),
+                ("xet_tuyen_bo_sung", "Ho_Xet_Tuyen_Bo_Sung_Dai_Hoc_Chinh_Quy_2026.pdf"),
+            ):
+                convert_pdf_to_structured_json(RAW_ROOT / category / name, raw_root=RAW_ROOT, output_root=output_root, markdown_root=None)
+            threshold = load_structured_json(output_root / "phuong_thuc_xet_tuyen" / "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.json")
+            admission = load_structured_json(output_root / "diem_trung_tuyen" / "DIEM_TRUNG_TUYEN_VA_NHAP_HOC_DHV_2026.json")
+            supplementary = load_structured_json(output_root / "xet_tuyen_bo_sung" / "Ho_Xet_Tuyen_Bo_Sung_Dai_Hoc_Chinh_Quy_2026.json")
 
-        self.assertTrue(all(record.get("score_type") == "application_threshold" for record in threshold["records"]))
-        self.assertTrue(any(record["value"] == 600 for record in threshold["records"]))
+        threshold_records = [record for record in threshold["records"] if record.get("record_type") == "application_threshold"]
+        self.assertTrue(threshold_records)
+        self.assertTrue(all(record.get("score_type") == "application_threshold" for record in threshold_records))
+        self.assertTrue(any(record["value"] == 600 for record in threshold_records))
         self.assertTrue(any(record["score_type"] == "admission_score" and record["value"] == 20.0 for record in admission["records"]))
         self.assertTrue(any(record.get("score_type") == "supplementary_threshold" and record.get("value") == 20 for record in supplementary["records"]))
         self.assertFalse(any("score" in record and record.get("record_type") in {"application_threshold", "admission_score", "supplementary_threshold"} for record in admission["records"]))
 
     def test_json_loader_builds_natural_record_chunks_and_flat_metadata(self) -> None:
-        raw = RAW_ROOT / "hoc_phi" / "hoc_phi_hoc_ky_1_2026.pdf"
+        raw = RAW_ROOT / "ho_so" / "HO_SO_NHAP_HOC_DAY_DU_DHV_2026.pdf"
         with tempfile.TemporaryDirectory() as temp_dir:
             output_root = Path(temp_dir)
             result = convert_pdf_to_structured_json(raw, raw_root=RAW_ROOT, output_root=output_root, markdown_root=None)
             loaded = load_verified_documents(output_root)
 
         self.assertEqual(loaded.stats.verified_documents, 1)
-        self.assertEqual(len(loaded.documents), 1)
-        document = loaded.documents[0]
+        tuition_documents = [document for document in loaded.documents if document.metadata.get("record_type") == "tuition"]
+        self.assertEqual(len(tuition_documents), 1)
+        document = tuition_documents[0]
         self.assertIn("Học phí", document.page_content)
         self.assertNotIn('"record_type"', document.page_content)
         self.assertEqual(document.metadata["record_type"], "tuition")
         self.assertEqual(document.metadata["tuition_amount_vnd"], 12500000)
-        self.assertEqual(document.metadata["total_cost_vnd"], 14500000)
+        self.assertEqual(document.metadata["tuition_per_credit_vnd"], 1250000)
+        self.assertEqual(document.metadata["total_cost_vnd"], 14250000)
         self.assertEqual(document.metadata["page"], 1)
-        self.assertTrue(document.metadata["source_file"].endswith("hoc_phi_hoc_ky_1_2026.pdf"))
+        self.assertTrue(document.metadata["source_file"].endswith("HO_SO_NHAP_HOC_DAY_DU_DHV_2026.pdf"))
 
     def test_validation_rejects_unofficial_sources_and_missing_traceability(self) -> None:
         invalid = {
@@ -111,7 +115,7 @@ class StructuredJSONPipelineTests(unittest.TestCase):
                 "status": "verified",
                 "verification_status": "verified",
             },
-            "extraction": {"method": "pypdf_text", "page_count": 1},
+            "extraction": {"method": "native", "page_count": 1},
             "pages": [{"page": 1, "text": "text"}],
             "sections": [],
             "records": [{"record_type": "tuition", "record_id": "t1"}],

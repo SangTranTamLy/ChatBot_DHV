@@ -686,6 +686,17 @@ def _score_mapping_failure(
     if not score_type:
         return ""
 
+    # Counselling turns may carry a student score as context while the
+    # requested output is a grounded comparison/recommendation, not a closed
+    # multi-method score lookup. Deterministic comparison/fallback paths still
+    # own the numeric mapping; do not reject a useful counselling draft merely
+    # because it does not enumerate every published method.
+    intent = str(analysis.get("intent") or "") if isinstance(analysis, Mapping) else str(
+        getattr(analysis, "intent", "") or ""
+    )
+    if intent == "TU_VAN_CHON_NGANH" and entities.get("student_scores"):
+        return ""
+
     typed_facts = [fact for fact in facts if fact.get("score_type") == score_type]
     if not typed_facts:
         return ""

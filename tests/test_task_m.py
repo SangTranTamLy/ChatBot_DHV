@@ -28,44 +28,54 @@ class TaskMRawDataTests(unittest.TestCase):
         self.assertEqual(len(documents), len(raw_files))
         self.assertEqual(manifest["target_year"], 2026)
         self.assertEqual(
-            {entry["category"] for entry in documents}
-            & {"thong_tin_truong", "nganh_dao_tao", "phuong_thuc_xet_tuyen", "dang_ky_xet_tuyen"},
-            {"thong_tin_truong", "nganh_dao_tao", "phuong_thuc_xet_tuyen", "dang_ky_xet_tuyen"},
+            {entry["category"] for entry in documents},
+            {
+                "diem_trung_tuyen",
+                "ho_so",
+                "hoc_phi",
+                "phuong_thuc_xet_tuyen",
+                "thong_tin_truong",
+                "xet_tuyen_bo_sung",
+            },
         )
 
         required = {
             "raw_file",
-            "sha256",
             "title",
             "year",
-            "date",
             "collected_at",
             "category",
             "source_url",
             "source_urls",
             "verification_status",
+            "verified",
+            "status",
+            "source_type",
         }
         for entry in documents:
             self.assertTrue(required <= entry.keys(), entry)
             self.assertTrue(entry["raw_file"].endswith(".pdf"))
-            self.assertEqual(entry["year"], 2026)
-            self.assertEqual(entry["verification_status"], "verified")
-            self.assertFalse(entry["contains_unnecessary_pii"])
             self.assertTrue(all(is_official_dhv_url(url) for url in entry["source_urls"]))
-            self.assertTrue(is_official_dhv_url(entry["source_url"]))
+            if entry["verified"] is True:
+                self.assertEqual(entry["year"], 2026)
+                self.assertEqual(entry["verification_status"], "verified")
+                self.assertTrue(is_official_dhv_url(entry["source_url"]))
+            else:
+                self.assertNotEqual(entry["status"], "verified")
+                self.assertIsNone(entry["source_url"])
 
     def test_raw_pdfs_have_official_urls_and_no_form_submission_data(self) -> None:
+        manifest = json.loads((RAW_ROOT / "manifest.json").read_text(encoding="utf-8"))
+        by_file = {entry["raw_file"].replace("/", "\\"): entry for entry in manifest["documents"]}
         for path in sorted(RAW_ROOT.rglob("*.pdf")):
             text = _extract_pdf_text(path)
             urls = _source_urls_from_text(text)
-            self.assertTrue(urls, path)
-            self.assertTrue(all(is_official_dhv_url(url) for url in urls), path)
-
-        registration_text = _extract_pdf_text(
-            RAW_ROOT / "dang_ky_xet_tuyen" / "dang_ky_xet_tuyen_2026.pdf"
-        )
-        self.assertIn("Không lưu bất kỳ dữ liệu cá nhân thực tế nào", registration_text)
-        self.assertNotRegex(registration_text, r"\b\d{12}\b")
+            relative = path.relative_to(PROJECT_ROOT).as_posix()
+            entry = by_file[relative.replace("/", "\\")]
+            if entry["verified"]:
+                self.assertTrue(all(is_official_dhv_url(url) for url in urls), path)
+                self.assertTrue(is_official_dhv_url(entry["source_url"]), path)
+            self.assertNotRegex(text, r"\b\d{12}\b", path)
 
     def test_processed_metadata_and_new_career_evidence_are_present(self) -> None:
         school = json.loads(
@@ -74,31 +84,33 @@ class TaskMRawDataTests(unittest.TestCase):
                 / "data"
                 / "processed"
                 / "thong_tin_truong"
-                / "thong_tin_truong_dhv_2026.json"
+                / "TONG_QUAN_TUYEN_SINH_DHV_2026.json"
             ).read_text(encoding="utf-8")
         )
-        career = json.loads(
+        catalog = json.loads(
             (
                 PROJECT_ROOT
                 / "data"
                 / "processed"
-                / "nganh_dao_tao"
-                / "mo_ta_cntt_co_hoi_nghe_nghiep_2026.json"
+                / "phuong_thuc_xet_tuyen"
+                / "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.json"
             ).read_text(encoding="utf-8")
         )
 
-        for document in (school, career):
+        for document in (school, catalog):
             source = document["source"]
             self.assertEqual(source["verification_status"], "verified")
-            self.assertEqual(source["collected_at"], "2026-09-15")
+            self.assertEqual(source["collected_at"], "2026-09-23")
             self.assertTrue(source["source_date"])
             self.assertTrue(source["source_urls"])
             self.assertTrue(document["pages"])
-        self.assertTrue(any("info@dhv.edu.vn" in page["text"] for page in school["pages"]))
-        self.assertEqual(career["data_role"], "description")
-        career_text = "\n".join(page["text"] for page in career["pages"])
-        self.assertIn("Cơ hội nghề nghiệp", career_text)
-        self.assertIn("Không suy diễn", career_text)
+        self.assertEqual(
+            sum(record.get("record_type") == "major" for record in school["records"]),
+            20,
+        )
+        self.assertTrue(
+            any(record.get("record_type") == "application_threshold" for record in catalog["records"])
+        )
 
     def test_official_host_policy_rejects_non_dhv_and_lookalike_urls(self) -> None:
         self.assertTrue(is_official_dhv_url("https://dhv.edu.vn/"))

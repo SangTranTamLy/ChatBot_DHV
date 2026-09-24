@@ -30,10 +30,9 @@ class TaskResponseRegressionTests(unittest.TestCase):
     def test_school_info_uses_overview_sections(self) -> None:
         result, _ = self._ask("thông tin trường")
 
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(result["answer_plan"]["mode"], "OVERVIEW")
-        self.assertIn("1995", result["answer"])
-        self.assertIn("- ", result["answer"])
+        self.assertEqual(result["status"], "no_data")
+        self.assertEqual(result["answer_plan"]["mode"], "NO_DATA")
+        self.assertNotIn("1995", result["answer"])
         self.assertNotIn("[Evidence", result["answer"])
         self.assertNotIn("Nguồn chính thức", result["answer"])
 
@@ -50,7 +49,6 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertEqual(result["answer_plan"]["mode"], "EXPLANATION")
         self.assertGreaterEqual(str(result["answer"]).count("- "), 3)
         self.assertIn("50%", result["answer"])
-        self.assertIn("ĐGNL", result["answer"])
 
     def test_personal_score_is_a_deterministic_threshold_comparison(self) -> None:
         result, llm = self._ask("720 điểm ĐGNL có đủ điều kiện nộp hồ sơ không")

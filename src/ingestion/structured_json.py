@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
@@ -61,6 +62,7 @@ def is_official_dhv_url(value: object) -> bool:
 def _clean_text(value: str) -> str:
     """Normalise extraction artefacts without changing factual tokens."""
 
+    value = unicodedata.normalize("NFC", value)
     value = value.replace("\u00a0", " ").replace("\u00ad", "")
     value = re.sub(r"(?<=\w)-\s*\n\s*(?=\w)", "-", value)
     value = re.sub(r"[ \t]+\n", "\n", value)
@@ -130,7 +132,7 @@ def _date_metadata(text: str) -> tuple[str, str]:
 
 def _title_from_text(text: str) -> str:
     first = next(iter(_nonempty_lines(text)), "")
-    match = re.match(r"^DHV(?:\s+2026)?\s*-\s*(?P<title>.+?)\s*$", first)
+    match = re.match(r"^DHV(?:\s+\d{4})?\s*-\s*(?P<title>.+?)\s*$", first)
     return match.group("title").strip() if match else first
 
 
@@ -146,84 +148,242 @@ def _all_lines(pages: list[dict[str, Any]]) -> list[tuple[int, str]]:
     return result
 
 
-def parse_major_catalog(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Parse major rows while keeping programs as children of their major."""
+def _catalog_code_positions(lines: list[tuple[int, str]]) -> list[int]:
+    """Return code lines used by catalog-style PDFs.
+
+    DHV publishes the same catalog in several layouts: one uses a standalone
+    seven-digit code after the program list, another keeps ``Major  code`` on
+    one line.  Admission tables use a leading row number and are deliberately
+    excluded here so their values cannot be mislabeled as application
+    thresholds.
+    """
+
+    positions: list[int] = []
+    for index, (_, line) in enumerate(lines):
+        if _MAJOR_CODE_RE.fullmatch(line) or re.fullmatch(r".+\s+\d{7}", line):
+            positions.append(index)
+    return positions
+
+
+def _catalog_major_name(lines: list[tuple[int, str]], index: int) -> str:
+    line = lines[index][1]
+    inline = re.fullmatch(r"(?P<name>.+?)\s+(?P<code>\d{7})", line)
+    if inline:
+        return inline.group("name").strip(" •-.")
+
+    candidates: list[str] = []
+    cursor = index - 1
+    while cursor >= 0 and len(candidates) < 3:
+        candidate = lines[cursor][1].strip()
+        if _MAJOR_CODE_RE.fullmatch(candidate):
+            break
+        if candidate.startswith(("-", "•")):
+            cursor -= 1
+            continue
+        # Native extraction can put a wrapped program continuation on its own
+        # line (for example ``hợp`` after ``- Quản trị Kinh doanh tổng``).
+        # It is not the major label and must not be promoted to one.
+        if (
+            cursor > 0
+            and lines[cursor - 1][1].strip().startswith(("-", "•"))
+            and not (
+                cursor > 1
+                and _MAJOR_CODE_RE.fullmatch(lines[cursor - 2][1].strip())
+            )
+            and (
+                candidate[:1].islower()
+                or (
+                    cursor > 1
+                    and lines[cursor - 2][1].strip().startswith(("-", "•"))
+                )
+                or (
+                    cursor > 2
+                    and not lines[cursor - 2][1].strip().startswith(("-", "•"))
+                    and lines[cursor - 3][1].strip().startswith(("-", "•"))
+                )
+            )
+        ):
+            cursor -= 1
+            continue
+        if re.match(r"^(?:STT|Mã|Tên mã|Bảng|1\.\d|\d+\.)", candidate, re.IGNORECASE):
+            break
+        candidates.append(candidate)
+        cursor -= 1
+        # A lower-case line is normally a wrapped continuation such as
+        # ``lịch & Lữ hành``.  The next line is the start of the major name.
+        if not candidate[:1].islower():
+            break
+    if not candidates:
+        return ""
+    return " ".join(reversed(candidates)).strip(" •-.")
+
+
+def _catalog_programs(
+    lines: list[tuple[int, str]],
+    *,
+    index: int,
+    lower_bound: int,
+    parent_major: str,
+    parent_major_code: str,
+    page: int,
+) -> list[dict[str, Any]]:
+    """Read bullet programs, including line-wrapped bullet continuations."""
+
+    programs: list[dict[str, Any]] = []
+    pending_continuation: list[str] = []
+    cursor = index - 1
+    while cursor > lower_bound:
+        candidate = lines[cursor][1].strip()
+        if candidate == parent_major:
+            break
+        if candidate.startswith(("-", "•")):
+            program_name = candidate[1:].strip(" •-.")
+            if pending_continuation:
+                program_name = f"{program_name} {' '.join(reversed(pending_continuation))}".strip()
+                pending_continuation.clear()
+            if program_name:
+                programs.append(
+                    {
+                        "program_name": program_name,
+                        "parent_major": parent_major,
+                        "parent_major_code": parent_major_code,
+                        "page": page,
+                    }
+                )
+            cursor -= 1
+            continue
+        if cursor > lower_bound and lines[cursor - 1][1].strip().startswith(("-", "•")):
+            pending_continuation.append(candidate)
+            cursor -= 1
+            continue
+        break
+    programs.reverse()
+    return programs
+
+
+def parse_major_catalog(
+    pages: list[dict[str, Any]],
+    *,
+    include_thresholds: bool = True,
+) -> list[dict[str, Any]]:
+    """Parse major rows while keeping programs as children of their major.
+
+    ``include_thresholds`` is only enabled for a source whose table explicitly
+    places three threshold columns after each major row.  Multi-topic official
+    PDFs often contain the catalog without those columns; in that case the
+    catalog and threshold facts are emitted as separate semantic records.
+    """
 
     lines = _all_lines(pages)
+    code_positions = _catalog_code_positions(lines)
     records: list[dict[str, Any]] = []
-    for index, (_, line) in enumerate(lines):
-        if not _MAJOR_CODE_RE.fullmatch(line):
-            continue
-        major_name = ""
-        for previous_index in range(index - 1, -1, -1):
-            candidate = lines[previous_index][1]
-            if candidate and not _MAJOR_CODE_RE.fullmatch(candidate):
-                major_name = candidate
-                break
+    for position_index, index in enumerate(code_positions):
+        page, line = lines[index]
+        inline = re.fullmatch(r"(?P<name>.+?)\s+(?P<code>\d{7})", line)
+        major_code = inline.group("code") if inline else line
+        major_name = _catalog_major_name(lines, index)
         if not major_name:
             continue
 
-        payload: list[str] = []
-        values: list[str] | None = None
-        cursor = index + 1
-        while cursor < len(lines):
-            candidate = lines[cursor][1]
-            if (
-                cursor + 2 < len(lines)
-                and all(_NUMBER_RE.fullmatch(lines[pos][1]) or lines[pos][1] == "-" for pos in range(cursor, cursor + 3))
-            ):
-                values = [lines[pos][1] for pos in range(cursor, cursor + 3)]
-                break
-            # A new code before thresholds means this row is malformed.  Keep
-            # the row out of structured records rather than borrowing values.
-            if _MAJOR_CODE_RE.fullmatch(candidate):
-                values = None
-                break
-            payload.append(candidate)
-            cursor += 1
-        if values is None:
-            continue
-
-        program_text = " ".join(payload).strip()
-        programs: list[dict[str, Any]] = []
-        if program_text and program_text not in {"-", "—"}:
-            for program_name in (item.strip() for item in program_text.split(";")):
-                if program_name:
-                    programs.append(
-                        {
-                            "program_name": program_name,
-                            "parent_major": major_name,
-                            "parent_major_code": line,
-                            "page": _page_for_line(lines, index),
-                        }
-                    )
-        records.append(
-            {
-                "record_type": "major",
-                "record_id": f"major_{len(records) + 1:03d}",
-                "major_name": major_name,
-                "major_code": line,
-                "programs": programs,
-                "program_count": len(programs),
-                "threshold_type": "application_threshold",
-                "thresholds": {
-                    "thpt": _value_or_raw(values[0]),
-                    "hoc_ba": _value_or_raw(values[1]),
-                    "dgnl": _value_or_raw(values[2]),
-                },
-                "thresholds_raw": {
-                    "thpt": values[0],
-                    "hoc_ba": values[1],
-                    "dgnl": values[2],
-                },
-                "page": _page_for_line(lines, index),
-            }
+        lower_bound = code_positions[position_index - 1] if position_index else -1
+        programs = _catalog_programs(
+            lines,
+            index=index,
+            lower_bound=lower_bound,
+            parent_major=major_name,
+            parent_major_code=major_code,
+            page=page,
         )
+        next_code = (
+            code_positions[position_index + 1]
+            if position_index + 1 < len(code_positions)
+            else len(lines)
+        )
+        # A page break can place the final bullet of a major after its code
+        # and before the next major label.  Keep that source bullet attached
+        # to the preceding major instead of silently dropping it.
+        next_major_name = (
+            _catalog_major_name(lines, next_code)
+            if next_code < len(lines)
+            else ""
+        )
+        if next_major_name:
+            for forward_index in range(index + 1, next_code):
+                candidate = lines[forward_index][1].strip()
+                if candidate == next_major_name:
+                    break
+                if (
+                    programs
+                    and not candidate.startswith(("-", "•"))
+                    and lines[forward_index - 1][1].strip().startswith(("-", "•"))
+                ):
+                    programs[-1]["program_name"] = (
+                        f"{programs[-1]['program_name']} {candidate}"
+                    ).strip()
+                    continue
+                if not candidate.startswith(("-", "•")):
+                    candidate_key = re.sub(r"\s+", " ", candidate).casefold()
+                    next_major_key = re.sub(r"\s+", " ", next_major_name).casefold()
+                    if candidate_key and next_major_key.startswith(candidate_key):
+                        break
+                if candidate.startswith(("-", "•")):
+                    program_name = candidate[1:].strip(" •-.")
+                    if program_name and not any(
+                        program.get("program_name") == program_name
+                        for program in programs
+                    ):
+                        programs.append(
+                            {
+                                "program_name": program_name,
+                                "parent_major": major_name,
+                                "parent_major_code": major_code,
+                                "page": lines[forward_index][0],
+                            }
+                        )
+
+        record: dict[str, Any] = {
+            "record_type": "major",
+            "record_id": f"major_{len(records) + 1:03d}",
+            "fact_category": "nganh_dao_tao",
+            "major_name": major_name,
+            "major_code": major_code,
+            "programs": programs,
+            "program_count": len(programs),
+            "page": page,
+        }
+
+        if include_thresholds and not inline:
+            values: list[str] = []
+            for value_index in range(index + 1, next_code):
+                value = lines[value_index][1]
+                if _NUMBER_RE.fullmatch(value) or value == "-":
+                    values.append(value)
+                if len(values) == 3:
+                    break
+            if len(values) == 3:
+                record.update(
+                    {
+                        "threshold_type": "application_threshold",
+                        "thresholds": {
+                            "thpt": _value_or_raw(values[0]),
+                            "hoc_ba": _value_or_raw(values[1]),
+                            "dgnl": _value_or_raw(values[2]),
+                        },
+                        "thresholds_raw": {
+                            "thpt": values[0],
+                            "hoc_ba": values[1],
+                            "dgnl": values[2],
+                        },
+                    }
+                )
+        records.append(record)
+
     if records:
         records.append(
             {
                 "record_type": "major_catalog_summary",
                 "record_id": "major_catalog_summary",
+                "fact_category": "nganh_dao_tao",
                 "major_count": len(records),
                 "majors": [
                     {"major_name": record["major_name"], "major_code": record["major_code"]}
@@ -233,12 +393,10 @@ def parse_major_catalog(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     {
                         "major_name": record["major_name"],
                         "major_code": record["major_code"],
-                        "thresholds_raw": record["thresholds_raw"],
+                        "thresholds_raw": record.get("thresholds_raw", {}),
                     }
                     for record in records
                 ],
-                # Keep the summary tied to the page carrying the parsed rows;
-                # do not invent a page number for synthetic test documents.
                 "page": records[-1]["page"],
             }
         )
@@ -247,35 +405,94 @@ def parse_major_catalog(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def parse_application_thresholds(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     text = "\n".join(str(page.get("text", "")) for page in pages)
-    patterns = (
-        ("thpt", "Xét kết quả kỳ thi tốt nghiệp THPT", r"từ\s+(\d+(?:[.,]\d+)?)\s*điểm"),
-        ("hoc_ba", "Xét kết quả học tập THPT (học bạ)", r"từ\s+(\d+(?:[.,]\d+)?)\s*điểm"),
-        ("dgnl", "Xét kết quả kỳ thi Đánh giá năng lực", r"từ\s+(\d+(?:[.,]\d+)?)\s*điểm"),
-    )
     records: list[dict[str, Any]] = []
-    for method, label, pattern in patterns:
-        match = re.search(re.escape(label) + r"[^\n]*?" + pattern, text, re.IGNORECASE)
-        if match:
-            raw_value = match.group(1)
-            records.append(
-                {
-                    "record_type": "application_threshold",
-                    "record_id": f"application_threshold_{method}",
-                    "score_type": "application_threshold",
-                    "method": method,
-                    "label": label,
-                    "value": _value_or_raw(raw_value),
-                    "raw_value": raw_value,
-                    "page": next((int(page["page"]) for page in pages if label.casefold() in str(page.get("text", "")).casefold()), 1),
-                }
-            )
+    def add(method: str, raw_value: str, label: str, *, major_name: str | None = None) -> None:
+        record: dict[str, Any] = {
+            "record_type": "application_threshold",
+            "record_id": f"application_threshold_{method}_{len(records) + 1:03d}",
+            "fact_category": "nguong_dau_vao",
+            "score_type": "application_threshold",
+            "method": method,
+            "label": label,
+            "value": _value_or_raw(raw_value),
+            "raw_value": raw_value,
+            "page": next((int(page["page"]) for page in pages if label.casefold() in str(page.get("text", "")).casefold()), 1),
+        }
+        if major_name:
+            record["major_name"] = major_name
+        records.append(record)
+
+    thpt = re.search(r"tối\s*thiểu\s*(\d+(?:[.,]\d+)?)\s*điểm", text, re.IGNORECASE)
+    if not thpt:
+        # One source PDF places an illustration marker between ``tối`` and
+        # ``thiểu`` at a page boundary.  The bounded fallback preserves the
+        # same sentence instead of borrowing a value from another section.
+        thpt = re.search(r"tối[\s\S]{0,300}?thiểu\s*(\d+(?:[.,]\d+)?)\s*điểm", text, re.IGNORECASE)
+    if thpt:
+        add("thpt", thpt.group(1), "Điều kiện chung xét tuyển THPT")
+
+    law = re.search(
+        r"ngành\s+Luật\s+và\s+Luật\s+Kinh\s+tế[\s\S]{0,500}?đạt\s+từ\s+(\d+(?:[.,]\d+)?)\s*điểm",
+        text,
+        re.IGNORECASE,
+    )
+    if law:
+        for major_name in ("Luật", "Luật kinh tế"):
+            add("thpt", law.group(1), "Điều kiện riêng ngành Luật/Luật kinh tế", major_name=major_name)
+
+    dgnl = re.search(
+        r"Đánh\s+giá\s+năng\s+lực[\s\S]{0,500}?điểm\s+từ\s+(\d+(?:[.,]\d+)?)\s*điểm",
+        text,
+        re.IGNORECASE,
+    )
+    if dgnl:
+        add("dgnl", dgnl.group(1), "Xét kết quả kỳ thi Đánh giá năng lực")
     return records
 
 
 def parse_admission_scores(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for page in pages:
-        for line in _nonempty_lines(str(page.get("text", ""))):
+        lines = _nonempty_lines(str(page.get("text", "")))
+        rows: list[str] = []
+        current: list[str] = []
+        for line in lines:
+            if re.match(r"^\d+\s+\d{7,9}\s+", line):
+                if current:
+                    rows.append(" ".join(current))
+                current = [line]
+            elif current:
+                current.append(line)
+        if current:
+            rows.append(" ".join(current))
+        row_pattern = re.compile(
+            r"^\d+\s+(?P<code>\d{7,9})\s+(?P<major>.+?)\s+"
+            r"(?P<thpt>\d+(?:[.,]\d+)?)\s+"
+            r"(?P<hoc_ba>\d+(?:[.,]\d+)?)(?:\(\*\))?\s+"
+            r"(?P<dgnl>\d+(?:[.,]\d+)?)$",
+            re.IGNORECASE,
+        )
+        for row in rows:
+            match = row_pattern.match(row)
+            if match:
+                for method in ("thpt", "hoc_ba", "dgnl"):
+                    raw_value = match.group(method)
+                    records.append(
+                        {
+                            "record_type": "admission_score",
+                            "record_id": f"admission_score_{len(records) + 1:03d}",
+                            "fact_category": "diem_trung_tuyen",
+                            "score_type": "admission_score",
+                            "method": method,
+                            "major_name": match.group("major").strip(" •*-"),
+                            "major_code": match.group("code"),
+                            "value": _value_or_raw(raw_value),
+                            "raw_value": raw_value,
+                            "page": int(page["page"]),
+                        }
+                    )
+
+        for line in lines:
             match = re.match(r"^•\s*(?P<major>[^:]+):\s*(?P<value>\d+(?:[.,]\d+)?)\s*điểm", line, re.IGNORECASE)
             if match:
                 raw_value = match.group("value")
@@ -285,6 +502,7 @@ def parse_admission_scores(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     {
                         "record_type": record_type,
                         "record_id": f"admission_score_{len(records) + 1:03d}",
+                        "fact_category": "diem_trung_tuyen",
                         "score_type": "admission_score",
                         "method": "thpt",
                         "major_name": major_name,
@@ -308,22 +526,43 @@ def parse_tuition(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         "elearning_fee_vnd": None,
         "english_test_fee_vnd": None,
         "total_cost_vnd": None,
+        "total_cost_breakdown": None,
+        "tuition_per_credit_vnd": None,
+        "unit_type": "per_semester",
+        "unit_name": "Học kỳ I",
         "page": 1,
     }
     credits_match = re.search(r"Học phí HKI\s*\((\d+)\s*tín chỉ\)", text, re.IGNORECASE)
     if credits_match:
         record["credits"] = int(credits_match.group(1))
     field_patterns = {
-        "tuition_amount_vnd": r"Học phí HKI[^\n]*?:\s*([^\n]+)",
-        "admission_fee_vnd": r"Phí nhập học:\s*([^\n]+)",
-        "elearning_fee_vnd": r"Tài khoản học liệu điện tử:\s*([^\n]+)",
-        "english_test_fee_vnd": r"Kiểm tra năng lực Tiếng Anh[^:]*:\s*([^\n]+)",
-        "total_cost_vnd": r"Tổng chi phí học kỳ I:\s*([^\n]+)",
+        "tuition_amount_vnd": r"Học phí HKI[^\n]*?\)\s*([^\n]+)",
+        "admission_fee_vnd": r"Phí nhập học\s*:?\s*([^\n]+)",
+        "elearning_fee_vnd": r"Tài khoản học liệu điện tử\s*:?\s*([^\n]+)",
+        "english_test_fee_vnd": r"Kiểm tra năng lực Tiếng Anh[^:]*:?\s*([^\n]+)",
+        "total_cost_vnd": r"Tổng chi phí học kỳ I\s*:?\s*([^\n]+)",
     }
     for field, pattern in field_patterns.items():
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             record[field] = _to_amount(match.group(1))
+    total_match = re.search(r"Tổng chi phí học kỳ I\s*:?\s*([^\n]+)", text, re.IGNORECASE)
+    if total_match:
+        record["total_cost_breakdown"] = total_match.group(1).strip()
+    per_credit = re.search(
+        r"học phí\s+được\s+tính\s+([\d.]+)\s*đồng\s*/\s*tín\s*chỉ",
+        text,
+        re.IGNORECASE,
+    )
+    if per_credit:
+        record["tuition_per_credit_vnd"] = _to_int(per_credit.group(1))
+        record["unit_type"] = "per_credit"
+        record["unit_name"] = "tín chỉ"
+        record["per_credit_page"] = next(
+            (int(page["page"]) for page in pages if "được tính" in str(page.get("text", "")).casefold()),
+            1,
+        )
+    record["fact_category"] = "hoc_phi"
     return [record] if any(value is not None for key, value in record.items() if key.endswith("_vnd")) else []
 
 
@@ -335,7 +574,7 @@ def parse_scholarship(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         records.append(
             {
                 "record_type": "scholarship_fund",
-                "record_id": "scholarship_fund_2026",
+                "record_id": "scholarship_fund",
                 "fund_amount_vnd": int(fund_match.group(1)) * 1_000_000_000,
                 "raw_value": f"{fund_match.group(1)} tỷ đồng",
                 "page": 1,
@@ -400,16 +639,22 @@ def parse_scholarship(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         records.append(record)
     # Preserve the remaining policies as exact text records.  No score or
     # eligibility value is inferred from prose that is not a deterministic row.
+    policy_markers = (
+        "học bổng",
+        "hỗ trợ học phí",
+        "hỗ trợ "
+    )
     for page in pages:
         for line in _nonempty_lines(str(page.get("text", ""))):
-            if line.startswith("• ") and any(
-                marker in line for marker in ("Học bổng Tài năng", "Học bổng Ngành Tiên phong", "Đôi bạn cùng tiến", "Tương lai vững bước", "Biển đảo")
+            folded_line = line.casefold()
+            if any(marker in folded_line for marker in policy_markers) and (
+                "%" in line or "triệu" in folded_line or "tỷ" in folded_line or "học phí" in folded_line
             ):
                 records.append(
                     {
                         "record_type": "scholarship_policy",
                         "record_id": f"scholarship_policy_{len(records) + 1:03d}",
-                        "policy_text": line[2:].strip(),
+                        "policy_text": line[2:].strip() if line.startswith("• ") else line.strip(),
                         "page": int(page["page"]),
                     }
                 )
@@ -435,7 +680,7 @@ def parse_scholarship(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
             0,
             {
                 "record_type": "scholarship_summary",
-                "record_id": "scholarship_summary_2026",
+                "record_id": "scholarship_summary",
                 "summary_lines": summary_lines,
                 "page": 1,
             },
@@ -458,27 +703,36 @@ _WEBSITE_DIRECTORY: dict[str, tuple[str, str]] = {
 }
 
 _CATEGORY_LABELS = {
-    "cach_tinh_diem": "Cách tính điểm xét tuyển DHV 2026",
-    "co_so_lien_he": "Cơ sở và liên hệ tuyển sinh DHV 2026",
-    "dang_ky_xet_tuyen": "Cổng đăng ký xét tuyển DHV 2026",
-    "diem_trung_tuyen": "Điểm trúng tuyển DHV 2026",
-    "ho_so": "Hồ sơ nhập học DHV 2026",
-    "hoc_bong": "Học bổng DHV 2026",
-    "hoc_phi": "Học phí DHV 2026",
-    "lich_tuyen_sinh": "Lịch tuyển sinh DHV 2026",
-    "nganh_dao_tao": "Ngành đào tạo DHV 2026",
-    "nguong_dau_vao": "Điểm sàn DHV 2026",
-    "nhap_hoc": "Nhập học DHV 2026",
-    "phuong_thuc_xet_tuyen": "Phương thức xét tuyển DHV 2026",
-    "thong_tin_truong": "Thông tin trường DHV 2026",
-    "xet_tuyen_bo_sung": "Xét tuyển bổ sung DHV 2026",
+    "cach_tinh_diem": "Cách tính điểm xét tuyển DHV",
+    "co_so_lien_he": "Cơ sở và liên hệ tuyển sinh DHV",
+    "dang_ky_xet_tuyen": "Cổng đăng ký xét tuyển DHV",
+    "diem_trung_tuyen": "Điểm trúng tuyển DHV",
+    "ho_so": "Hồ sơ nhập học DHV",
+    "hoc_bong": "Học bổng DHV",
+    "hoc_phi": "Học phí DHV",
+    "lich_tuyen_sinh": "Lịch tuyển sinh DHV",
+    "nganh_dao_tao": "Ngành đào tạo DHV",
+    "nguong_dau_vao": "Điểm sàn DHV",
+    "nhap_hoc": "Nhập học DHV",
+    "phuong_thuc_xet_tuyen": "Phương thức xét tuyển DHV",
+    "thong_tin_truong": "Thông tin trường DHV",
+    "xet_tuyen_bo_sung": "Xét tuyển bổ sung DHV",
 }
+
+
+def _category_label(category: str, year: int) -> str:
+    return f"{_CATEGORY_LABELS.get(category, category)} {year}"
 
 
 def parse_official_websites(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     text = "\n".join(str(page.get("text", "")) for page in pages)
     records: list[dict[str, Any]] = []
     for url in _source_urls(text):
+        # Social/video links may be present in a school-information PDF, but
+        # only DHV-owned HTTPS URLs are promoted to provenance records.
+        # ``extracted_links`` still preserves every link found in the text.
+        if not is_official_dhv_url(url):
+            continue
         normalized = url.rstrip("/") + "/" if url.count("/") == 2 else url
         unit_name, unit_type = _WEBSITE_DIRECTORY.get(
             normalized,
@@ -521,11 +775,16 @@ def parse_score_formulas(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for line in _nonempty_lines(str(page.get("text", ""))):
             if line.casefold() in {"học bạ", "thi tốt nghiệp thpt"}:
                 method = "hoc_ba" if line.casefold() == "học bạ" else "thpt"
-            if line.startswith("• ") and ("Điểm xét tuyển" in line or "Xét theo tổ hợp" in line):
+            if line.startswith("• ") and (
+                "Điểm xét tuyển" in line
+                or "Xét theo tổ hợp" in line
+                or "Xét theo" in line
+            ):
                 records.append(
                     {
                         "record_type": "score_formula",
                         "record_id": f"score_formula_{len(records) + 1:03d}",
+                        "fact_category": "cach_tinh_diem",
                         "score_type": "score_formula",
                         "method": method or None,
                         "formula_text": line[2:].strip(),
@@ -537,19 +796,42 @@ def parse_score_formulas(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def parse_admission_methods(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
+    fallback_patterns = (
+        ("thpt", re.compile(r"^Xét kết quả kỳ thi tốt nghiệp THPT", re.IGNORECASE)),
+        ("hoc_ba", re.compile(r"^Xét tuyển kết quả học tập THPT", re.IGNORECASE)),
+        ("dgnl", re.compile(r"^Xét kết quả kỳ thi Đánh giá năng lực", re.IGNORECASE)),
+        ("h_sca", re.compile(r"^Xét kết quả bài thi Đánh giá năng lực chuyên biệt", re.IGNORECASE)),
+        ("trung_cap", re.compile(r"^Xét tuyển đối với thí sinh tốt nghiệp trung cấp", re.IGNORECASE)),
+    )
     for page in pages:
         for line in _nonempty_lines(str(page.get("text", ""))):
-            match = re.match(r"^•\s*Phương thức\s*(\d+)\s*:\s*(.*)$", line, re.IGNORECASE)
+            match = re.match(r"^•?\s*Phương thức\s*(\d+)\s*:\s*(.*)$", line, re.IGNORECASE)
             if match:
                 records.append(
                     {
                         "record_type": "admission_method",
                         "record_id": f"admission_method_{match.group(1)}",
+                        "fact_category": "phuong_thuc_xet_tuyen",
                         "method_number": int(match.group(1)),
                         "method_text": match.group(2).strip(),
                         "page": int(page["page"]),
                     }
                 )
+                continue
+            for method, pattern in fallback_patterns:
+                if pattern.search(line):
+                    records.append(
+                        {
+                            "record_type": "admission_method",
+                            "record_id": f"admission_method_{len(records) + 1:03d}",
+                            "fact_category": "phuong_thuc_xet_tuyen",
+                            "method_number": len(records) + 1,
+                            "method": method,
+                            "method_text": line.strip(),
+                            "page": int(page["page"]),
+                        }
+                    )
+                    break
     return records
 
 
@@ -634,13 +916,16 @@ def parse_deadlines(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for page in pages:
         for line in _nonempty_lines(str(page.get("text", ""))):
-            if not line.startswith("• ") or not re.search(r"\d{1,2}/\d{1,2}/\d{4}", line):
+            if not re.search(r"\d{1,2}/\d{1,2}/\d{4}", line):
+                continue
+            if not line.startswith("• ") and not re.search(r"(?:hạn|thời gian|đến hết|đăng ký)", line, re.IGNORECASE):
                 continue
             dates = re.findall(r"\d{1,2}/\d{1,2}/\d{4}", line)
             records.append(
                 {
                     "record_type": "deadline",
                     "record_id": f"deadline_{len(records) + 1:03d}",
+                    "fact_category": "lich_tuyen_sinh",
                     "deadline_date": dates[-1],
                     "dates": dates,
                     "description": line[2:].strip(),
@@ -658,18 +943,21 @@ def parse_supplementary(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         records.append(
             {
                 "record_type": "supplementary_quota",
-                "record_id": "supplementary_quota_2026",
+                "record_id": "supplementary_quota",
+                "fact_category": "xet_tuyen_bo_sung",
                 "quota": int(quota.group(1)),
                 "program_count": int(quota.group(2)),
                 "page": 1,
             }
         )
-    threshold_line = next((line for line in _nonempty_lines(text) if "phần lớn chương trình nhận hồ sơ" in line), "")
-    if threshold_line:
+    compact_text = re.sub(r"\s+", " ", text).strip()
+    threshold_line = "phần lớn chương trình nhận hồ sơ"
+    if threshold_line in compact_text.casefold():
         records.append(
             {
                 "record_type": "supplementary_threshold",
                 "record_id": "supplementary_threshold_thpt_general",
+                "fact_category": "xet_tuyen_bo_sung",
                 "score_type": "supplementary_threshold",
                 "method": "thpt",
                 "scope": "most_programs",
@@ -683,6 +971,7 @@ def parse_supplementary(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 {
                     "record_type": "supplementary_threshold",
                     "record_id": f"supplementary_threshold_{major_name.casefold().replace(' ', '_')}",
+                    "fact_category": "xet_tuyen_bo_sung",
                     "score_type": "supplementary_threshold",
                     "method": "thpt",
                     "major_name": major_name,
@@ -691,11 +980,12 @@ def parse_supplementary(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "page": 1,
                 }
             )
-    if "Học bạ THPT" in text and "từ 18 điểm" in text:
+    if "học tập trung học phổ thông" in compact_text.casefold() and re.search(r"phần lớn chương trình từ 18", compact_text, re.IGNORECASE):
         records.append(
             {
                 "record_type": "supplementary_threshold",
                 "record_id": "supplementary_threshold_hoc_ba_general",
+                "fact_category": "xet_tuyen_bo_sung",
                 "score_type": "supplementary_threshold",
                 "method": "hoc_ba",
                 "scope": "most_programs",
@@ -704,6 +994,46 @@ def parse_supplementary(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "page": 1,
             }
         )
+    for page in pages:
+        lines = _nonempty_lines(str(page.get("text", "")))
+        rows: list[str] = []
+        current: list[str] = []
+        for line in lines:
+            if re.match(r"^\d+\s+\d{7,9}\s+", line):
+                if current:
+                    rows.append(" ".join(current))
+                current = [line]
+            elif current:
+                current.append(line)
+        if current:
+            rows.append(" ".join(current))
+        row_pattern = re.compile(
+            r"^\d+\s+(?P<code>\d{7,9})\s+(?P<major>.+?)\s+"
+            r"(?P<quota>\d+)\s+(?P<thpt>\d+(?:[.,]\d+)?)\s+"
+            r"(?P<hoc_ba>\d+(?:[.,]\d+)?)(?:\(\*\))?$",
+            re.IGNORECASE,
+        )
+        for row in rows:
+            match = row_pattern.match(row)
+            if not match:
+                continue
+            for method in ("thpt", "hoc_ba"):
+                raw_value = match.group(method)
+                records.append(
+                    {
+                        "record_type": "supplementary_threshold",
+                        "record_id": f"supplementary_threshold_{len(records) + 1:03d}",
+                        "fact_category": "xet_tuyen_bo_sung",
+                        "score_type": "supplementary_threshold",
+                        "method": method,
+                        "major_name": match.group("major").strip(" •*-"),
+                        "major_code": match.group("code"),
+                        "quota": int(match.group("quota")),
+                        "value": _value_or_raw(raw_value),
+                        "raw_value": raw_value,
+                        "page": int(page["page"]),
+                    }
+                )
     records.extend(parse_deadlines(pages))
     return records
 
@@ -744,23 +1074,78 @@ PARSERS = {
 
 def _parse_category_records(category: str, pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     parser = PARSERS.get(category)
-    if parser is not None:
-        parsed = parser(pages)
-        if parsed:
-            return parsed
-        # A category-specific parser may legitimately find no deterministic
-        # row (for example a descriptive career document under the same
-        # ``nganh_dao_tao`` category).  Keep a traceable raw-text record rather
-        # than making that source disappear from the processed layer.
-        return [
-            {
-                "record_type": "document_text",
-                "record_id": "document_text_001",
-                "text": "\n\n".join(str(page.get("text", "")) for page in pages).strip(),
-                "page": int(pages[0]["page"]) if pages else 1,
-            }
-        ]
-    records = parse_deadlines_and_policies(pages)
+    records = list(parser(pages)) if parser is not None else parse_deadlines_and_policies(pages)
+
+    if category == "xet_tuyen_bo_sung":
+        # The supplementary source owns its submission deadline.  Keep that
+        # deadline queryable with the supplementary topic while retaining the
+        # cross-domain provenance for the calendar facet.
+        for record in records:
+            if record.get("record_type") == "deadline":
+                record.setdefault("source_fact_category", "lich_tuyen_sinh")
+                record["fact_category"] = "xet_tuyen_bo_sung"
+
+    def extend_as(fact_category: str, parsed: Iterable[Mapping[str, Any]]) -> None:
+        for value in parsed:
+            record = dict(value)
+            record.setdefault("fact_category", fact_category)
+            records.append(record)
+
+    # Official DHV PDFs are often multi-topic documents.  Their manifest
+    # category remains the document's primary purpose, while deterministic
+    # facts are emitted under their domain category for retrieval.  This keeps
+    # ``phuong_thuc_xet_tuyen`` and ``ho_so`` provenance intact without hiding
+    # catalog, threshold, or tuition facts that are explicitly present in the
+    # same verified source.
+    if category != "nganh_dao_tao":
+        records.extend(parse_major_catalog(pages, include_thresholds=False))
+    if category != "nguong_dau_vao":
+        records.extend(parse_application_thresholds(pages))
+    if category != "hoc_phi":
+        records.extend(parse_tuition(pages))
+    if category not in {"diem_trung_tuyen", "xet_tuyen_bo_sung"}:
+        records.extend(parse_admission_scores(pages))
+    if category != "hoc_bong":
+        extend_as("hoc_bong", parse_scholarship(pages))
+    if category != "cach_tinh_diem":
+        extend_as("cach_tinh_diem", parse_score_formulas(pages))
+    if category not in {"lich_tuyen_sinh", "xet_tuyen_bo_sung"}:
+        extend_as("lich_tuyen_sinh", parse_deadlines(pages))
+
+    # The official source states a general THPT minimum and a general ĐGNL
+    # minimum, then names Law/Law Economics as exceptions.  Materialize the
+    # general rule against the catalog rows so entity-filtered retrieval can
+    # answer a named-major query without changing the score semantic type.
+    catalog_rows = [
+        record
+        for record in records
+        if record.get("record_type") == "major"
+        and record.get("fact_category") == "nganh_dao_tao"
+    ]
+    generic_thresholds = [
+        record
+        for record in records
+        if record.get("record_type") == "application_threshold"
+        and record.get("fact_category") == "nguong_dau_vao"
+        and not record.get("major_name")
+        and record.get("method") in {"thpt", "dgnl"}
+    ]
+    for threshold in generic_thresholds:
+        for major in catalog_rows:
+            major_name = str(major.get("major_name") or "")
+            if major_name.casefold() in {"luật", "luật kinh tế"}:
+                continue
+            expanded = dict(threshold)
+            expanded.update(
+                {
+                    "record_id": f"{threshold.get('record_id')}_{major.get('major_code')}",
+                    "major_name": major_name,
+                    "major_code": major.get("major_code"),
+                    "scope": "general_rule_from_source",
+                }
+            )
+            records.append(expanded)
+
     if records:
         return records
     return [
@@ -794,37 +1179,46 @@ def build_structured_document(
     raw_path: str | Path,
     raw_root: str | Path,
     pages: Iterable[Mapping[str, Any]],
-    extraction_method: str = "pypdf_text",
+    extraction_method: str = "native_pdf",
     warnings: Iterable[Mapping[str, Any]] = (),
+    manifest_entry: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build one JSON-serialisable structured document from extracted pages."""
 
     raw_file_path = Path(raw_path).resolve()
     raw_root_path = Path(raw_root).resolve()
     page_values = [
-        {"page": int(page["page"]), "text": _clean_text(str(page.get("text", "")))}
+        {
+            "page": int(page["page"]),
+            "text": _clean_text(str(page.get("text", ""))),
+            "extraction_method": str(page.get("extraction_method") or extraction_method),
+            **({"warnings": [dict(item) for item in page.get("warnings", [])]} if page.get("warnings") else {}),
+        }
         for page in pages
     ]
     if not page_values:
         raise ValueError("PDF has no pages")
     combined_text = "\n\n".join(page["text"] for page in page_values if page["text"])
-    title = _title_from_text(combined_text)
-    category = raw_file_path.parent.relative_to(raw_root_path).as_posix()
+    metadata = dict(manifest_entry or {})
+    title = str(metadata.get("title") or _title_from_text(combined_text)).strip()
+    category = str(metadata.get("category") or raw_file_path.parent.relative_to(raw_root_path).as_posix())
     if not category or "/" in category:
         raise ValueError("RAW PDF must be directly below one category directory")
-    urls = _source_urls(combined_text)
-    if not urls:
-        raise ValueError("source URL not found in PDF text")
-    if not all(is_official_dhv_url(url) for url in urls):
-        raise ValueError("structured source URL is outside official DHV domain")
-    source_date, collected_at = _date_metadata(combined_text)
-    if not source_date:
-        raise ValueError("source_date not found in PDF text")
-
-    document_id = raw_file_path.stem
+    year = metadata.get("year")
+    if isinstance(year, bool) or not isinstance(year, int) or not 2000 <= year <= 2100:
+        raise ValueError(f"manifest year is required and must be an integer for {raw_file_path.name}")
+    extracted_links = _source_urls(combined_text)
+    source_urls = [str(url) for url in metadata.get("source_urls") or [] if str(url).strip()]
+    source_url = str(metadata.get("source_url") or "").strip() or None
+    if source_url and source_url not in source_urls:
+        source_urls.insert(0, source_url)
+    source_date = str(metadata.get("source_date") or metadata.get("date") or "").strip()
+    collected_at = str(metadata.get("collected_at") or "").strip()
+    document_id = str(metadata.get("document_id") or raw_file_path.stem)
     data_role = "description" if category == "nganh_dao_tao" and any(marker in document_id.casefold() for marker in ("mo_ta", "nghe_nghiep", "trien_vong", "gioi_thieu")) else ("catalog" if category == "nganh_dao_tao" else "")
     warning_values: list[dict[str, Any]] = [dict(value) for value in warnings]
     for page in page_values:
+        warning_values.extend(dict(value) for value in page.get("warnings", []))
         if not page["text"]:
             warning_values.append(
                 {
@@ -833,30 +1227,43 @@ def build_structured_document(
                     "message": "Page has no extracted text; review the RAW PDF before indexing.",
                 }
             )
+    native_pages = sum(str(page.get("extraction_method")) in {"native", "native_pdf"} for page in page_values)
+    ocr_pages = sum(str(page.get("extraction_method")) == "ocr" for page in page_values)
+    methods = {str(page.get("extraction_method", extraction_method)) for page in page_values}
+    extraction_name = "ocr" if methods == {"ocr"} else ("native" if methods <= {"native", "native_pdf"} else "mixed")
+    raw_file = str(metadata.get("raw_file") or metadata.get("file") or "")
+    if not raw_file:
+        raw_file = raw_file_path.relative_to(Path.cwd()).as_posix() if raw_file_path.is_relative_to(Path.cwd()) else raw_file_path.as_posix()
+    status = str(metadata.get("status") or metadata.get("verification_status") or "pending_review").strip().lower()
+    verified = metadata.get("verified") is True and status == "verified"
     structured = {
         "document_id": document_id,
         "title": title,
         "category": category,
-        "year": 2026,
+        "year": year,
         "data_role": data_role,
         "source": {
             "file_name": raw_file_path.name,
-            "raw_file": raw_file_path.relative_to(Path.cwd()).as_posix() if raw_file_path.is_relative_to(Path.cwd()) else raw_file_path.as_posix(),
-            "source_url": urls[0],
-            "source_urls": urls,
-            "organization": SCHOOL_NAME,
-            "verified": True,
-            "status": "verified",
-            "verification_status": "verified",
+            "raw_file": raw_file,
+            "source_url": source_url,
+            "source_urls": source_urls,
+            "organization": str(metadata.get("organization") or SCHOOL_NAME),
+            "verified": verified,
+            "status": status,
+            "verification_status": status,
+            "source_type": metadata.get("source_type", "unknown"),
             "source_date": source_date,
             "collected_at": collected_at,
             "school_code": "DHV",
         },
         "extraction": {
-            "method": extraction_method,
-            "text_source": "pypdf",
+            "method": extraction_name,
+            "text_source": "pypdf" if ocr_pages == 0 else ("ocr" if native_pages == 0 else "mixed"),
             "page_count": len(page_values),
+            "native_pages": native_pages,
+            "ocr_pages": ocr_pages,
         },
+        "extracted_links": extracted_links,
         "pages": page_values,
         "sections": _page_sections(title, page_values),
         "records": _parse_category_records(category, page_values),
@@ -884,7 +1291,7 @@ def validate_structured_document(
     def error(path: str, message: str) -> None:
         errors.append({"path": path, "message": message})
 
-    for key in ("document_id", "title", "category", "source", "pages", "sections", "records", "warnings"):
+    for key in ("document_id", "title", "category", "year", "source", "pages", "sections", "records", "warnings"):
         if key not in document:
             error(key, f"missing required field: {key}")
     if not str(document.get("document_id", "")).strip():
@@ -901,17 +1308,26 @@ def validate_structured_document(
     if not isinstance(source, Mapping):
         error("source", "source must be an object")
         source = {}
-    for key in ("file_name", "source_url", "organization", "verified"):
+    for key in ("file_name", "organization", "verified", "status", "verification_status"):
         if key not in source:
             error(f"source.{key}", f"missing source field: {key}")
+    if not str(source.get("raw_file", "")).strip():
+        error("source.raw_file", "source raw_file is required for traceability")
     urls = list(source.get("source_urls") or [])
     if source.get("source_url") and source.get("source_url") not in urls:
         urls.insert(0, source["source_url"])
+    if source.get("source_url") and not is_official_dhv_url(source.get("source_url")):
+        error("source.source_url", "source URL must be an official DHV HTTPS URL on dhv.edu.vn or a subdomain")
     for index, url in enumerate(urls):
         if not is_official_dhv_url(url):
             error(f"source.source_urls[{index}]", "source URL must be an official DHV HTTPS URL on dhv.edu.vn or a subdomain")
-    if source.get("status") != "verified" or source.get("verification_status") != "verified" or source.get("verified") is not True:
-        error("source", "source must be explicitly verified")
+    if source.get("status") == "verified":
+        if source.get("verification_status") != "verified" or source.get("verified") is not True:
+            error("source", "verified source must be explicitly verified")
+        if not source.get("source_url"):
+            error("source.source_url", "verified source requires source_url")
+    elif source.get("verified") is True:
+        error("source", "unverified source cannot set verified=true")
 
     pages = document.get("pages")
     if not isinstance(pages, list) or not pages:
@@ -929,8 +1345,13 @@ def validate_structured_document(
             page_numbers.append(number)
         if not isinstance(page.get("text"), str):
             error(f"pages[{index}].text", "page text must be a string")
+        method = page.get("extraction_method")
+        if method not in {None, "native", "ocr", "native_pdf"}:
+            error(f"pages[{index}].extraction_method", "extraction_method must be native or ocr")
     if page_numbers and page_numbers != list(range(1, len(page_numbers) + 1)):
         error("pages", "page indexes must be sequential starting at 1")
+    if pages and not any(str(page.get("text", "")).strip() for page in pages if isinstance(page, Mapping)):
+        error("pages", "at least one page must contain non-empty text")
     extraction = document.get("extraction")
     if isinstance(extraction, Mapping) and extraction.get("page_count") != len(pages):
         error("extraction.page_count", "page_count must equal len(pages)")
@@ -987,7 +1408,7 @@ def validate_structured_document(
     return errors
 
 
-def _record_text(record: Mapping[str, Any]) -> str:
+def _record_text(record: Mapping[str, Any], *, year: int | None = None) -> str:
     record_type = str(record.get("record_type", ""))
     if record_type == "major":
         lines = [
@@ -1007,7 +1428,7 @@ def _record_text(record: Mapping[str, Any]) -> str:
                 lines.append("Giá trị gốc trong bảng: - - -")
         return "\n".join(lines)
     if record_type == "major_catalog_summary":
-        lines = [f"Danh mục ngành đào tạo DHV 2026 có {record.get('major_count')} ngành:"]
+        lines = [f"Danh mục ngành đào tạo DHV {year or ''} có {record.get('major_count')} ngành:"]
         for major in record.get("major_rows", record.get("majors", [])):
             if not isinstance(major, Mapping):
                 continue
@@ -1026,6 +1447,12 @@ def _record_text(record: Mapping[str, Any]) -> str:
         amount = record.get("tuition_amount_vnd")
         credits = record.get("credits", "")
         lines = [f"{label}: {_format_vnd(record[key])} đồng" for key, label in labels if isinstance(record.get(key), int)]
+        per_credit = record.get("tuition_per_credit_vnd")
+        if isinstance(per_credit, int):
+            lines.insert(0, f"Học phí theo tín chỉ: {_format_vnd(per_credit)} đồng/tín chỉ")
+        breakdown = str(record.get("total_cost_breakdown") or "").strip()
+        if breakdown:
+            lines.append(f"Tổng chi phí theo nguồn: {breakdown}")
         summary = (
             f"Học phí HKI ({credits} tín chỉ): {_format_vnd(amount)} đồng"
             if isinstance(amount, int)
@@ -1037,14 +1464,16 @@ def _record_text(record: Mapping[str, Any]) -> str:
     if record_type == "school_information":
         return str(record.get("information_text") or "").strip()
     if record_type == "application_threshold":
-        return f"Ngưỡng đảm bảo chất lượng đầu vào (điểm sàn, {record.get('method', '')}): {record.get('raw_value', record.get('value'))} điểm."
+        major = str(record.get("major_name") or "").strip()
+        scope = f" ngành {major}" if major else ""
+        return f"Ngưỡng đảm bảo chất lượng đầu vào{scope} (điểm sàn, {record.get('method', '')}): {record.get('raw_value', record.get('value'))} điểm."
     if record_type in {"admission_score", "admission_score_rule"}:
         return f"Điểm trúng tuyển ({record.get('method', '')}) ngành {record.get('major_name', '')}: {record.get('raw_value', record.get('value'))} điểm."
     if record_type == "supplementary_threshold":
         scope = record.get("major_name") or record.get("scope") or ""
         return f"Ngưỡng xét tuyển bổ sung ({record.get('method', '')}) {scope}: {record.get('raw_value', record.get('value'))} điểm."
     if record_type == "scholarship_fund":
-        return f"• Quỹ học bổng 2026: {_format_vnd(int(record.get('fund_amount_vnd')))} đồng."
+        return f"• Quỹ học bổng {year or ''}: {_format_vnd(int(record.get('fund_amount_vnd')))} đồng."
     if record_type == "scholarship":
         details = [
             str(record.get("basis_label") or "Điều kiện"),
@@ -1061,7 +1490,7 @@ def _record_text(record: Mapping[str, Any]) -> str:
     if record_type == "scholarship_policy":
         return f"• Chính sách học bổng: {record.get('policy_text', '')}"
     if record_type == "scholarship_summary":
-        lines = ["• Điều kiện nhận học bổng tuyển sinh DHV 2026:"]
+        lines = [f"• Điều kiện nhận học bổng tuyển sinh DHV {year or ''}:"]
         lines.extend(f"• {line}" for line in record.get("summary_lines", []) if line)
         return "\n".join(lines)
     if record_type == "score_formula":
@@ -1098,6 +1527,7 @@ def build_chunk_documents(structured_document: Mapping[str, Any]) -> list[Docume
         "document_id": structured_document["document_id"],
         "title": structured_document["title"],
         "category": structured_document["category"],
+        "source_category": structured_document["category"],
         "year": structured_document["year"],
         "source_file": source.get("raw_file") or source.get("file_name"),
         "source_url": source.get("source_url"),
@@ -1113,19 +1543,22 @@ def build_chunk_documents(structured_document: Mapping[str, Any]) -> list[Docume
     for index, record in enumerate(structured_document.get("records", []), start=1):
         if not isinstance(record, Mapping):
             continue
-        text = _record_text(record)
+        text = _record_text(record, year=int(structured_document["year"]))
         if not text:
             continue
         # Record text stays human-readable, but carries the document identity
         # that users commonly include in queries (for example "Học phí DHV
-        # 2026").  This improves dense retrieval without embedding the whole
+        # the document year").  This improves dense retrieval without embedding the whole
         # JSON object or relying on runtime parsing.
-        category_label = _CATEGORY_LABELS.get(str(structured_document["category"]), str(structured_document["category"]))
+        record_category = str(record.get("fact_category") or structured_document["category"])
+        category_label = _category_label(record_category, int(structured_document["year"]))
         if record.get("record_type") != "major_catalog_summary":
             text = f"{category_label}\nDHV {structured_document['year']} - {structured_document['title']}\n{text}"
         metadata = dict(base_metadata)
         metadata.update(
             {
+                "category": record_category,
+                "fact_category": record_category,
                 "structured_record_id": record.get("record_id", f"record_{index:03d}"),
                 "record_type": record.get("record_type", ""),
                 "page": record.get("page", 1),
@@ -1185,7 +1618,7 @@ def build_chunk_documents(structured_document: Mapping[str, Any]) -> list[Docume
             chunks.append(
                 Document(
                     page_content=(
-                        f"{_CATEGORY_LABELS.get(str(structured_document['category']), str(structured_document['category']))}\n"
+                        f"{_category_label(str(structured_document['category']), int(structured_document['year']))}\n"
                         f"DHV {structured_document['year']} - {structured_document['title']}\n{section['text']}"
                     ),
                     metadata=metadata,

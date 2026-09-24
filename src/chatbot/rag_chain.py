@@ -95,9 +95,17 @@ def _analysis_with_state(analysis: QueryAnalysis, state: ConversationState) -> Q
     ):
         entities["major_name"] = state.current_major
         entities["entity_type"] = "major"
-    if not entities.get("candidate_majors") and state.candidate_majors:
+    if (
+        analysis.intent not in CONTEXT_INHERIT_EXCLUDED
+        and not entities.get("candidate_majors")
+        and state.candidate_majors
+    ):
         entities["candidate_majors"] = list(state.candidate_majors)
-    if not entities.get("candidate_programs") and state.candidate_programs:
+    if (
+        analysis.intent not in CONTEXT_INHERIT_EXCLUDED
+        and not entities.get("candidate_programs")
+        and state.candidate_programs
+    ):
         entities["candidate_programs"] = list(state.candidate_programs)
     candidate_names: set[str] = set()
     for key in ("candidate_majors", "candidate_programs"):
@@ -131,6 +139,18 @@ def _trace(
     evidence_selection: EvidenceSelection | None = None,
     answer_plan: AnswerPlan | None = None,
 ) -> dict[str, object]:
+    has_admissions_entity = any(
+        analysis.entities.get(key)
+        for key in (
+            "major_name",
+            "major_code",
+            "program_name",
+            "candidate_majors",
+            "candidate_programs",
+            "admission_method",
+            "student_scores",
+        )
+    )
     trace = {
         "intent": analysis.intent,
         "intent_classifier": {
@@ -141,6 +161,13 @@ def _trace(
         "router": plan.to_dict(),
         "conversation_state": state.to_dict(),
         "retrieval": retrieval_audit.to_dict() if retrieval_audit is not None else None,
+        "scope": {
+            "in_scope": is_in_scope(
+                analysis.question,
+                has_admissions_entity=has_admissions_entity,
+            ),
+            "has_admissions_entity": has_admissions_entity,
+        },
     }
     if evidence_selection is not None:
         trace["evidence_selection"] = evidence_selection.to_dict()
@@ -162,6 +189,7 @@ def _attach_answer_plan(
     trace = result.get("trace")
     if isinstance(trace, dict):
         trace["answer_plan"] = payload
+        trace["final_status"] = result.get("status")
     return result
 
 
@@ -203,6 +231,13 @@ _ADVISORY_SAFE_FALLBACK_REASONS = frozenset(
     {
         "model_fallback",
         "ungrounded",
+        "missing_threshold_mapping",
+        "ungrounded_entity",
+        "wrong_threshold_mapping",
+        "wrong_supplementary_mapping",
+        "missing_admission_score",
+        "score_type_mismatch",
+        "method_mismatch",
         "program_relation_missing",
         "program_relation_wrong",
         "advisory_choices_incomplete",
@@ -267,8 +302,11 @@ def _clarification_result(
 ) -> dict[str, object]:
     next_state = update_conversation_state(state, analysis)
     answer_plan = plan_answer(analysis, status="clarification")
+    answer = CLARIFICATION_ANSWER
+    if plan.clarification_reason == "admission_method_for_personal_score":
+        answer = "Bạn cho mình biết điểm này theo phương thức nào: thi tốt nghiệp THPT, học bạ hay ĐGNL?"
     return _attach_answer_plan({
-        "answer": CLARIFICATION_ANSWER,
+        "answer": answer,
         "sources": [],
         "status": "clarification",
         "state": next_state.to_dict(),
@@ -286,6 +324,7 @@ def _retrieve(
     if callable(method):
         entity_filters = dict(getattr(plan, "entity_filters", {}) or {})
         expanded_directory_top_k = None
+        expanded_score_top_k = None
         if (
             getattr(plan, "intent", "") in {"SCHOOL_INFO", "HOI_CO_SO_LIEN_HE"}
             and "thong_tin_truong" in tuple(getattr(plan, "categories", ()) or ())
@@ -295,14 +334,26 @@ def _retrieve(
             # directory so an overview record cannot be hidden behind the
             # first few alphabetically ordered website records.
             expanded_directory_top_k = 64
+        if (
+            getattr(plan, "intent", "") == "TU_VAN_CHON_NGANH"
+            and "application_threshold" in str(getattr(plan, "retrieval_query", ""))
+        ):
+            # A counselling turn can carry a score without naming one major;
+            # keep enough threshold rows for the deterministic comparison and
+            # grounded fallback to find the global rule.
+            expanded_score_top_k = 32
         try:
             kwargs = {
                 "categories": plan.categories,
                 "retrieval_query": plan.retrieval_query,
                 "entity_filters": entity_filters,
             }
-            if expanded_directory_top_k is not None:
-                kwargs["top_k"] = expanded_directory_top_k
+            if expanded_directory_top_k is not None or expanded_score_top_k is not None:
+                kwargs["top_k"] = max(
+                    value
+                    for value in (expanded_directory_top_k, expanded_score_top_k)
+                    if value is not None
+                )
             result = method(question, **kwargs)
         except TypeError:
             try:
@@ -763,10 +814,18 @@ def _structured_score_answer(
     analysis: QueryAnalysis,
     facts: Any,
 ) -> str | None:
-    rows = [
-        fact for fact in (facts or ())
-        if isinstance(fact, Mapping) and fact.get("raw_value") not in (None, "")
-    ]
+    rows = []
+    seen_methods: set[str] = set()
+    for fact in facts or ():
+        if not isinstance(fact, Mapping) or fact.get("raw_value") in (None, ""):
+            continue
+        # A supplementary source can also expose a deadline fact. It belongs
+        # in the evidence bundle, but is not a score row.
+        method = str(fact.get("method") or "")
+        if method == "deadline" or method in seen_methods:
+            continue
+        seen_methods.add(method)
+        rows.append(fact)
     if not rows:
         return None
     grouped: list[str] = []
@@ -1033,9 +1092,15 @@ def _validated_generation(
     if validated.get("status") == "no_data" and (
         reason in _RETRYABLE_VALIDATION_REASONS or retry_advisory_fallback
     ):
-        retry_answer = active_llm.generate(
-            _retry_prompt(prompt, raw_answer, score_facts, evidence, analysis)
-        )
+        try:
+            retry_answer = active_llm.generate(
+                _retry_prompt(prompt, raw_answer, score_facts, evidence, analysis)
+            )
+        except Exception:
+            # A retryable draft must not turn into a generic runtime error when
+            # a local model/adapter cannot produce the second draft. Return the
+            # validated failure so the grounded fallback can use state/evidence.
+            return validated
         retry_answer = (
             _realize_generation_artifact(
                 retry_answer,
@@ -1602,6 +1667,8 @@ def ask_chatbot(
         or analysis.entities.get("program_name")
         or analysis.entities.get("candidate_majors")
         or analysis.entities.get("candidate_programs")
+        or analysis.entities.get("admission_method")
+        or analysis.entities.get("student_scores")
     )
     followup = bool(state.current_major or state.current_program) and any(
         marker in analysis.normalized_question
@@ -1763,9 +1830,28 @@ def ask_chatbot(
         retrieval_audit,
         evidence_selection,
     )
+    trace["retrieved_docs_count"] = len(documents)
+    trace["evidence_count"] = len(evidence_documents)
     trace["score_comparisons"] = [dict(comparison) for comparison in score_comparisons]
     trace["score_engine"] = score_evaluation
-    if score_evaluation.get("status") == "insufficient-data":
+    trace["score_facts"] = [dict(fact) for fact in evidence.score_facts]
+    trace["selected_score_facts"] = [
+        dict(fact)
+        for fact in select_relevant_score_facts(analysis, evidence.score_facts)
+    ]
+    trace["matching_facts"] = list(trace["selected_score_facts"])
+    score_query_type = analysis.entities.get("score_query_type")
+    lookup_facts = select_relevant_score_facts(analysis, evidence.score_facts)
+    structured_lookup_answer = _structured_score_answer(analysis, lookup_facts)
+    deadline_only_lookup = bool(
+        score_query_type == "supplementary_threshold_lookup"
+        and any(fact.get("method") == "deadline" for fact in lookup_facts)
+    )
+    if (
+        score_evaluation.get("status") == "insufficient-data"
+        and not structured_lookup_answer
+        and not deadline_only_lookup
+    ):
         answer_plan = plan_answer(analysis, evidence=evidence, status="no_data")
         trace["answer_plan"] = answer_plan.to_dict()
         return _attach_answer_plan({
@@ -1784,6 +1870,65 @@ def ask_chatbot(
             "sources": [],
             "status": "no_data",
             "state": next_state.to_dict(),
+            "trace": trace,
+        }, answer_plan)
+
+    # Published score facts are closed lookups. Keep all three lookup types on
+    # one deterministic path, then pass the result through the same validator
+    # used for model output. The LLM never selects a score or method.
+    if (
+        score_query_type in {
+            "admission_score_lookup",
+            "application_threshold_lookup",
+            "supplementary_threshold_lookup",
+        }
+        and not analysis.entities.get("student_scores")
+        and structured_lookup_answer
+    ):
+        selected_score_facts = lookup_facts
+        direct_answer = structured_lookup_answer
+        trace["deterministic_branch"] = str(score_query_type)
+        trace["deterministic_selected_score_facts"] = [
+            dict(fact) for fact in selected_score_facts
+        ]
+        if direct_answer:
+            validated = validate_model_answer(
+                direct_answer,
+                evidence,
+                question=query,
+                analysis=analysis,
+            )
+            trace["deterministic_validation"] = {
+                "status": validated.get("status"),
+                "reason": validated.get("_validation_reason"),
+            }
+            trace["validator"] = dict(trace["deterministic_validation"])
+            if validated.get("status") == "ok":
+                answer_plan = plan_answer(
+                    analysis,
+                    evidence=evidence,
+                    deterministic=True,
+                )
+                trace["answer_plan"] = answer_plan.to_dict()
+                trace["planner_mode"] = answer_plan.mode
+                validated["state"] = next_state.to_dict()
+                validated["conversation_state"] = next_state.to_dict()
+                validated["trace"] = trace
+                trace["final_status"] = "ok"
+                return _attach_answer_plan(validated, answer_plan)
+        if "deterministic_validation" not in trace:
+            trace["deterministic_validation"] = {
+                "status": "no_data",
+                "reason": "structured_score_answer_unavailable",
+            }
+        answer_plan = plan_answer(analysis, evidence=evidence, status="no_data")
+        trace["answer_plan"] = answer_plan.to_dict()
+        return _attach_answer_plan({
+            "answer": FALLBACK_ANSWER,
+            "sources": [],
+            "status": "no_data",
+            "state": next_state.to_dict(),
+            "conversation_state": next_state.to_dict(),
             "trace": trace,
         }, answer_plan)
 
@@ -2031,12 +2176,17 @@ def ask_chatbot(
         )
 
     final_status = str(result.get("status") or "no_data")
+    trace["validator"] = {
+        "status": final_status,
+        "reason": validation_reason,
+    }
     final_answer_plan = plan_answer(
         analysis,
         evidence=evidence,
         status=final_status,
     )
     trace["answer_plan"] = final_answer_plan.to_dict()
+    trace["planner_mode"] = final_answer_plan.mode
     result["state"] = next_state.to_dict()
     # Keep an explicit service-facing alias so callers do not drop state after
     # a clarification response by looking for conversation_state.

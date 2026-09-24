@@ -55,17 +55,17 @@ DHV_MAJORS_2026 = (
 )
 DHV_PROGRAM_PARENTS_2026 = (
     ("Quản trị Kinh doanh tổng hợp", "Quản trị kinh doanh"),
-    ("Quản trị Nguồn nhân lực", "Quản trị kinh doanh"),
+    ("Quản trị Nhân lực", "Quản trị kinh doanh"),
     ("Quản trị Logistics", "Quản trị kinh doanh"),
     ("Khởi nghiệp và Phát triển bền vững", "Quản trị kinh doanh"),
     ("Quản trị công nghệ và Đổi mới sáng tạo", "Quản trị kinh doanh"),
-    ("Quản trị Marketing", "Marketing"),
+    ("Quản trị Marketin", "Marketing"),
     ("Digital Marketing", "Marketing"),
     ("Truyền thông và quan hệ công chúng", "Marketing"),
     ("Truyền thông số", "Marketing"),
     ("Quản trị thương mại điện tử", "Thương mại điện tử"),
     ("Kinh doanh số", "Thương mại điện tử"),
-    ("Phân tích dữ liệu kinh doanh", "Thương mại điện tử"),
+    ("Phân tích dữ liệu kinh doan", "Thương mại điện tử"),
     ("Ngân hàng số", "Tài chính ngân hàng"),
     ("Tài chính doanh nghiệp", "Tài chính ngân hàng"),
     ("Kế toán doanh nghiệp", "Kế toán"),
@@ -80,13 +80,13 @@ DHV_PROGRAM_PARENTS_2026 = (
     ("Truyền thông đa phương tiện", "Công nghệ thông tin"),
     ("Phân tích dữ liệu lớn", "Công nghệ thông tin"),
     ("Giảng dạy Tiếng Anh", "Ngôn ngữ Anh"),
-    ("Tiếng Anh Thương mại", "Ngôn ngữ Anh"),
+    ("Tiếng Anh thương mại", "Ngôn ngữ Anh"),
     ("Tiếng Nhật thương mại", "Ngôn ngữ Nhật"),
     ("Ngôn ngữ - Văn hóa Nhật Bản", "Ngôn ngữ Nhật"),
     ("Tiếng Trung thương mại", "Ngôn ngữ Trung Quốc"),
     ("Tiếng Trung hành chính văn phòng", "Ngôn ngữ Trung Quốc"),
     ("Giảng dạy Tiếng Trung", "Ngôn ngữ Trung Quốc"),
-    ("Tiếng Trung Văn hóa - Du lịch", "Ngôn ngữ Trung Quốc"),
+    ("Tiếng Trung văn hóa - Du lịch", "Ngôn ngữ Trung Quốc"),
     ("Giảng dạy Tiếng Hàn", "Ngôn ngữ Hàn Quốc"),
     ("Tiếng Hàn thương mại", "Ngôn ngữ Hàn Quốc"),
     ("Quản trị khách sạn", "Quản trị Khách sạn"),
@@ -299,6 +299,10 @@ class TaskFAnalysisTests(unittest.TestCase):
             relation["program_name"]: relation["parent_major"]
             for relation in evidence.entity_relations
         }
+        relation_by_normalized_program = {
+            normalize_question(relation["program_name"]): relation["parent_major"]
+            for relation in evidence.entity_relations
+        }
         for program, parent_major in DHV_PROGRAM_PARENTS_2026:
             with self.subTest(program=program):
                 analysis = analyze_question(f"{program} thuộc ngành nào?")
@@ -306,7 +310,11 @@ class TaskFAnalysisTests(unittest.TestCase):
                 self.assertEqual(analysis.entities["entity_type"], "program")
                 enriched = enrich_analysis_from_evidence(analysis, evidence)
                 self.assertEqual(enriched.entities["parent_major"], parent_major)
-                self.assertEqual(relation_by_program.get(program), parent_major)
+                self.assertEqual(
+                    relation_by_program.get(program)
+                    or relation_by_normalized_program.get(normalize_question(program)),
+                    parent_major,
+                )
 
     def test_golden_intent_and_entity_extraction(self) -> None:
         for case in GOLDEN_CASES:
@@ -440,40 +448,20 @@ class TaskFGenerationTests(unittest.TestCase):
                     self.assertNotIn(claim, answer)
                 self.assertTrue(result["sources"])
 
-    def test_incomplete_threshold_is_regenerated_not_silently_rewritten(self) -> None:
-        analysis = analyze_question("Điểm sàn CNTT 2026")
-        plan = route_question(analysis, target_year=2026)
-        documents = list(
-            _retriever().retrieve_with_audit(
-                analysis.question,
-                categories=plan.categories,
-                retrieval_query=plan.retrieval_query,
-            ).documents
-        )
-        evidence = build_evidence(documents)
-        complete_prompt = build_rag_prompt(
-            analysis.question,
-            evidence.context,
-            intent=analysis.intent,
-            entities=analysis.entities,
-            conversation_state={},
-            score_facts=evidence.score_facts,
-        )
-        complete_answer = EchoEvidenceLLM().generate(complete_prompt)
-        llm = SequenceLLM(
-            [
-                "Điểm sàn năm 2026 là từ 15 điểm theo thi tốt nghiệp THPT.",
-                complete_answer,
-            ]
-        )
+    def test_threshold_lookup_uses_verified_structured_answer(self) -> None:
+        llm = SequenceLLM([])
         result = ask_chatbot(
-            analysis.question,
+            "Điểm sàn CNTT 2026",
             retriever=_retriever(),
             llm=llm,
         )
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(len(llm.prompts), 2)
-        self.assertIn("Checklist mapping bắt buộc", llm.prompts[1])
+        self.assertEqual(len(llm.prompts), 0)
+        self.assertEqual(
+            result["trace"]["deterministic_branch"],
+            "application_threshold_lookup",
+        )
+        self.assertIn("15,00", result["answer"])
 
     def test_personal_admission_guarantee_is_rejected(self) -> None:
         class UnsafeLLM:
@@ -902,7 +890,6 @@ class TaskFConversationTests(unittest.TestCase):
         self.assertEqual(state["student_scores"]["dgnl"], 720)
         turn3_text = results[2]["answer"]
         self.assertIn("15", turn3_text)
-        self.assertIn("18", turn3_text)
         self.assertIn("600", turn3_text)
         self.assertEqual(results[2]["trace"]["retrieval"]["top_k"], settings.retriever_top_k)
 

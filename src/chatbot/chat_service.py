@@ -1,19 +1,14 @@
-"""Ranh giới dịch vụ ổn định dành cho giao diện Streamlit (Task D)."""
-
 from __future__ import annotations
-
 from typing import Any
 from collections.abc import Mapping
-
 from src.config.settings import Settings, settings
-
 from .rag_chain import ask_chatbot as _ask_chatbot
 from .query_analysis import ConversationState
 
 
 class ChatService:
-    """Dịch vụ cung cấp cho UI, chịu trách nhiệm quản lý các phụ thuộc RAG (Task C)."""
-
+    """Dịch vụ cung cấp cho UI, chịu trách nhiệm quản lý các phụ thuộc RAG."""
+    """dùng để cb dữ liệu ban đầu cho chat service"""
     def __init__(
         self,
         *,
@@ -26,7 +21,7 @@ class ChatService:
         self.llm = llm
 
     def ask(
-        self,
+        self, 
         question: str,
         *,
         conversation_state: ConversationState | Mapping[str, object] | None = None,

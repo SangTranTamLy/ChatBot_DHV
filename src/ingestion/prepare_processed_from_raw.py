@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from typing import Any, Mapping
 
 from pypdf import PdfReader
 
@@ -24,7 +25,8 @@ from .structured_json import (
 LOGGER = logging.getLogger(__name__)
 DEFAULT_RAW_DIR = PROJECT_ROOT / "data" / "raw"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data" / "processed"
-TITLE_RE = re.compile(r"^DHV(?:\s+2026)?\s*-\s*(?P<title>.+?)\s*$")
+DEFAULT_MANIFEST = DEFAULT_RAW_DIR / "manifest.json"
+TITLE_RE = re.compile(r"^DHV(?:\s+\d{4})?\s*-\s*(?P<title>.+?)\s*$")
 URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 DATE_LINE_RE = re.compile(
     r"^(?:Ngày cập nhật nguồn|Nguồn cập nhật|Ngày thu thập/kiểm tra):\s*(?P<date>.+?)\s*$",
@@ -34,7 +36,6 @@ COLLECTED_AT_LINE_RE = re.compile(
     r"(?:Ngày kiểm tra|Ngày thu thập/kiểm tra|Kiểm tra):\s*(?P<date>\d{1,2}/\d{1,2}/\d{4})\b",
     re.IGNORECASE,
 )
-ALLOWED_SOURCE_HOST = "dhv.edu.vn"
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,8 @@ class ProcessedDocument:
     records_count: int = 0
     warnings_count: int = 0
     pages_count: int = 0
+    native_pages_count: int = 0
+    ocr_pages_count: int = 0
 
 
 def _normalize_extracted_text(text: str) -> str:
@@ -66,11 +69,56 @@ def _normalize_extracted_text(text: str) -> str:
     return text.strip()
 
 
-def _extract_pdf_pages(path: Path) -> list[dict[str, object]]:
-    """Extract text by page and retain page boundaries for the JSON layer.
+class OCRUnavailableError(RuntimeError):
+    """Raised when the optional OCR runtime is not available."""
 
-    OCR is intentionally not introduced here: the separately scoped mandatory
-    OCR task has not been implemented in this repository yet.  This function
+
+def _is_text_usable(text: str, *, minimum_characters: int = 20) -> bool:
+    """Return whether a native page has enough useful text to index safely."""
+
+    normalized = _normalize_extracted_text(text or "")
+    if len(normalized) < minimum_characters:
+        return False
+    meaningful = sum(character.isalnum() for character in normalized)
+    if meaningful / max(len(normalized), 1) < 0.35:
+        return False
+    if normalized.count("�") > max(1, len(normalized) // 40):
+        return False
+    return True
+
+
+def _ocr_page(path: Path, page_index: int) -> str:
+    """Render one page and OCR it using the optional PyMuPDF/Tesseract stack."""
+
+    try:
+        import fitz  # type: ignore
+        import pytesseract  # type: ignore
+        from PIL import Image  # type: ignore
+    except ImportError as exc:
+        raise OCRUnavailableError(
+            "OCR fallback requires PyMuPDF, pytesseract, Pillow, and a Tesseract binary"
+        ) from exc
+
+    try:
+        configured_tesseract = os.getenv("TESSERACT_CMD", "").strip()
+        if configured_tesseract:
+            pytesseract.pytesseract.tesseract_cmd = configured_tesseract
+        with fitz.open(str(path)) as pdf:
+            page = pdf.load_page(page_index)
+            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+            image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
+            return _normalize_extracted_text(
+                pytesseract.image_to_string(image, lang="vie+eng") or ""
+            )
+    except Exception as exc:  # OCR engines expose several runtime-specific errors.
+        raise RuntimeError(f"OCR failed for page {page_index + 1}: {exc}") from exc
+
+
+def _extract_pdf_pages_native_legacy(path: Path) -> list[dict[str, object]]:
+    """Legacy native-only extractor kept for compatibility with old imports.
+
+    This compatibility helper intentionally keeps the historical native-only
+    behavior.  The production extractor below
     is the current pypdf text-layer extractor and is kept as one explicit
     boundary so a later OCR implementation can replace it without changing
     the JSON parser or vector builder.
@@ -81,6 +129,47 @@ def _extract_pdf_pages(path: Path) -> list[dict[str, object]]:
         {"page": index, "text": _normalize_extracted_text(page.extract_text() or "")}
         for index, page in enumerate(reader.pages, start=1)
     ]
+    if not any(str(page["text"]).strip() for page in pages):
+        raise ValueError("PDF has no extractable text")
+    return pages
+
+
+def _extract_pdf_pages(path: Path) -> list[dict[str, object]]:
+    """Extract each page natively, falling back to OCR only when needed."""
+
+    reader = PdfReader(str(path))
+    pages: list[dict[str, object]] = []
+    for index, page in enumerate(reader.pages, start=1):
+        native_text = _normalize_extracted_text(page.extract_text() or "")
+        page_result: dict[str, object] = {
+            "page": index,
+            "text": native_text,
+            "extraction_method": "native",
+        }
+        if not _is_text_usable(native_text):
+            try:
+                ocr_text = _ocr_page(path, index - 1)
+            except Exception as exc:
+                page_result["warnings"] = [
+                    {
+                        "type": "OCR_FAILED",
+                        "page": index,
+                        "message": str(exc),
+                    }
+                ]
+            else:
+                if _is_text_usable(ocr_text):
+                    page_result["text"] = ocr_text
+                    page_result["extraction_method"] = "ocr"
+                else:
+                    page_result["warnings"] = [
+                        {
+                            "type": "OCR_EMPTY_OR_LOW_QUALITY",
+                            "page": index,
+                            "message": "OCR returned no usable text; native text was retained.",
+                        }
+                    ]
+        pages.append(page_result)
     if not any(str(page["text"]).strip() for page in pages):
         raise ValueError("PDF has no extractable text")
     return pages
@@ -102,32 +191,12 @@ def _title_from_text(text: str) -> str:
     return match.group("title").strip() if match else first_line
 
 
-def _source_url_from_text(text: str) -> str:
-    urls = _source_urls_from_text(text)
-    if not urls:
-        raise ValueError("source_url not found in PDF text")
-    return urls[0]
-
-
 def _source_urls_from_text(text: str) -> tuple[str, ...]:
-    """Lấy và kiểm tra toàn bộ URL provenance được ghi trong RAW PDF.
-
-    RAW chỉ được phép chứa link HTTPS đến ``dhv.edu.vn`` hoặc subdomain của
-    domain này. Việc kiểm tra ở bước prepare giúp manifest và processed data có
-    cùng một policy, thay vì chỉ tin URL đầu tiên.
-    """
+    """Extract links for audit only; these are not provenance metadata."""
 
     urls: list[str] = []
     for match in URL_RE.finditer(text):
         value = match.group(0).rstrip(".,);]")
-        parsed = urlparse(value)
-        host = (parsed.hostname or "").lower().rstrip(".")
-        if parsed.scheme.lower() != "https" or not host:
-            raise ValueError(f"source URL must be HTTPS: {value}")
-        if host != ALLOWED_SOURCE_HOST and not host.endswith(f".{ALLOWED_SOURCE_HOST}"):
-            raise ValueError(f"source URL is outside official DHV domain: {value}")
-        if parsed.username or parsed.password:
-            raise ValueError(f"source URL must not contain credentials: {value}")
         if value not in urls:
             urls.append(value)
     return tuple(urls)
@@ -177,6 +246,8 @@ def convert_pdf_to_structured_json(
     raw_root: Path,
     output_root: Path,
     markdown_root: Path | None = None,
+    manifest_path: Path | None = None,
+    manifest_entry: Mapping[str, Any] | None = None,
 ) -> ProcessedDocument:
     """Generate one Structured JSON document directly from one RAW PDF.
 
@@ -190,11 +261,31 @@ def convert_pdf_to_structured_json(
         raise ValueError("generated Markdown output was removed; use Structured JSON")
 
     pages = _extract_pdf_pages(raw_path)
+    if manifest_entry is None:
+        from .raw_manifest import find_manifest_entry, load_raw_manifest
+
+        resolved_manifest_path = Path(manifest_path or raw_root / "manifest.json")
+        if resolved_manifest_path.exists():
+            manifest_entry = find_manifest_entry(
+                load_raw_manifest(resolved_manifest_path),
+                raw_path=raw_path,
+                raw_root=raw_root,
+            )
+        else:
+            manifest_entry = {
+                "document_id": raw_path.stem,
+                "title": _title_from_text("\n\n".join(str(page["text"]) for page in pages)),
+                "category": raw_path.parent.relative_to(raw_root).as_posix(),
+                "year": None,
+                "status": "missing_manifest",
+                "verification_status": "missing_manifest",
+                "verified": False,
+            }
     structured = build_structured_document(
         raw_path=raw_path,
         raw_root=raw_root,
         pages=pages,
-        extraction_method="pypdf_text",
+        manifest_entry=manifest_entry,
     )
     category = str(structured["category"])
     json_path = output_root / category / f"{raw_path.stem}.json"
@@ -214,6 +305,8 @@ def convert_pdf_to_structured_json(
         records_count=len(structured.get("records", [])),
         warnings_count=len(structured.get("warnings", [])),
         pages_count=len(structured.get("pages", [])),
+        native_pages_count=int(structured.get("extraction", {}).get("native_pages", 0)),
+        ocr_pages_count=int(structured.get("extraction", {}).get("ocr_pages", 0)),
     )
 
 
@@ -258,6 +351,15 @@ def rebuild_structured_json(
         raise RuntimeError(f"no RAW PDF files found in {raw_root}")
     documents: list[ProcessedDocument] = []
     failures: list[str] = []
+    from .raw_manifest import find_manifest_entry, load_raw_manifest, validate_manifest_sync
+
+    manifest_path = raw_root / "manifest.json"
+    if not manifest_path.exists():
+        raise RuntimeError(f"manifest is required for RAW ingestion: {manifest_path}")
+    manifest = load_raw_manifest(manifest_path)
+    sync_errors = validate_manifest_sync(manifest, raw_root=raw_root)
+    if sync_errors:
+        raise RuntimeError("RAW/manifest sync failed:\n" + "\n".join(sync_errors))
     for index, path in enumerate(raw_files, start=1):
         LOGGER.info("[%d/%d] %s", index, len(raw_files), path.name)
         try:
@@ -265,6 +367,8 @@ def rebuild_structured_json(
                 path,
                 raw_root=raw_root,
                 output_root=output_root,
+                manifest_path=manifest_path,
+                manifest_entry=find_manifest_entry(manifest, raw_path=path, raw_root=raw_root),
             )
         except (OSError, ValueError, StructuredJSONValidationError) as exc:
             failures.append(f"{path.relative_to(raw_root).as_posix()}: {exc}")
@@ -272,9 +376,11 @@ def rebuild_structured_json(
             continue
         documents.append(document)
         LOGGER.info(
-            "  extraction=%s pages=%d records=%d warnings=%d output=%s",
+            "  extraction=%s pages=%d native=%d ocr=%d records=%d warnings=%d output=%s",
             "OK",
             document.pages_count,
+            document.native_pages_count,
+            document.ocr_pages_count,
             document.records_count,
             document.warnings_count,
             document.output_path,

@@ -10,6 +10,8 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from src.config.settings import settings
+
 from .structured_json import build_chunk_documents, load_structured_json
 
 
@@ -70,7 +72,7 @@ def _is_internal(metadata: dict[str, Any]) -> bool:
 def load_verified_documents(
     data_dir: str | Path,
     *,
-    target_year: int | None = 2026,
+    target_year: int | None = settings.target_year,
 ) -> LoadResult:
     """Read verified JSON files in ``data_dir``.
 
