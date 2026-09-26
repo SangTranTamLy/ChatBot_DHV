@@ -87,6 +87,16 @@ python -m src.ingestion.build_vector_db --data-dir data/processed --embedding-ba
 
 Nếu thêm hoặc thay file PDF trong `data/raw/`, chạy lại cả hai lệnh trên. Lệnh prepare sinh Structured JSON trực tiếp vào `data/processed/`; không còn tạo Markdown generated. Không đổi embedding model sau khi build index; nếu đổi thì phải build lại với `--reset`.
 
+Để cập nhật bộ câu hỏi và trả lời từ file Excel, đặt workbook tại
+`data/raw/qa_tuyen_sinh/Nhom_4_Thu_Thap_QA.xlsx`, sau đó chạy:
+
+```powershell
+python -m src.ingestion.prepare_excel_qa
+python -m src.ingestion.build_vector_db --data-dir data/processed --embedding-backend ollama --embedding-model nomic-embed-text --reset
+```
+
+Converter đọc các cột `Câu hỏi`, `Trả lời` và `Nguồn`, chỉ tạo dữ liệu tuyển sinh năm 2026.
+
 ### 6. Khởi động chatbot
 
 ```powershell

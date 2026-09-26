@@ -235,7 +235,8 @@ def _selection_filter_reason(
         return "year_mismatch"
     if str(metadata.get("school_code") or "").upper() != "DHV":
         return "target_institution_mismatch"
-    if categories and str(metadata.get("category") or "") not in categories:
+    category = str(metadata.get("category") or "")
+    if categories and category not in categories and category != "qa_tuyen_sinh":
         return "category_not_requested"
     if not _valid_http_url(metadata.get("source_url")):
         return "source_url_invalid"
@@ -343,6 +344,10 @@ def select_evidence_documents(
             if _fold_text(value) and _fold_text(value) in _fold_text(document.page_content)
         ]
         selection_reason = "metadata_and_category_match"
+        if entity_values and category == "qa_tuyen_sinh":
+            base["filter_reason"] = "entity_not_in_document"
+            filtered_audits.append(base)
+            continue
         if entity_values and category == "nganh_dao_tao" and data_role != "description":
             subset = _entity_row_subset(document.page_content, entity_values)
             if not subset.strip():

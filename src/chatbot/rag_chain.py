@@ -51,6 +51,7 @@ from .query_analysis import (
     update_conversation_state,
 )
 from .scope_guard import is_in_scope
+from .qa_lookup import find_keyword_answer
 
 
 _RETRYABLE_VALIDATION_REASONS = frozenset(
@@ -1648,6 +1649,38 @@ def ask_chatbot(
 
     if plan.needs_clarification:
         return _clarification_result(analysis, plan, state)
+
+    qa_record = None
+    if analysis.intent != "MULTI_ISSUE":
+        qa_record = find_keyword_answer(
+            query,
+            processed_data_dir=settings_obj.processed_data_dir,
+            target_year=settings_obj.target_year,
+        )
+    if qa_record is not None:
+        next_state = update_conversation_state(
+            state,
+            analysis,
+            target_year=settings_obj.target_year,
+        )
+        answer_plan = plan_answer(analysis, status="ok", deterministic=True)
+        trace = _trace(analysis, plan, next_state, answer_plan=answer_plan)
+        trace["qa_lookup"] = {
+            "matched": True,
+            "record_id": qa_record.get("record_id"),
+            "match_mode": "keyword",
+        }
+        return _attach_answer_plan({
+            "answer": str(qa_record["answer"]),
+            "sources": [{
+                "title": "Bộ câu hỏi và trả lời tư vấn tuyển sinh DHV 2026",
+                "source_url": "https://dhv.edu.vn",
+            }],
+            "status": "ok",
+            "state": next_state.to_dict(),
+            "conversation_state": next_state.to_dict(),
+            "trace": trace,
+        }, answer_plan)
 
     active_retriever = retriever or DHVRetriever(settings_obj=settings_obj)
     if plan.subplans:

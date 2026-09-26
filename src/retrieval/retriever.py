@@ -471,6 +471,8 @@ def _rank_hybrid_candidates_with_audit(
     for document in candidates:
         if _filter_reason(document, target_year, category_values) is not None:
             continue
+        if entity_filters and str((document.metadata or {}).get("category") or "") == "qa_tuyen_sinh":
+            continue
         if not _entity_matches(document, entity_filters):
             continue
         unique.setdefault(_document_identity(document), document)
@@ -648,16 +650,22 @@ class DHVRetriever:
         except Exception as exc:
             raise VectorDatabaseError("ChromaDB could not be opened") from exc
 
-        metadata_filter = _metadata_filter(
-            self.settings.target_year,
-            tuple(str(category) for category in categories if str(category))
-            if categories is not None
-            else _categories_from_question(original_query),
-        )
         requested_categories = tuple(
             str(category)
             for category in (categories if categories is not None else _categories_from_question(original_query))
             if str(category)
+        )
+        # Imported Q&A is a verified fallback source for every supported topic.
+        # Keep the canonical route categories intact while allowing retrieval
+        # to see the supplemental Q&A records.
+        retrieval_categories = (
+            tuple(dict.fromkeys((*requested_categories, "qa_tuyen_sinh")))
+            if requested_categories
+            else requested_categories
+        )
+        metadata_filter = _metadata_filter(
+            self.settings.target_year,
+            retrieval_categories,
         )
         candidates: list[Document] = []
         vector_documents: list[Document] = []
@@ -688,6 +696,8 @@ class DHVRetriever:
                     for candidate in candidates
                     if str((candidate.metadata or {}).get("data_role") or "").strip().casefold()
                     != "description"
+                    and str((candidate.metadata or {}).get("category") or "")
+                    != "qa_tuyen_sinh"
                 ]
             ranking_limit = len(candidates) if expand_catalog_results else effective_top_k
             documents, fusion = _rank_hybrid_candidates_with_audit(
@@ -697,7 +707,7 @@ class DHVRetriever:
                 vector_scores,
                 self.settings.target_year,
                 ranking_limit,
-                categories=requested_categories,
+                categories=retrieval_categories,
                 entity_filters=effective_entity_filters,
             )
         except RetrieverEmbeddingError:
@@ -716,7 +726,7 @@ class DHVRetriever:
         selected_ids = {_document_identity(document) for document in documents}
         for position, candidate in enumerate(candidates, start=1):
             identity = _document_identity(candidate)
-            reason = _filter_reason(candidate, self.settings.target_year, requested_categories)
+            reason = _filter_reason(candidate, self.settings.target_year, retrieval_categories)
             if reason is None and effective_entity_filters and not _entity_matches(candidate, effective_entity_filters):
                 reason = "entity_not_in_document"
             item = {

@@ -20,6 +20,22 @@ from tests.test_task_f import (
 
 
 class TaskKRetrievalTests(unittest.TestCase):
+    def test_excel_qa_is_used_as_supplemental_evidence(self) -> None:
+        question = "Mã trường dùng trong tuyển sinh của Trường Đại học Hùng Vương TP. Hồ Chí Minh là gì?"
+        result = ask_chatbot(question, retriever=_retriever(), llm=EchoEvidenceLLM())
+
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["trace"]["qa_lookup"]["matched"])
+        self.assertEqual(result["trace"]["qa_lookup"]["record_id"], "qa_0004")
+        self.assertIn("là DHV", result["answer"])
+
+    def test_keyword_qa_lookup_handles_unaccented_question(self) -> None:
+        result = ask_chatbot("hoc phi 1 nam", retriever=object(), llm=object())
+
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["trace"]["qa_lookup"]["matched"])
+        self.assertIn("12,5 triệu đồng", result["answer"])
+
     def test_hybrid_audit_exposes_bm25_dense_rrf_and_candidate_filters(self) -> None:
         result = _retriever().retrieve_with_audit(
             "7480201 là ngành gì?",

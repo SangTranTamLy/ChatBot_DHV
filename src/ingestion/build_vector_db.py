@@ -32,6 +32,7 @@ from .splitter import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, split_documents
 LOGGER = logging.getLogger(__name__)
 DEFAULT_COLLECTION = settings.chroma_collection
 DEFAULT_KB_YEAR = settings.target_year
+INDEX_BATCH_SIZE = 64
 
 
 @dataclass
@@ -134,10 +135,12 @@ def build_vector_db(
         embedding_function=embedding_function,
     )
     try:
-        vector_store.add_documents(
-            chunks,
-            ids=[chunk.metadata["chunk_id"] for chunk in chunks],
-        )
+        for start in range(0, len(chunks), INDEX_BATCH_SIZE):
+            batch = chunks[start : start + INDEX_BATCH_SIZE]
+            vector_store.add_documents(
+                batch,
+                ids=[chunk.metadata["chunk_id"] for chunk in batch],
+            )
     finally:
         close_chroma_store(vector_store)
 
