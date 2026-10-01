@@ -17,7 +17,11 @@ from src.chatbot.rag_chain import ask_chatbot
 from src.chatbot.query_analysis import INTENTS, analyze_question
 from src.chatbot.scope_guard import is_in_scope, is_personal_life_advice
 from src.chatbot.evidence import build_evidence
-from src.chatbot.output_validator import OUT_OF_SCOPE_ANSWER, validate_model_answer
+from src.chatbot.output_validator import (
+    EXTERNAL_SCHOOL_ANSWER,
+    OUT_OF_SCOPE_ANSWER,
+    validate_model_answer,
+)
 from src.models.local_llm import OllamaError
 
 
@@ -161,6 +165,131 @@ class IntentDatasetTests(unittest.TestCase):
 
 
 class ScopeRegressionTests(unittest.TestCase):
+    def test_foreign_institution_questions_are_out_of_scope(self) -> None:
+        for question in (
+            "Điểm chuẩn Đại học Quốc gia Hà Nội năm 2026 là bao nhiêu?",
+            "Học phí Đại học FPT bao nhiêu?",
+            "Điểm chuẩn của trường đại học Sài Gòn?",
+            "Điểm chuẩn ngành Công nghệ thông tin của trường đại học quốc gia TP.HCM?",
+            "Điểm chuẩn trường Văn Hiến?",
+            "Điểm chuẩn Văn Hiến?",
+            "Điểm chuẩn ĐH Văn Hiến?",
+            "Điểm trúng tuyển trường khác năm nay thế nào?",
+        ):
+            with self.subTest(question=question):
+                self.assertFalse(is_in_scope(question))
+                analysis = analyze_question(question)
+                self.assertEqual(analysis.entities["target_school"], "OTHER_SCHOOL")
+                self.assertEqual(analysis.entities["scope_reason"], "external_school")
+                self.assertNotEqual(analysis.intent, "OUT_OF_SCOPE")
+
+    def test_foreign_institution_is_rejected_before_retrieval(self) -> None:
+        for question in (
+            "Điểm chuẩn của trường đại học Sài Gòn?",
+            "Điểm chuẩn trường Văn Hiến?",
+        ):
+            with self.subTest(question=question):
+                retriever = NeverCalledRetriever()
+                llm = NeverCalledLLM()
+
+                result = ask_chatbot(question, retriever=retriever, llm=llm)
+
+                self.assertEqual(result["status"], "out_of_scope")
+                self.assertEqual(result["answer"], EXTERNAL_SCHOOL_ANSWER)
+                self.assertFalse(retriever.called)
+                self.assertFalse(llm.called)
+
+    def test_external_score_source_for_dhv_remains_in_scope(self) -> None:
+        question = "ĐGNL ĐHQG-HCM của DHV cần bao nhiêu điểm?"
+
+        self.assertTrue(is_in_scope(question))
+        self.assertNotEqual(analyze_question(question).intent, "OUT_OF_SCOPE")
+
+    def test_target_school_contract_distinguishes_dhv_unspecified_mixed_and_ambiguous(self) -> None:
+        cases = (
+            ("Điểm chuẩn DHV CNTT 2026 bao nhiêu?", "DHV", "in_scope_dhv"),
+            ("Điểm chuẩn CNTT 2026 bao nhiêu?", "UNSPECIFIED", "in_scope_dhv"),
+            ("So sánh điểm chuẩn DHV và Văn Hiến", "MIXED", "mixed_school"),
+            ("Điểm chuẩn Đại học Hùng Vương bao nhiêu?", "AMBIGUOUS", "ambiguous_school"),
+        )
+        for question, target_school, reason in cases:
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                self.assertEqual(analysis.entities["target_school"], target_school)
+                self.assertEqual(analysis.entities["scope_reason"], reason)
+
+    def test_external_school_followup_keeps_external_scope_without_retrieval(self) -> None:
+        first_retriever = NeverCalledRetriever()
+        first_llm = NeverCalledLLM()
+        first = ask_chatbot(
+            "Văn Hiến có xét học bạ không?",
+            retriever=first_retriever,
+            llm=first_llm,
+        )
+        self.assertEqual(first["trace"]["scope"]["target_school"], "OTHER_SCHOOL")
+        self.assertEqual(first["conversation_state"]["current_school"], "OTHER_SCHOOL")
+
+        second_retriever = NeverCalledRetriever()
+        second_llm = NeverCalledLLM()
+        second = ask_chatbot(
+            "Còn điểm chuẩn?",
+            retriever=second_retriever,
+            llm=second_llm,
+            conversation_state=first["conversation_state"],
+        )
+
+        self.assertEqual(second["status"], "out_of_scope")
+        self.assertEqual(second["scope_reason"], "external_school")
+        self.assertEqual(second["trace"]["retrieved_docs_count"], 0)
+        self.assertFalse(second_retriever.called)
+        self.assertFalse(second_llm.called)
+
+    def test_explicit_dhv_switch_overrides_external_school_state(self) -> None:
+        first = ask_chatbot(
+            "Văn Hiến có xét học bạ không?",
+            retriever=NeverCalledRetriever(),
+            llm=NeverCalledLLM(),
+        )
+        dhv_retriever = AdvisoryRetriever()
+        second = ask_chatbot(
+            "Còn DHV thì sao?",
+            retriever=dhv_retriever,
+            llm=NeverCalledLLM(),
+            conversation_state=first["conversation_state"],
+        )
+
+        self.assertEqual(second["trace"]["scope"]["target_school"], "DHV")
+        self.assertTrue(dhv_retriever.called)
+
+    def test_mixed_school_question_stops_before_retrieval(self) -> None:
+        retriever = NeverCalledRetriever()
+        llm = NeverCalledLLM()
+
+        result = ask_chatbot(
+            "So sánh điểm chuẩn DHV và Văn Hiến",
+            retriever=retriever,
+            llm=llm,
+        )
+
+        self.assertEqual(result["status"], "out_of_scope")
+        self.assertEqual(result["scope_reason"], "mixed_school")
+        self.assertEqual(result["target_school"], "MIXED")
+        self.assertEqual(result["trace"]["retrieved_docs_count"], 0)
+        self.assertFalse(retriever.called)
+        self.assertFalse(llm.called)
+
+    def test_generic_school_reference_is_not_mistaken_for_another_school(self) -> None:
+        for question in (
+            "Trường có xét học bạ không?",
+            "Điểm chuẩn trường nào năm 2026?",
+        ):
+            with self.subTest(question=question):
+                self.assertTrue(is_in_scope(question))
+
+        ambiguous = analyze_question("Điểm chuẩn trường Hùng Vương năm 2026?")
+        self.assertEqual(ambiguous.entities["target_school"], "AMBIGUOUS")
+        self.assertEqual(ambiguous.entities["scope_reason"], "ambiguous_school")
+
     def test_major_passion_dilemma_is_dynamic_admissions_advice(self) -> None:
         question = (
             "Tôi đang phân vân giữa Truyền thông đa phương tiện và Ngôn ngữ Trung "

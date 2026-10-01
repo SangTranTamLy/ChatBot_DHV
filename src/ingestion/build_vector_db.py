@@ -26,7 +26,12 @@ from src.config.settings import settings
 from .embeddings import DEFAULT_SENTENCE_TRANSFORMER_MODEL, create_embeddings
 from .chroma_lifecycle import close_chroma_store
 from .loader import LoadResult, load_verified_documents
-from .splitter import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, split_documents
+from .splitter import (
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_TOKENIZER_MODEL,
+    split_documents,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -83,6 +88,7 @@ def build_vector_db(
     target_year: int | None = DEFAULT_KB_YEAR,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+    tokenizer_model: str = DEFAULT_TOKENIZER_MODEL,
     reset: bool = False,
 ) -> BuildStats:
     """Tải, chia đoạn, nhúng (embed) và lưu trữ corpus DHV đã xác thực."""
@@ -99,6 +105,7 @@ def build_vector_db(
         load_result.documents,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
+        tokenizer_model=tokenizer_model,
     )
     if not chunks:
         raise RuntimeError("verified documents produced zero chunks")
@@ -212,6 +219,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--chunk-overlap", type=int, default=DEFAULT_CHUNK_OVERLAP)
+    parser.add_argument("--tokenizer-model", default=DEFAULT_TOKENIZER_MODEL)
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -244,6 +252,7 @@ def main() -> int:
             target_year=args.year,
             chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap,
+            tokenizer_model=args.tokenizer_model,
             reset=args.reset,
         )
     except (FileNotFoundError, NotADirectoryError, RuntimeError, ValueError, OSError) as exc:

@@ -20,6 +20,20 @@ OUT_OF_SCOPE_ANSWER = (
     "của Trường Đại học Hùng Vương TP.HCM. Tôi chỉ hỗ trợ các câu hỏi liên quan đến "
     "tuyển sinh của trường."
 )
+EXTERNAL_SCHOOL_ANSWER = (
+    "Mình hiện chỉ sử dụng dữ liệu chính thức của Trường Đại học Hùng Vương "
+    "TP.HCM, nên không thể xác nhận thông tin tuyển sinh của trường khác. "
+    "Mình có thể hỗ trợ bạn về điểm chuẩn, học phí, học bổng, hồ sơ hoặc "
+    "ngành đào tạo của Trường Đại học Hùng Vương TP.HCM."
+)
+MIXED_SCHOOL_ANSWER = (
+    "Mình có dữ liệu chính thức của Trường Đại học Hùng Vương TP.HCM, nhưng "
+    "không có dữ liệu đã xác minh của trường còn lại để thực hiện so sánh đầy đủ."
+)
+AMBIGUOUS_SCHOOL_ANSWER = (
+    "Bạn đang hỏi Trường Đại học Hùng Vương TP.HCM phải không? "
+    "Vui lòng nêu rõ TP.HCM hoặc DHV để mình tra cứu chính xác."
+)
 CLARIFICATION_ANSWER = (
     "Bạn muốn biết điểm sàn (ngưỡng đầu vào), điểm trúng tuyển hay điểm của đợt "
     "xét tuyển bổ sung?"
@@ -976,11 +990,14 @@ def _meaningful_tokens(text: str) -> set[str]:
 
 
 __all__ = [
+    "AMBIGUOUS_SCHOOL_ANSWER",
     "CLARIFICATION_ANSWER",
     "ERROR_ANSWER",
+    "EXTERNAL_SCHOOL_ANSWER",
     "FALLBACK_ANSWER",
     "OLLAMA_OFFLINE_ANSWER",
     "OUT_OF_SCOPE_ANSWER",
+    "MIXED_SCHOOL_ANSWER",
     "VECTOR_DB_ERROR_ANSWER",
     "sanitize_answer",
     "validate_model_answer",

@@ -13,7 +13,16 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Mapping, Sequence
 
 from .intent_classifier import IntentPrediction, predict_intent
-from .scope_guard import is_personal_life_advice
+from .scope_guard import (
+    TARGET_SCHOOL_AMBIGUOUS,
+    TARGET_SCHOOL_DHV,
+    TARGET_SCHOOL_MIXED,
+    TARGET_SCHOOL_OTHER,
+    TARGET_SCHOOL_UNSPECIFIED,
+    detect_target_school,
+    is_personal_life_advice,
+    scope_reason,
+)
 
 
 INTENTS = (
@@ -240,6 +249,9 @@ class ConversationState:
     last_listed_majors: tuple[str, ...] = ()
     last_list_count: int = 0
     previous_intent: str | None = None
+    current_school: str | None = None
+    school_scope: str = TARGET_SCHOOL_UNSPECIFIED
+    school_mentions: tuple[str, ...] = ()
     turn_count: int = 0
 
     @property
@@ -281,6 +293,9 @@ class ConversationState:
             ),
             last_list_count=max(0, _safe_int(value.get("last_list_count"), 0)),
             previous_intent=_safe_str(value.get("previous_intent")),
+            current_school=_safe_str(value.get("current_school")),
+            school_scope=_safe_str(value.get("school_scope")) or TARGET_SCHOOL_UNSPECIFIED,
+            school_mentions=_safe_str_tuple(value.get("school_mentions"), limit=4),
             turn_count=max(0, _safe_int(value.get("turn_count"), 0)),
         )
 
@@ -300,6 +315,9 @@ class ConversationState:
             "last_listed_majors": list(self.last_listed_majors),
             "last_list_count": self.last_list_count,
             "previous_intent": self.previous_intent,
+            "current_school": self.current_school,
+            "school_scope": self.school_scope,
+            "school_mentions": list(self.school_mentions),
             "turn_count": self.turn_count,
         }
 
@@ -1003,8 +1021,6 @@ _HARD_OUT_OF_SCOPE_MARKERS = (
     "gia vang",
     "xin viec",
     "viec lam",
-    "truong khac",
-    "dai hoc khac",
     "nau pho",
     "cong thuc nau",
     "cau chuyen",
@@ -1238,6 +1254,53 @@ def _classify_intent(
     ), "deterministic_fallback"
 
 
+def _is_school_switch_followup(normalized: str) -> bool:
+    return any(
+        marker in normalized
+        for marker in ("con dhv", "con hung vuong", "vay dhv", "thi dhv", "dhv thi sao")
+    )
+
+
+def _apply_school_scope(
+    entities: dict[str, object],
+    *,
+    state: ConversationState,
+    intent: str,
+    normalized: str,
+) -> None:
+    detected = detect_target_school(normalized)
+    target = str(detected["target_school"])
+    mentions = list(detected.get("school_mentions") or ())
+    # Follow-up questions inherit only the bounded school slot, never raw
+    # conversation text. Greetings/system turns must not inherit it.
+    if (
+        target == TARGET_SCHOOL_UNSPECIFIED
+        and state.current_school
+        and intent not in {"GREETING", "SYSTEM_IDENTITY", "SYSTEM_SCOPE"}
+        and (intent != "OUT_OF_SCOPE" or any(marker in normalized for marker in ("con", "vay", "thi sao", "bao nhieu", "diem")))
+    ):
+        target = state.current_school
+        mentions = list(state.school_mentions)
+    entities["target_school"] = target
+    entities["school_mentions"] = mentions
+    entities["scope_reason"] = scope_reason(
+        normalized,
+        target_school=target,
+        has_admissions_entity=any(
+            entities.get(key)
+            for key in (
+                "major_name",
+                "major_code",
+                "program_name",
+                "candidate_majors",
+                "candidate_programs",
+                "admission_method",
+                "student_scores",
+            )
+        ),
+    )
+
+
 def analyze_question(question: str, state: ConversationState | Mapping[str, object] | None = None, *, default_year: int = 2026) -> QueryAnalysis:
     """Chuẩn hóa một lượt hỏi và chỉ trích xuất các thực thể có cấu trúc và giới hạn."""
 
@@ -1245,7 +1308,26 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
     original = question if isinstance(question, str) else ""
     normalized = normalize_question(original)
     entities = _extract_entities(normalized, active_state)
+    detected_school = detect_target_school(normalized)
+    entities.update(detected_school)
     intent, intent_confidence, intent_source = _classify_intent(normalized, entities, active_state)
+    if (
+        intent == "OUT_OF_SCOPE"
+        and entities.get("target_school") == TARGET_SCHOOL_DHV
+        and active_state.previous_intent in INTENTS
+        and _is_school_switch_followup(normalized)
+    ):
+        # ``Còn DHV thì sao?`` keeps the previous bounded topic while
+        # explicitly switching the school back to DHV.
+        intent = active_state.previous_intent
+        intent_source = "conversation_school_switch"
+        intent_confidence = None
+    _apply_school_scope(
+        entities,
+        state=active_state,
+        intent=intent,
+        normalized=normalized,
+    )
     _clear_ambiguous_advisory_entities(entities, normalized, intent)
     if (
         intent == "DANH_SACH_CHUONG_TRINH"
@@ -1314,9 +1396,12 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
 
     active_state = ConversationState.from_value(state, default_year=target_year)
     entities = dict(analysis.entities)
+    school_target = str(entities.get("target_school") or TARGET_SCHOOL_UNSPECIFIED)
+    can_inherit_dhv_entities = school_target in {TARGET_SCHOOL_DHV, TARGET_SCHOOL_UNSPECIFIED}
     resolved = replace(analysis, entities=entities)
     if (
-        not entities.get("major_name")
+        can_inherit_dhv_entities
+        and not entities.get("major_name")
         and active_state.current_major
         and not entities.get("program_name")
         and resolved.intent not in CONTEXT_INHERIT_EXCLUDED
@@ -1328,13 +1413,15 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
         entities["major_name"] = active_state.current_major
         entities["entity_type"] = "major"
     if (
-        resolved.intent not in CONTEXT_INHERIT_EXCLUDED
+        can_inherit_dhv_entities
+        and resolved.intent not in CONTEXT_INHERIT_EXCLUDED
         and not entities.get("candidate_majors")
         and active_state.candidate_majors
     ):
         entities["candidate_majors"] = list(active_state.candidate_majors)
     if (
-        resolved.intent not in CONTEXT_INHERIT_EXCLUDED
+        can_inherit_dhv_entities
+        and resolved.intent not in CONTEXT_INHERIT_EXCLUDED
         and not entities.get("candidate_programs")
         and active_state.candidate_programs
     ):
@@ -1785,6 +1872,22 @@ def update_conversation_state(
             0,
             last_list_count if last_list_count is not None else len(listed_majors),
         )
+    target_school = str(entities.get("target_school") or TARGET_SCHOOL_UNSPECIFIED)
+    if target_school in {
+        TARGET_SCHOOL_DHV,
+        TARGET_SCHOOL_OTHER,
+        TARGET_SCHOOL_MIXED,
+        TARGET_SCHOOL_AMBIGUOUS,
+    }:
+        current_school = target_school
+        school_scope = target_school
+        school_mentions = _safe_str_tuple(entities.get("school_mentions"), limit=4)
+    else:
+        # Greetings and generic questions do not erase a bounded school slot;
+        # a later follow-up can still refer to the same external school.
+        current_school = current.current_school
+        school_scope = current.school_scope or TARGET_SCHOOL_UNSPECIFIED
+        school_mentions = current.school_mentions
     return ConversationState(
         current_year=int(year),
         current_major=str(major) if major else None,
@@ -1798,6 +1901,9 @@ def update_conversation_state(
         last_listed_majors=listed_majors,
         last_list_count=listed_count,
         previous_intent=analysis.intent,
+        current_school=current_school,
+        school_scope=school_scope,
+        school_mentions=tuple(school_mentions),
         turn_count=current.turn_count + 1,
     )
 

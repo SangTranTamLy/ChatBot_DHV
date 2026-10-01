@@ -1,63 +1,46 @@
-# Phase 5 evaluation dataset
+# Phase 5 canonical Q&A dataset
 
-This dataset is generated only from verified DHV Structured JSON records.
-It is evaluation data, not Qwen fine-tuning data.
+Phase 5 hiện chỉ sử dụng dataset do người dùng cung cấp:
 
-## Files
+`data/evaluation/raw/Nhóm 4_Thu_Thap_Q&A.xlsx`
 
-- `qa_master_1000.jsonl`: immutable master with 1,000 rows.
-- `train_800.jsonl`: development pool; `development_split` further marks 640 train / 160 dev.
-- `test_200.jsonl`: final holdout; semantic families stay entirely within one split.
-- `test_200.lock`: SHA-256 lock created at dataset generation time.
+Workbook có 500 dòng với bốn cột `TT`, `Câu hỏi`, `Trả lời`, `Nguồn`. File
+gốc được giữ nguyên. Pipeline chỉ chuyển từng dòng sang JSONL để kiểm tra và
+đánh giá; không sinh câu hỏi, không sinh câu trả lời và không trộn dataset cũ.
 
-## Runtime taxonomy mapping
+## File active
 
-The runtime currently uses `HOI_*`, `SCHOOL_INFO`, `GREETING`, and `OUT_OF_SCOPE`.
-`semantic_intent` retains the Phase 5 meaning (for example `thanks` or `goodbye`)
-without inventing a new runtime intent label.
+- `raw/Nhóm 4_Thu_Thap_Q&A.xlsx`: nguồn canonical, không chỉnh sửa.
+- `qa_master_500.jsonl`: bản chuẩn hóa 500/500 dòng.
+- `qa_master_500.lock`: SHA-256 của JSONL active.
+- `qa_master_500.audit.json`: kết quả kiểm tra số dòng, ID, trường bắt buộc và trùng lặp.
 
-Verified 2026 records referenced: 247.
+## Quy tắc
 
-## Distribution
+- Không dùng lại `qa_master_1000`, `train_800`, `test_200` hoặc Q&A generated cũ.
+- Không tạo split train/test mới khi chưa có yêu cầu chính thức về split.
+- `reference_answer` được sao nguyên từ cột `Trả lời`; `source` được sao nguyên từ cột `Nguồn`.
+- Dataset này dùng cho regression/evaluation, không dùng để fine-tune Qwen.
 
-| Category | Rows |
-|---|---:|
-| cach_tinh_diem | 12 |
-| clarification | 20 |
-| diem_trung_tuyen | 208 |
-| ho_so | 96 |
-| hoc_bong | 96 |
-| hoc_phi | 64 |
-| lich_tuyen_sinh | 8 |
-| multi_turn | 20 |
-| nganh_dao_tao | 168 |
-| nguong_dau_vao | 88 |
-| nhap_hoc | 48 |
-| out_of_scope | 20 |
-| phuong_thuc_xet_tuyen | 64 |
-| system/small_talk | 12 |
-| thong_tin_truong | 4 |
-| xet_tuyen_bo_sung | 72 |
+## Tạo lại dataset active
 
-## Intent distribution
+```powershell
+python scripts/build_phase5_dataset.py
+```
 
-| Intent | Rows |
-|---|---:|
-| DANH_SACH_NGANH | 32 |
-| GREETING | 4 |
-| HOI_CACH_TINH_DIEM | 12 |
-| HOI_CHUONG_TRINH | 56 |
-| HOI_DIEM_TRUNG_TUYEN | 208 |
-| HOI_HOC_BONG | 96 |
-| HOI_HOC_PHI | 74 |
-| HOI_HO_SO | 96 |
-| HOI_LICH_TUYEN_SINH | 8 |
-| HOI_NGANH | 80 |
-| HOI_NGUONG_DAU_VAO | 118 |
-| HOI_NHAP_HOC | 48 |
-| HOI_PHUONG_THUC_XET_TUYEN | 64 |
-| HOI_XET_TUYEN_BO_SUNG | 72 |
-| OUT_OF_SCOPE | 28 |
-| SCHOOL_INFO | 4 |
+## Chạy audit/evaluation
 
-The final test file is locked after creation. If a test label is ever proven wrong, record the old label, new label, reason and evidence in the Phase 5 report before making a separately versioned dataset change.
+Audit-only:
+
+```powershell
+python scripts/evaluate_phase5.py --skip-e2e
+```
+
+Chạy thêm chatbot trên toàn bộ 500 câu:
+
+```powershell
+python scripts/evaluate_phase5.py --split canonical
+```
+
+Các chỉ số lexical/numeric trong report là proxy để sàng lọc. Semantic
+correctness của câu trả lời canonical vẫn cần review nội dung.

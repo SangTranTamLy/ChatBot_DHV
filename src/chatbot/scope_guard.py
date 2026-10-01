@@ -6,6 +6,20 @@ import re
 import unicodedata
 
 
+TARGET_SCHOOL_DHV = "DHV"
+TARGET_SCHOOL_OTHER = "OTHER_SCHOOL"
+TARGET_SCHOOL_MIXED = "MIXED"
+TARGET_SCHOOL_UNSPECIFIED = "UNSPECIFIED"
+TARGET_SCHOOL_AMBIGUOUS = "AMBIGUOUS"
+
+SCOPE_REASON_IN_SCOPE_DHV = "in_scope_dhv"
+SCOPE_REASON_EXTERNAL_SCHOOL = "external_school"
+SCOPE_REASON_MIXED_SCHOOL = "mixed_school"
+SCOPE_REASON_AMBIGUOUS_SCHOOL = "ambiguous_school"
+SCOPE_REASON_GENERAL_OUT_OF_SCOPE = "general_out_of_scope"
+SCOPE_REASON_RELATED_NO_DATA = "related_no_data"
+
+
 ADMISSIONS_KEYWORDS = frozenset(
     {
         "tuyen sinh",
@@ -94,10 +108,236 @@ SCHOOL_KEYWORDS = frozenset(
     {
         "dhv",
         "dai hoc hung vuong",
+        "hung vuong",
         "hung vuong tphcm",
         "hung vuong thanh pho ho chi minh",
     }
 )
+
+# Các tên dưới đây là những tổ chức giáo dục thường xuất hiện trong câu hỏi
+# ``điểm chuẩn/học phí trường khác``.  Không đưa mọi chuỗi ``đại học`` vào đây:
+# các câu hỏi chung như ``Trường có xét học bạ không?`` vẫn phải được hiểu là
+# đang hỏi DHV theo ngữ cảnh của chatbot.
+FOREIGN_INSTITUTION_KEYWORDS = frozenset(
+    {
+        "dai hoc quoc gia ha noi",
+        "dhqghn",
+        "dhqg hn",
+        "dai hoc quoc gia thanh pho ho chi minh",
+        "dai hoc bach khoa ha noi",
+        "bach khoa ha noi",
+        "dai hoc bach khoa tphcm",
+        "dai hoc bach khoa tp hcm",
+        "bach khoa tphcm",
+        "bach khoa tp hcm",
+        "dai hoc kinh te quoc dan",
+        "kinh te quoc dan",
+        "dai hoc ngoai thuong",
+        "ngoai thuong",
+        "ftu",
+        "dai hoc fpt",
+        "fpt university",
+        "dai hoc rmit",
+        "rmit",
+        "dai hoc ton duc thang",
+        "ton duc thang",
+        "dai hoc kinh te tp hcm",
+        "dai hoc kinh te tphcm",
+        "ueh",
+        "dai hoc sai gon",
+        "dai hoc thuong mai",
+        "dai hoc van lang",
+        "dai hoc van hien",
+        "van hien",
+        "dai hoc hoa sen",
+        "hoa sen",
+        "dai hoc nguyen tat thanh",
+        "nguyen tat thanh",
+        "dai hoc mo tphcm",
+        "dai hoc mo tp hcm",
+        "dai hoc y duoc",
+    }
+)
+_OTHER_SCHOOL_MARKERS = (
+    "truong khac",
+    "dai hoc khac",
+    "truong ben kia",
+    "truong nay khac",
+)
+_DGNL_EXTERNAL_SOURCE_RE = re.compile(
+    r"\b(?:dgnl|danh gia nang luc)\b.{0,32}\b(?:dhqg|dai hoc quoc gia)\b",
+)
+_GENERIC_INSTITUTION_FOLLOWERS = frozenset(
+    {
+        "bao",
+        "ban",
+        "cach",
+        "can",
+        "co",
+        "cua",
+        "duoc",
+        "gi",
+        "gì",
+        "hop",
+        "hoc",
+        "khong",
+        "la",
+        "minh",
+        "nam",
+        "nao",
+        "nganh",
+        "nhan",
+        "nhieu",
+        "nay",
+        "o",
+        "tai",
+        "theo",
+        "thong",
+        "tin",
+        "truong",
+        "tuyen",
+        "vay",
+        "xet",
+    }
+)
+_INSTITUTION_REFERENCE_RE = re.compile(
+    r"\b(?P<kind>truong|dai hoc|dh|hoc vien|cao dang|university)\s+(?P<first>[a-z0-9]+)\b",
+)
+
+
+def _contains_scope_marker(normalized: str, marker: str) -> bool:
+    return bool(re.search(rf"(?<!\w){re.escape(marker)}(?!\w)", normalized))
+
+
+def _has_unknown_named_institution(normalized: str) -> bool:
+    """Bắt tên trường chưa có trong danh sách nhưng được nêu rõ trong câu hỏi.
+
+    Không coi các mẫu ``trường có...``, ``đại học nào...`` là tên trường. Nếu
+    từ ngay sau ``trường/đại học/học viện/cao đẳng`` là một từ mô tả khác,
+    đó thường là tên riêng (ví dụ ``trường Văn Hiến``).
+    """
+
+    for match in _INSTITUTION_REFERENCE_RE.finditer(normalized):
+        first_word = match.group("first")
+        if first_word in _GENERIC_INSTITUTION_FOLLOWERS:
+            continue
+        # ``Trường thành lập khi nào?`` is a school-information question;
+        # ``Trường Thành Đô`` is a named institution and must be rejected.
+        if first_word == "thanh" and re.match(r"\s+lap\b", normalized[match.end() :]):
+            continue
+        # ``trường đại học ...`` is inspected again by the ``đại học`` match.
+        if match.group("kind") == "truong" and first_word == "dai":
+            continue
+        return True
+    return False
+
+
+_EXTERNAL_ALIAS_DISPLAY = {
+    "van hien": "Văn Hiến",
+    "van lang": "Văn Lang",
+    "hoa sen": "Hoa Sen",
+    "nguyen tat thanh": "Nguyễn Tất Thành",
+    "dai hoc quoc gia ha noi": "Đại học Quốc gia Hà Nội",
+    "dai hoc quoc gia thanh pho ho chi minh": "Đại học Quốc gia TP.HCM",
+    "dai hoc bach khoa ha noi": "Đại học Bách khoa Hà Nội",
+    "dai hoc bach khoa tphcm": "Đại học Bách khoa TP.HCM",
+    "dai hoc kinh te quoc dan": "Đại học Kinh tế Quốc dân",
+    "dai hoc ngoai thuong": "Đại học Ngoại thương",
+    "dai hoc fpt": "Đại học FPT",
+    "dai hoc rmit": "RMIT",
+    "dai hoc sai gon": "Đại học Sài Gòn",
+}
+
+
+def _school_mentions(normalized: str) -> tuple[list[str], bool, bool]:
+    """Trích xuất tên trường theo một registry nhỏ và mẫu tên rõ ràng."""
+
+    mentions: list[str] = []
+    explicit_dhv = any(
+        _contains_scope_marker(normalized, marker)
+        for marker in (
+            "dhv",
+            "dai hoc hung vuong tphcm",
+            "dai hoc hung vuong tp hcm",
+            "dai hoc hung vuong thanh pho ho chi minh",
+            "hung vuong tphcm",
+            "hung vuong tp hcm",
+            "hung vuong thanh pho ho chi minh",
+        )
+    )
+    bare_hung_vuong = _contains_scope_marker(normalized, "hung vuong")
+    ambiguous_hung_vuong = bare_hung_vuong and not explicit_dhv
+    if explicit_dhv:
+        mentions.append("Trường Đại học Hùng Vương TP.HCM")
+    elif ambiguous_hung_vuong:
+        mentions.append("Hùng Vương")
+
+    for alias, display in _EXTERNAL_ALIAS_DISPLAY.items():
+        if _contains_scope_marker(normalized, alias):
+            if display not in mentions:
+                mentions.append(display)
+
+    for keyword in FOREIGN_INSTITUTION_KEYWORDS:
+        if _contains_scope_marker(normalized, keyword):
+            display = _EXTERNAL_ALIAS_DISPLAY.get(keyword, keyword)
+            if display not in mentions:
+                mentions.append(display)
+
+    external_score_source = any(
+        _contains_scope_marker(normalized, marker)
+        for marker in (
+            "dhqg hcm",
+            "dhqg tphcm",
+            "dhqg tp hcm",
+            "dai hoc quoc gia tp hcm",
+            "dai hoc quoc gia tphcm",
+            "dai hoc quoc gia hcm",
+        )
+    )
+    if external_score_source and not _DGNL_EXTERNAL_SOURCE_RE.search(normalized):
+        if "ĐHQG-HCM" not in mentions:
+            mentions.append("ĐHQG-HCM")
+
+    if _has_unknown_named_institution(normalized) and not mentions:
+        mentions.append("trường khác")
+
+    return mentions, explicit_dhv, ambiguous_hung_vuong
+
+
+def detect_target_school(question: str) -> dict[str, object]:
+    """Xác định trường đích độc lập với intent nghiệp vụ.
+
+    Intent trả lời câu hỏi hỏi gì; hàm này trả lời câu hỏi đang hỏi trường
+    nào. Hai thông tin không được trộn để tránh lấy fact DHV cho trường khác.
+    """
+
+    normalized = normalize_scope_text(question).strip()
+    mentions, explicit_dhv, ambiguous_hung_vuong = _school_mentions(normalized)
+    has_external = any(
+        mention != "Trường Đại học Hùng Vương TP.HCM" and mention != "Hùng Vương"
+        for mention in mentions
+    )
+    if explicit_dhv and has_external:
+        target = TARGET_SCHOOL_MIXED
+        reason = SCOPE_REASON_MIXED_SCHOOL
+    elif explicit_dhv:
+        target = TARGET_SCHOOL_DHV
+        reason = SCOPE_REASON_IN_SCOPE_DHV
+    elif ambiguous_hung_vuong:
+        target = TARGET_SCHOOL_AMBIGUOUS
+        reason = SCOPE_REASON_AMBIGUOUS_SCHOOL
+    elif has_external:
+        target = TARGET_SCHOOL_OTHER
+        reason = SCOPE_REASON_EXTERNAL_SCHOOL
+    else:
+        target = TARGET_SCHOOL_UNSPECIFIED
+        reason = ""
+    return {
+        "target_school": target,
+        "school_mentions": mentions,
+        "scope_reason": reason,
+        "explicit_school": bool(mentions),
+    }
 
 _PERSONAL_ADVICE_PASSION_MARKERS = (
     "dam me",
@@ -127,7 +367,10 @@ _PERSONAL_ADVICE_DECISION_MARKERS = (
 def normalize_scope_text(value: str) -> str:
     text = unicodedata.normalize("NFKD", value or "")
     text = "".join(character for character in text if not unicodedata.combining(character))
-    return text.lower().replace("đ", "d")
+    text = text.lower().replace("đ", "d")
+    # ``TP.HCM``, ``TP-HCM`` và ``ĐHQG-HCM`` phải được xử lý giống nhau.
+    text = re.sub(r"[^\w\s]", " ", text, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def is_personal_life_advice(question: str) -> bool:
@@ -157,24 +400,94 @@ def _is_tuition_unit_question(normalized: str) -> bool:
     return has_unit and asks_price
 
 
-def is_in_scope(question: str, *, has_admissions_entity: bool = False) -> bool:
+def is_foreign_institution_question(question: str) -> bool:
+    """Nhận diện yêu cầu nhắm tới trường khác DHV.
+
+    ĐHQG-HCM là nguồn của kỳ thi ĐGNL mà DHV có thể dùng để xét tuyển, nên
+    cụm này chỉ bị chặn khi nó được hỏi như một trường hoặc không nằm trong
+    ngữ cảnh kỳ thi ĐGNL.
+    """
+
+    target = detect_target_school(question)["target_school"]
+    return target in {TARGET_SCHOOL_OTHER, TARGET_SCHOOL_MIXED}
+
+
+def scope_reason(
+    question: str,
+    *,
+    target_school: str | None = None,
+    has_admissions_entity: bool = False,
+) -> str:
+    """Trả về lý do phạm vi để trace phân biệt external với câu hỏi chung."""
+
+    normalized = normalize_scope_text(question).strip()
+    target = target_school or str(detect_target_school(normalized)["target_school"])
+    if target == TARGET_SCHOOL_OTHER:
+        return SCOPE_REASON_EXTERNAL_SCHOOL
+    if target == TARGET_SCHOOL_MIXED:
+        return SCOPE_REASON_MIXED_SCHOOL
+    if target == TARGET_SCHOOL_AMBIGUOUS:
+        return SCOPE_REASON_AMBIGUOUS_SCHOOL
+    if is_personal_life_advice(normalized) and not has_admissions_entity:
+        return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
+    if _is_tuition_unit_question(normalized):
+        return SCOPE_REASON_IN_SCOPE_DHV
+    if any(keyword in normalized for keyword in ADMISSIONS_KEYWORDS):
+        return SCOPE_REASON_IN_SCOPE_DHV
+    if any(keyword in normalized for keyword in SCHOOL_DIRECTORY_KEYWORDS):
+        return SCOPE_REASON_IN_SCOPE_DHV
+    if any(keyword in normalized for keyword in ("thoi tiet", "gia vang", "nau pho", "cau chuyen", "xin viec", "viec lam")):
+        return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
+    if target == TARGET_SCHOOL_DHV:
+        return SCOPE_REASON_IN_SCOPE_DHV
+    return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
+
+
+def is_in_scope(
+    question: str,
+    *,
+    has_admissions_entity: bool = False,
+    target_school: str | None = None,
+) -> bool:
     """Trả về xem một câu hỏi có vẻ liên quan đến tuyển sinh DHV hay không."""
 
     normalized = normalize_scope_text(question).strip()
     if not normalized:
         return False
-    if is_personal_life_advice(normalized) and not has_admissions_entity:
-        return False
-    if _is_tuition_unit_question(normalized):
-        return True
-    if any(keyword in normalized for keyword in ADMISSIONS_KEYWORDS):
-        return True
-    if any(keyword in normalized for keyword in SCHOOL_DIRECTORY_KEYWORDS):
-        return True
-    return bool(
-        any(keyword in normalized for keyword in SCHOOL_KEYWORDS)
-        and re.search(r"\b20\d{2}\b", normalized)
+    # Tên trường đích là ranh giới cứng. Kiểm tra trước các từ khóa rộng như
+    # ``điểm chuẩn`` để không truy xuất nhầm dữ liệu DHV cho trường khác.
+    reason = scope_reason(
+        normalized,
+        target_school=target_school,
+        has_admissions_entity=has_admissions_entity,
     )
+    if reason in {
+        SCOPE_REASON_EXTERNAL_SCHOOL,
+        SCOPE_REASON_MIXED_SCHOOL,
+        SCOPE_REASON_AMBIGUOUS_SCHOOL,
+        SCOPE_REASON_GENERAL_OUT_OF_SCOPE,
+    }:
+        return False
+    return reason == SCOPE_REASON_IN_SCOPE_DHV
 
 
-__all__ = ["is_in_scope", "is_personal_life_advice", "normalize_scope_text"]
+__all__ = [
+    "FOREIGN_INSTITUTION_KEYWORDS",
+    "SCOPE_REASON_AMBIGUOUS_SCHOOL",
+    "SCOPE_REASON_EXTERNAL_SCHOOL",
+    "SCOPE_REASON_GENERAL_OUT_OF_SCOPE",
+    "SCOPE_REASON_IN_SCOPE_DHV",
+    "SCOPE_REASON_MIXED_SCHOOL",
+    "SCOPE_REASON_RELATED_NO_DATA",
+    "TARGET_SCHOOL_AMBIGUOUS",
+    "TARGET_SCHOOL_DHV",
+    "TARGET_SCHOOL_MIXED",
+    "TARGET_SCHOOL_OTHER",
+    "TARGET_SCHOOL_UNSPECIFIED",
+    "detect_target_school",
+    "is_foreign_institution_question",
+    "is_in_scope",
+    "is_personal_life_advice",
+    "normalize_scope_text",
+    "scope_reason",
+]

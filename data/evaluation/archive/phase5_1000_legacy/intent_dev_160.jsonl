@@ -59,7 +59,7 @@
 {"id": "Q0363", "intent": "HOI_NHAP_HOC", "text": "Khi nhập học trường có hướng dẫn Học bạ THPT. chứ?"}
 {"id": "Q0364", "intent": "HOI_NHAP_HOC", "text": "Nhap hoc DHV: hoc ba thpt?"}
 {"id": "Q0381", "intent": "HOI_CACH_TINH_DIEM", "text": "Điểm xét tuyển DHV được tính theo nội dung Cách 2: Xét theo t ổ hợp môn xét tuy ể như thế nào?"}
-{"id": "Q0382", "intent": "HOI_CACH_TINH_DIEM", "text": "Cho em hỏi công thức tính điểm xét tuyển, phần Cách 2: Xét theo t ổ hợp môn xét tuy ể."}
+{"id": "Q0382", "intent": "HOI_CACH_TINH_DIEM", "text": "Cho em hỏi công thức tính điểm xét tuyển, phần Cách 2: Xét theo tổ hợp môn xét tuyển."}
 {"id": "Q0383", "intent": "HOI_CACH_TINH_DIEM", "text": "Cách quy đổi điểm vào DHV theo Cách 2: Xét theo t ổ hợp môn xét tuy ể ra sao ạ?"}
 {"id": "Q0384", "intent": "HOI_CACH_TINH_DIEM", "text": "Cach tinh diem xet tuyen DHV theo cach 2 xet theo t o hop mon xet tuy e?"}
 {"id": "Q0397", "intent": "HOI_NGANH", "text": "Mã ngành Thương mại điện tử của DHV là bao nhiêu?"}

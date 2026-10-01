@@ -3,14 +3,45 @@
 from __future__ import annotations
 
 import hashlib
+import os
+from functools import lru_cache
 from typing import Iterable
 
 from langchain_core.documents import Document
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
 
-DEFAULT_CHUNK_SIZE = 900
-DEFAULT_CHUNK_OVERLAP = 120
+DEFAULT_CHUNK_SIZE = 512
+DEFAULT_CHUNK_OVERLAP = 50
+DEFAULT_TOKENIZER_MODEL = os.getenv("CHUNK_TOKENIZER_MODEL", "BAAI/bge-m3")
+
+
+@lru_cache(maxsize=4)
+def _load_tokenizer(model_name: str):
+    """Load the local tokenizer used to count chunk tokens."""
+
+    try:
+        from transformers import AutoTokenizer
+    except ImportError as exc:  # pragma: no cover - dependency failure
+        raise RuntimeError(
+            "Token-aware chunking requires transformers. "
+            "Install requirements.txt before building the corpus."
+        ) from exc
+
+    try:
+        return AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+    except Exception as exc:  # pragma: no cover - model cache failure
+        raise RuntimeError(
+            f"Không tìm thấy tokenizer cục bộ {model_name!r}. "
+            "Tải/cache tokenizer trước hoặc đặt CHUNK_TOKENIZER_MODEL tới model đã có sẵn."
+        ) from exc
+
+
+def _token_count(tokenizer: object, text: str) -> int:
+    encode = getattr(tokenizer, "encode", None)
+    if not callable(encode):
+        raise TypeError("tokenizer must provide encode()")
+    return len(encode(text, add_special_tokens=False))
 
 
 def _document_id(document: Document) -> str:
@@ -29,17 +60,22 @@ def split_documents(
     *,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+    tokenizer_model: str = DEFAULT_TOKENIZER_MODEL,
 ) -> list[Document]:
-    """Giữ mỗi record/section độc lập, rồi chia nhỏ record dài nếu cần.
+    """Giữ mỗi record/section độc lập, rồi chia nhỏ record dài theo token.
 
     Mỗi phần tiêu đề được xử lý độc lập để nội dung từ các loại học bổng,
     ngày tháng hoặc thủ tục khác nhau không bị gộp chung vào một đoạn (chunk).
+    ``chunk_size`` và ``chunk_overlap`` được tính bằng token của tokenizer
+    cấu hình, không phải số ký tự.
     """
 
     if chunk_size <= 0:
         raise ValueError("chunk_size must be greater than zero")
     if chunk_overlap < 0 or chunk_overlap >= chunk_size:
         raise ValueError("chunk_overlap must be between zero and chunk_size - 1")
+
+    tokenizer = _load_tokenizer(tokenizer_model)
 
     heading_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=[
@@ -49,7 +85,8 @@ def split_documents(
         ],
         strip_headers=False,
     )
-    text_splitter = RecursiveCharacterTextSplitter(
+    text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
+        tokenizer,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         separators=["\n\n", "\n", ". ", " ", ""],
@@ -93,6 +130,9 @@ def split_documents(
                             f"{section_chunk_index:03d}-{content_hash}"
                         ),
                         "chunk_char_count": len(section_chunk.page_content),
+                        "chunk_token_count": _token_count(
+                            tokenizer, section_chunk.page_content
+                        ),
                     }
                 )
                 chunks.append(
@@ -106,5 +146,6 @@ def split_documents(
 __all__ = [
     "DEFAULT_CHUNK_OVERLAP",
     "DEFAULT_CHUNK_SIZE",
+    "DEFAULT_TOKENIZER_MODEL",
     "split_documents",
 ]

@@ -28,9 +28,12 @@ from .evidence import (
 )
 from .answer_planner import AnswerPlan, plan_answer
 from .output_validator import (
+    AMBIGUOUS_SCHOOL_ANSWER,
     CLARIFICATION_ANSWER,
     ERROR_ANSWER,
+    EXTERNAL_SCHOOL_ANSWER,
     FALLBACK_ANSWER,
+    MIXED_SCHOOL_ANSWER,
     OLLAMA_OFFLINE_ANSWER,
     OUT_OF_SCOPE_ANSWER,
     VECTOR_DB_ERROR_ANSWER,
@@ -51,6 +54,15 @@ from .query_analysis import (
     update_conversation_state,
 )
 from .scope_guard import is_in_scope
+from .scope_guard import (
+    SCOPE_REASON_AMBIGUOUS_SCHOOL,
+    SCOPE_REASON_EXTERNAL_SCHOOL,
+    SCOPE_REASON_MIXED_SCHOOL,
+    TARGET_SCHOOL_AMBIGUOUS,
+    TARGET_SCHOOL_MIXED,
+    TARGET_SCHOOL_OTHER,
+    scope_reason,
+)
 
 
 _RETRYABLE_VALIDATION_REASONS = frozenset(
@@ -83,8 +95,11 @@ _RETRYABLE_VALIDATION_REASONS = frozenset(
 
 def _analysis_with_state(analysis: QueryAnalysis, state: ConversationState) -> QueryAnalysis:
     entities = dict(analysis.entities)
+    school_target = str(entities.get("target_school") or "UNSPECIFIED")
+    can_inherit_dhv_entities = school_target in {"DHV", "UNSPECIFIED"}
     if (
-        not entities.get("major_name")
+        can_inherit_dhv_entities
+        and not entities.get("major_name")
         and state.current_major
         and not entities.get("program_name")
         and analysis.intent not in CONTEXT_INHERIT_EXCLUDED
@@ -96,13 +111,15 @@ def _analysis_with_state(analysis: QueryAnalysis, state: ConversationState) -> Q
         entities["major_name"] = state.current_major
         entities["entity_type"] = "major"
     if (
-        analysis.intent not in CONTEXT_INHERIT_EXCLUDED
+        can_inherit_dhv_entities
+        and analysis.intent not in CONTEXT_INHERIT_EXCLUDED
         and not entities.get("candidate_majors")
         and state.candidate_majors
     ):
         entities["candidate_majors"] = list(state.candidate_majors)
     if (
-        analysis.intent not in CONTEXT_INHERIT_EXCLUDED
+        can_inherit_dhv_entities
+        and analysis.intent not in CONTEXT_INHERIT_EXCLUDED
         and not entities.get("candidate_programs")
         and state.candidate_programs
     ):
@@ -165,6 +182,15 @@ def _trace(
             "in_scope": is_in_scope(
                 analysis.question,
                 has_admissions_entity=has_admissions_entity,
+                target_school=analysis.entities.get("target_school"),
+            ),
+            "target_school": analysis.entities.get("target_school", "UNSPECIFIED"),
+            "school_mentions": list(analysis.entities.get("school_mentions") or ()),
+            "scope_reason": analysis.entities.get("scope_reason")
+            or scope_reason(
+                analysis.question,
+                target_school=analysis.entities.get("target_school"),
+                has_admissions_entity=has_admissions_entity,
             ),
             "has_admissions_entity": has_admissions_entity,
         },
@@ -188,6 +214,13 @@ def _attach_answer_plan(
         result["related_questions"] = list(answer_plan.related_questions)
     trace = result.get("trace")
     if isinstance(trace, dict):
+        scope_trace = trace.get("scope")
+        if isinstance(scope_trace, dict):
+            target_school = str(scope_trace.get("target_school") or "UNSPECIFIED")
+            if result.get("status") == "no_data" and target_school in {"DHV", "UNSPECIFIED"}:
+                scope_trace["scope_reason"] = "related_no_data"
+            result.setdefault("target_school", target_school)
+            result.setdefault("scope_reason", scope_trace.get("scope_reason"))
         trace["answer_plan"] = payload
         trace["final_status"] = result.get("status")
     return result
@@ -313,6 +346,47 @@ def _clarification_result(
         "conversation_state": next_state.to_dict(),
         "trace": _trace(analysis, plan, next_state, answer_plan=answer_plan),
     }, answer_plan)
+
+
+def _school_scope_boundary_result(
+    *,
+    analysis: QueryAnalysis,
+    plan: Any,
+    state: ConversationState,
+    target_school: str,
+    scope_reason_value: str,
+) -> dict[str, object]:
+    """Kết thúc trước retrieval cho external/mixed/ambiguous school."""
+
+    next_state = update_conversation_state(state, analysis)
+    if target_school == TARGET_SCHOOL_AMBIGUOUS:
+        answer = AMBIGUOUS_SCHOOL_ANSWER
+        status = "clarification"
+    elif target_school == TARGET_SCHOOL_MIXED:
+        answer = MIXED_SCHOOL_ANSWER
+        status = "out_of_scope"
+    else:
+        answer = EXTERNAL_SCHOOL_ANSWER
+        status = "out_of_scope"
+    answer_plan = plan_answer(analysis, status=status)
+    trace = _trace(analysis, plan, next_state, answer_plan=answer_plan)
+    trace["retrieved_docs_count"] = 0
+    trace["evidence_count"] = 0
+    trace["retrieval_calls"] = 0
+    trace["scope"]["scope_reason"] = scope_reason_value
+    return _attach_answer_plan(
+        {
+            "answer": answer,
+            "sources": [],
+            "status": status,
+            "scope_reason": scope_reason_value,
+            "target_school": target_school,
+            "state": next_state.to_dict(),
+            "conversation_state": next_state.to_dict(),
+            "trace": trace,
+        },
+        answer_plan,
+    )
 
 
 def _retrieve(
@@ -1645,6 +1719,27 @@ def ask_chatbot(
     analysis = _analysis_with_state(analysis, state)
     plan = route_question(analysis, state, target_year=settings_obj.target_year)
 
+    target_school = str(analysis.entities.get("target_school") or "UNSPECIFIED")
+    if target_school in {
+        TARGET_SCHOOL_OTHER,
+        TARGET_SCHOOL_MIXED,
+        TARGET_SCHOOL_AMBIGUOUS,
+    }:
+        return _school_scope_boundary_result(
+            analysis=analysis,
+            plan=plan,
+            state=state,
+            target_school=target_school,
+            scope_reason_value=str(
+                analysis.entities.get("scope_reason")
+                or {
+                    TARGET_SCHOOL_OTHER: SCOPE_REASON_EXTERNAL_SCHOOL,
+                    TARGET_SCHOOL_MIXED: SCOPE_REASON_MIXED_SCHOOL,
+                    TARGET_SCHOOL_AMBIGUOUS: SCOPE_REASON_AMBIGUOUS_SCHOOL,
+                }[target_school]
+            ),
+        )
+
     if analysis.intent in _DETERMINISTIC_SYSTEM_ANSWERS:
         next_state = update_conversation_state(
             state,
@@ -1693,13 +1788,19 @@ def ask_chatbot(
     ):
         next_state = update_conversation_state(state, analysis)
         answer_plan = plan_answer(analysis, status="out_of_scope")
+        trace = _trace(analysis, plan, next_state, answer_plan=answer_plan)
+        trace["retrieved_docs_count"] = 0
+        trace["evidence_count"] = 0
+        trace["retrieval_calls"] = 0
         return _attach_answer_plan({
             "answer": OUT_OF_SCOPE_ANSWER,
             "sources": [],
             "status": "out_of_scope",
+            "scope_reason": analysis.entities.get("scope_reason", "general_out_of_scope"),
+            "target_school": analysis.entities.get("target_school", "UNSPECIFIED"),
             "state": next_state.to_dict(),
             "conversation_state": next_state.to_dict(),
-            "trace": _trace(analysis, plan, next_state, answer_plan=answer_plan),
+            "trace": trace,
         }, answer_plan)
 
     explicit_year = requested_year(query)

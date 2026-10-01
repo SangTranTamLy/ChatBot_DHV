@@ -1,0 +1,29 @@
+{
+  "dataset": "user_canonical_500",
+  "source": {
+    "source_file": "Nhóm 4_Thu_Thap_Q&A.xlsx",
+    "source_path": "C:\\Users\\Sang\\OneDrive\\Desktop\\ChatBot_DHV\\data\\evaluation\\raw\\Nhóm 4_Thu_Thap_Q&A.xlsx",
+    "worksheet": "Trang tính1",
+    "header_row": 2,
+    "physical_rows": 502
+  },
+  "audit": {
+    "total": 500,
+    "expected_total": 500,
+    "canonical_only": true,
+    "unique_ids": true,
+    "duplicate_ids": {},
+    "duplicate_questions": {},
+    "duplicate_answers": {},
+    "missing_questions": [],
+    "missing_answers": [],
+    "missing_sources": [],
+    "sequential_tt": true,
+    "valid": true
+  },
+  "master_path": "C:\\Users\\Sang\\OneDrive\\Desktop\\ChatBot_DHV\\data\\evaluation\\qa_master_500.jsonl",
+  "master_sha256": "e8d95c02b9f64e9572e10556939f9c6eae090487bebca71b9d9eb1814ceadb6d",
+  "lock_path": "C:\\Users\\Sang\\OneDrive\\Desktop\\ChatBot_DHV\\data\\evaluation\\qa_master_500.lock",
+  "generated_questions": 0,
+  "generated_answers": 0
+}
