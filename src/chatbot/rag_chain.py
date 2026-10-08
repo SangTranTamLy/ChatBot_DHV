@@ -50,7 +50,8 @@ from .query_analysis import (
     select_relevant_score_facts,
     normalize_question,
     _is_global_catalog_request,
-    CONTEXT_INHERIT_EXCLUDED,
+    _is_admissions_context_followup,
+    should_inherit_context,
     update_conversation_state,
 )
 from .scope_guard import is_in_scope
@@ -97,12 +98,17 @@ def _analysis_with_state(analysis: QueryAnalysis, state: ConversationState) -> Q
     entities = dict(analysis.entities)
     school_target = str(entities.get("target_school") or "UNSPECIFIED")
     can_inherit_dhv_entities = school_target in {"DHV", "UNSPECIFIED"}
+    inherit_context = can_inherit_dhv_entities and should_inherit_context(
+        analysis.normalized_question,
+        analysis.intent,
+        state.previous_intent,
+        state,
+    )
     if (
-        can_inherit_dhv_entities
+        inherit_context
         and not entities.get("major_name")
         and state.current_major
         and not entities.get("program_name")
-        and analysis.intent not in CONTEXT_INHERIT_EXCLUDED
         and not (
             analysis.intent == "DANH_SACH_CHUONG_TRINH"
             and _is_global_catalog_request(analysis.normalized_question)
@@ -111,15 +117,13 @@ def _analysis_with_state(analysis: QueryAnalysis, state: ConversationState) -> Q
         entities["major_name"] = state.current_major
         entities["entity_type"] = "major"
     if (
-        can_inherit_dhv_entities
-        and analysis.intent not in CONTEXT_INHERIT_EXCLUDED
+        inherit_context
         and not entities.get("candidate_majors")
         and state.candidate_majors
     ):
         entities["candidate_majors"] = list(state.candidate_majors)
     if (
-        can_inherit_dhv_entities
-        and analysis.intent not in CONTEXT_INHERIT_EXCLUDED
+        inherit_context
         and not entities.get("candidate_programs")
         and state.candidate_programs
     ):
@@ -178,6 +182,10 @@ def _trace(
         "router": plan.to_dict(),
         "conversation_state": state.to_dict(),
         "retrieval": retrieval_audit.to_dict() if retrieval_audit is not None else None,
+        "retrieval_calls": 0,
+        "retrieved_docs_count": 0,
+        "retrieved_chunks": 0,
+        "evidence_count": 0,
         "scope": {
             "in_scope": is_in_scope(
                 analysis.question,
@@ -285,6 +293,7 @@ _DETERMINISTIC_SYSTEM_ANSWERS = {
         "tuyển sinh DHV. Bạn có thể hỏi về ngành, chương trình, phương thức "
         "xét tuyển, học phí, học bổng, hồ sơ hoặc lịch tuyển sinh năm 2026."
     ),
+    "THANKS": "Không có gì! Nếu cần, bạn cứ hỏi thêm về tuyển sinh DHV nhé.",
     "SYSTEM_IDENTITY": (
         "Mình là trợ lý AI phục vụ đồ án học tập/nghiên cứu, hỗ trợ tra cứu tuyển sinh "
         "DHV. Mình không phải chatbot hay kênh thông tin chính thức "
@@ -416,16 +425,37 @@ def _retrieve(
             # keep enough threshold rows for the deterministic comparison and
             # grounded fallback to find the global rule.
             expanded_score_top_k = 32
+        expanded_enrollment_top_k = None
+        if (
+            getattr(plan, "intent", "") in {"HOI_NHAP_HOC", "HOI_HO_SO"}
+            and any(
+                category in {"ho_so", "nhap_hoc"}
+                for category in tuple(getattr(plan, "categories", ()) or ())
+            )
+        ):
+            # Enrollment is represented by many small verified records (one
+            # document, mode, fee, or support item per chunk). The default
+            # top-k of four can hide the actual document list behind a fee or
+            # support row, so expand only this bounded category.
+            expanded_enrollment_top_k = 64
         try:
             kwargs = {
                 "categories": plan.categories,
                 "retrieval_query": plan.retrieval_query,
                 "entity_filters": entity_filters,
             }
-            if expanded_directory_top_k is not None or expanded_score_top_k is not None:
+            if (
+                expanded_directory_top_k is not None
+                or expanded_score_top_k is not None
+                or expanded_enrollment_top_k is not None
+            ):
                 kwargs["top_k"] = max(
                     value
-                    for value in (expanded_directory_top_k, expanded_score_top_k)
+                    for value in (
+                        expanded_directory_top_k,
+                        expanded_score_top_k,
+                        expanded_enrollment_top_k,
+                    )
                     if value is not None
                 )
             result = method(question, **kwargs)
@@ -828,6 +858,118 @@ def _evidence_tuition_answer(evidence: Any) -> str | None:
         if not re.search(r"\d[\d.,]*\s*(?:đồng|d|vnd|/)", line, re.IGNORECASE):
             continue
         return line.lstrip("• ").strip()
+    return None
+
+
+def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Render enrollment facts from selected evidence without model synthesis.
+
+    Enrollment records are intentionally small and heterogeneous.  A model can
+    otherwise mistake a scholarship amount or a gift item for a required
+    document.  This formatter only emits lines already present in verified
+    evidence and uses metadata record types/pages to keep the semantic groups
+    separate.
+    """
+
+    normalized = normalize_question(analysis.normalized_question)
+    chunks = tuple(getattr(evidence, "chunks", ()) or ())
+
+    def text_for(chunk: Any) -> str:
+        return str(getattr(chunk, "text", "") or "").strip()
+
+    def metadata_for(chunk: Any) -> Mapping[str, object]:
+        value = getattr(chunk, "metadata", {}) or {}
+        return value if isinstance(value, Mapping) else {}
+
+    def unique(lines: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for line in lines:
+            cleaned = re.sub(r"\s+", " ", line).strip(" •")
+            key = normalize_question(cleaned)
+            if cleaned and key and key not in seen:
+                seen.add(key)
+                result.append(cleaned)
+        return result
+
+    if any(marker in normalized for marker in ("khi nao", "thoi gian", "moc nao")):
+        timing_lines: list[str] = []
+        for chunk in chunks:
+            text = text_for(chunk)
+            folded = normalize_question(text)
+            if not any(marker in folded for marker in ("nhap hoc", "xac nhan nhap hoc", "tuu truong", "tiep nhan nhap hoc")):
+                continue
+            for line in text.splitlines():
+                line = line.strip()
+                line_folded = normalize_question(line)
+                has_timing_signal = bool(
+                    re.search(r"\b\d{1,2}[/:]\d{1,2}(?:[/:-]\d{2,4})?\b", line)
+                    or any(
+                        marker in line_folded
+                        for marker in (
+                            "xuyen suot",
+                            "hoan tat xac nhan",
+                            "ngay tuu truong",
+                            "tiep nhan nhap hoc",
+                        )
+                    )
+                )
+                if has_timing_signal and not any(
+                    marker in line_folded
+                    for marker in ("thoi han ap dung chinh sach", "nguyen vong", "hoc bong")
+                ):
+                    timing_lines.append(line)
+        timing_lines = unique(timing_lines)
+        if timing_lines:
+            return "Các mốc nhập học có trong dữ liệu DHV 2026:\n" + "\n".join(
+                f"- {line}" for line in timing_lines[:8]
+            )
+
+    if any(marker in normalized for marker in ("phi nhap hoc", "hoc lieu")):
+        fee_lines: list[str] = []
+        for chunk in chunks:
+            text = text_for(chunk)
+            for line in text.splitlines():
+                folded = normalize_question(line)
+                if "phi nhap hoc" in folded or "tai khoan hoc lieu dien tu" in folded:
+                    fee_lines.append(line)
+        fee_lines = unique(fee_lines)
+        if fee_lines:
+            return "Các khoản liên quan đến nhập học:\n" + "\n".join(
+                f"- {line}" for line in fee_lines[:6]
+            )
+
+    document_lines: list[str] = []
+    for chunk in chunks:
+        metadata = metadata_for(chunk)
+        if str(metadata.get("record_type") or "") != "enrollment_document":
+            continue
+        try:
+            page = int(metadata.get("page", 0))
+        except (TypeError, ValueError):
+            page = 0
+        if page != 3:
+            continue
+        text = text_for(chunk)
+        value = text.split("Hồ sơ nhập học:", 1)[-1].strip()
+        if not value or "co so" in normalize_question(value):
+            continue
+        document_lines.append(value)
+    document_lines = unique(document_lines)
+    if document_lines:
+        answer = "Hồ sơ nhập học DHV 2026 cần chuẩn bị:\n" + "\n".join(
+            f"- {line}" for line in document_lines
+        )
+        note_lines: list[str] = []
+        for chunk in chunks:
+            text = text_for(chunk)
+            folded = normalize_question(text)
+            if "ban goc" in folded and "khong can cong chung" in folded:
+                note_lines.append("Lưu ý: mang bản gốc để đối chiếu, không cần công chứng.")
+                break
+        if note_lines:
+            answer += "\n" + "\n".join(note_lines)
+        return answer
     return None
 
 
@@ -1765,9 +1907,16 @@ def ask_chatbot(
         or analysis.entities.get("admission_method")
         or analysis.entities.get("student_scores")
     )
-    followup = bool(state.current_major or state.current_program) and any(
-        marker in analysis.normalized_question
-        for marker in ("thi sao", "con", "vay", "bao nhieu", "diem")
+    followup = (
+        bool(state.current_major or state.current_program)
+        and any(
+            marker in analysis.normalized_question
+            for marker in ("thi sao", "con", "vay", "bao nhieu", "diem")
+        )
+    ) or _is_admissions_context_followup(
+        analysis.normalized_question,
+        current_intent=analysis.intent,
+        previous_intent=state.previous_intent,
     )
     catalog_followup = (
         analysis.intent in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}
@@ -1915,14 +2064,27 @@ def ask_chatbot(
     score_comparisons = deterministic_score_comparisons(analysis, evidence)
     score_evaluation = deterministic_score_evaluation(analysis, evidence)
     listed_majors = None
+    listed_programs = None
+    listed_program_parents = None
     if analysis.intent == "DANH_SACH_NGANH":
         listed_majors = [major for major, _ in _major_rows_from_evidence(evidence)]
+    elif analysis.intent == "DANH_SACH_CHUONG_TRINH":
+        major_rows = _major_rows_from_evidence(evidence)
+        program_rows = _program_rows_from_evidence(
+            evidence,
+            major_rows,
+            parent_major=str(analysis.entities.get("major_name") or "").strip() or None,
+        )
+        listed_programs = [program for program, _, _ in program_rows]
+        listed_program_parents = [parent for _, parent, _ in program_rows]
     next_state = update_conversation_state(
         state,
         analysis,
         target_year=settings_obj.target_year,
         last_listed_majors=listed_majors,
         last_list_count=len(listed_majors) if listed_majors is not None else None,
+        last_listed_programs=listed_programs,
+        last_listed_program_parents=listed_program_parents,
     )
     trace = _trace(
         analysis,
@@ -1932,7 +2094,9 @@ def ask_chatbot(
         evidence_selection,
     )
     trace["retrieved_docs_count"] = len(documents)
+    trace["retrieved_chunks"] = len(documents)
     trace["evidence_count"] = len(evidence_documents)
+    trace["retrieval_calls"] = 1
     trace["score_comparisons"] = [dict(comparison) for comparison in score_comparisons]
     trace["score_engine"] = score_evaluation
     trace["score_facts"] = [dict(fact) for fact in evidence.score_facts]
@@ -2138,21 +2302,40 @@ def ask_chatbot(
         entity_relations=evidence.entity_relations,
     )
     try:
-        active_llm = llm or LocalLLM(settings_obj=settings_obj)
-        result = _validated_generation(
-            active_llm=active_llm,
-            prompt=prompt,
-            evidence=evidence,
-            question=query,
-            analysis=analysis,
-            score_facts=select_relevant_score_facts(analysis, evidence.score_facts),
-            answer_plan=answer_plan,
-            score_comparisons=score_comparisons,
-        )
+        enrollment_answer = None
+        if analysis.intent in {"HOI_NHAP_HOC", "HOI_HO_SO"}:
+            enrollment_answer = _evidence_enrollment_answer(analysis, evidence)
+        if enrollment_answer:
+            # This path is evidence-only and therefore remains available even
+            # when Qwen is temporarily unavailable after retrieval.
+            result = validate_model_answer(
+                enrollment_answer,
+                evidence,
+                question=query,
+                analysis=analysis,
+            )
+        else:
+            active_llm = llm or LocalLLM(settings_obj=settings_obj)
+            result = _validated_generation(
+                active_llm=active_llm,
+                prompt=prompt,
+                evidence=evidence,
+                question=query,
+                analysis=analysis,
+                score_facts=select_relevant_score_facts(analysis, evidence.score_facts),
+                answer_plan=answer_plan,
+                score_comparisons=score_comparisons,
+            )
         validation_reason = result.pop("_validation_reason", None)
         if result.get("status") == "ok":
             structured_answer = None
-            if answer_plan.mode == "OVERVIEW":
+            if analysis.intent in {"HOI_NHAP_HOC", "HOI_HO_SO"}:
+                # Enrollment evidence contains separate document, fee,
+                # schedule, and support records. Prefer the evidence-owned
+                # realization so a local model cannot merge those record types
+                # into an unsupported requirement or amount.
+                structured_answer = _evidence_enrollment_answer(analysis, evidence)
+            elif answer_plan.mode == "OVERVIEW":
                 # A school overview should be a compact summary, not a dump
                 # of every retrieved contact/address line.
                 structured_answer = _evidence_overview_answer(evidence)
@@ -2179,6 +2362,21 @@ def ask_chatbot(
                 )
                 if structured_result.get("status") == "ok":
                     result = structured_result
+                    validation_reason = None
+        if (
+            result.get("status") == "no_data"
+            and analysis.intent in {"HOI_NHAP_HOC", "HOI_HO_SO"}
+        ):
+            enrollment_answer = _evidence_enrollment_answer(analysis, evidence)
+            if enrollment_answer:
+                fallback_result = validate_model_answer(
+                    enrollment_answer,
+                    evidence,
+                    question=query,
+                    analysis=analysis,
+                )
+                if fallback_result.get("status") == "ok":
+                    result = fallback_result
                     validation_reason = None
         if (
             result.get("status") == "no_data"

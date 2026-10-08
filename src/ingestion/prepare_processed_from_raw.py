@@ -20,6 +20,7 @@ from .structured_json import (
     build_structured_document,
     write_structured_json,
 )
+from .pdf_layout import extract_pdf_pages as _extract_pdf_pages_layout
 
 
 LOGGER = logging.getLogger(__name__)
@@ -57,6 +58,7 @@ class ProcessedDocument:
     pages_count: int = 0
     native_pages_count: int = 0
     ocr_pages_count: int = 0
+    content_audit: Mapping[str, Any] | None = None
 
 
 def _normalize_extracted_text(text: str) -> str:
@@ -135,7 +137,29 @@ def _extract_pdf_pages_native_legacy(path: Path) -> list[dict[str, object]]:
 
 
 def _extract_pdf_pages(path: Path) -> list[dict[str, object]]:
-    """Extract each page natively, falling back to OCR only when needed."""
+    """Extract pages with native layout, tables, lists, and OCR coordinates.
+
+    The small compatibility branch for a non-existent path is retained for
+    callers that inject a fake ``PdfReader`` in legacy unit tests.  Real RAW
+    PDFs always use the layout-preserving extractor.
+    """
+
+    if path.exists():
+        layout_pages = _extract_pdf_pages_layout(path)
+        # Keep the historical pypdf text as a parser-facing compatibility
+        # view.  PyMuPDF's coordinate-sorted text is retained in
+        # ``native_text``/blocks/words and in page ``text``; deterministic
+        # semantic parsers can use this less layout-distorted view without
+        # sacrificing the new structured content model.
+        try:
+            reader = PdfReader(str(path))
+            for index, page in enumerate(reader.pages):
+                semantic_text = _normalize_extracted_text(page.extract_text() or "")
+                if semantic_text:
+                    layout_pages[index]["semantic_text"] = semantic_text
+        except Exception as exc:
+            LOGGER.warning("pypdf semantic compatibility extraction failed for %s: %s", path, exc)
+        return layout_pages
 
     reader = PdfReader(str(path))
     pages: list[dict[str, object]] = []
@@ -307,7 +331,56 @@ def convert_pdf_to_structured_json(
         pages_count=len(structured.get("pages", [])),
         native_pages_count=int(structured.get("extraction", {}).get("native_pages", 0)),
         ocr_pages_count=int(structured.get("extraction", {}).get("ocr_pages", 0)),
+        content_audit=structured.get("content_audit"),
     )
+
+
+def write_pdf_content_audit_report(
+    documents: list[ProcessedDocument],
+    *,
+    raw_pdf_count: int,
+    output_path: str | Path,
+) -> Path:
+    """Write a per-PDF completeness audit without changing RAW or Chroma."""
+
+    destination = Path(output_path).resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    columns = (
+        "PDF", "Pages", "Headings", "Paragraphs", "Lists", "Tables", "Rows", "Cells",
+        "Native chars", "OCR chars", "Final chars", "Records", "Warnings",
+    )
+    lines = [
+        "# PDF CONTENT COMPLETENESS AUDIT",
+        "",
+        "This report is generated from RAW PDFs into Structured JSON. RAW PDFs and Chroma were not modified.",
+        "",
+        f"- RAW PDFs discovered: {raw_pdf_count}",
+        f"- PDFs converted: {len(documents)}",
+        f"- PDFs failed: {raw_pdf_count - len(documents)}",
+        "",
+        "| " + " | ".join(columns) + " |",
+        "|" + "|".join("---" for _ in columns) + "|",
+    ]
+    for document in documents:
+        audit = dict(document.content_audit or {})
+        values = (
+            document.raw_path.as_posix(),
+            audit.get("pages", document.pages_count),
+            audit.get("headings", 0),
+            audit.get("paragraphs", 0),
+            audit.get("lists", 0),
+            audit.get("tables", 0),
+            audit.get("rows", 0),
+            audit.get("cells", 0),
+            audit.get("native_chars", 0),
+            audit.get("ocr_chars", 0),
+            audit.get("final_chars", len(document.text)),
+            document.records_count,
+            audit.get("warnings", document.warnings_count),
+        )
+        lines.append("| " + " | ".join(str(value).replace("|", "\\|") for value in values) + " |")
+    destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
 
 
 def _safe_reset_generated_directory(path: Path, *, raw_root: Path) -> None:
@@ -329,6 +402,7 @@ def rebuild_structured_json(
     raw_directory: str | Path = DEFAULT_RAW_DIR,
     output_directory: str | Path = DEFAULT_OUTPUT_DIR,
     reset: bool = True,
+    audit_output: str | Path | None = None,
 ) -> list[ProcessedDocument]:
     """Scan all RAW PDFs and generate validated JSON under ``data/processed``.
 
@@ -395,6 +469,12 @@ def rebuild_structured_json(
     )
     if failures:
         raise RuntimeError("structured JSON rebuild failed:\n" + "\n".join(failures))
+    if audit_output is not None:
+        write_pdf_content_audit_report(
+            documents,
+            raw_pdf_count=len(raw_files),
+            output_path=audit_output,
+        )
     return documents
 
 
@@ -422,6 +502,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="generated Structured JSON directory",
     )
     parser.add_argument("--no-reset", action="store_true")
+    parser.add_argument(
+        "--audit-report",
+        default=str(PROJECT_ROOT / "reports" / "PDF_CONTENT_COMPLETENESS_AUDIT.md"),
+        help="write a per-PDF content completeness audit",
+    )
     parser.add_argument("--log-level", default="INFO", choices=("DEBUG", "INFO", "WARNING", "ERROR"))
     return parser
 
@@ -437,6 +522,7 @@ def main() -> int:
             raw_directory=args.raw_dir,
             output_directory=args.output_dir,
             reset=not args.no_reset,
+            audit_output=args.audit_report,
         )
     except Exception as exc:
         LOGGER.error("processed rebuild failed: %s", exc)
@@ -464,4 +550,5 @@ __all__ = [
     "main",
     "rebuild_processed",
     "rebuild_structured_json",
+    "write_pdf_content_audit_report",
 ]

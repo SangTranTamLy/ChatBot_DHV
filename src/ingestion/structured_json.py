@@ -96,6 +96,11 @@ def _format_vnd(value: int) -> str:
 def _value_or_raw(value: str) -> int | float | str:
     if value.strip() == "-":
         return "-"
+    if re.fullmatch(r"\d+\.\d+", value.strip()):
+        try:
+            return float(value.strip())
+        except ValueError:
+            pass
     if "," in value:
         # Scores in the source use a decimal comma (for example ``20,0``).
         try:
@@ -1073,8 +1078,46 @@ PARSERS = {
 
 
 def _parse_category_records(category: str, pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    # The page's final text remains the RAG-facing layout-preserving view.
+    # Existing deterministic record parsers use a compatibility text view
+    # where available because pypdf keeps table rows in a compact semantic
+    # order.  No content is dropped: both views are serialized on the page.
+    semantic_pages = [
+        {
+            **page,
+            "text": str(page.get("semantic_text") or page.get("text", "")),
+        }
+        for page in pages
+    ]
     parser = PARSERS.get(category)
-    records = list(parser(pages)) if parser is not None else parse_deadlines_and_policies(pages)
+    parser_pages = pages if category == "xet_tuyen_bo_sung" else semantic_pages
+    records = list(parser(parser_pages)) if parser is not None else parse_deadlines_and_policies(semantic_pages)
+    if category == "xet_tuyen_bo_sung" and parser is not None:
+        # Layout-preserving text is best for the prose threshold rule, while
+        # the compact pypdf view is best for borderless row-per-cell tables.
+        # Merge only supplementary threshold records and deduplicate by their
+        # semantic identity; deadlines/policies stay owned by the primary
+        # layout parse.
+        compact_records = [
+            record
+            for record in parser(semantic_pages)
+            if record.get("record_type") == "supplementary_threshold"
+        ]
+        existing_keys = {
+            (
+                record.get("record_type"),
+                record.get("method"),
+                record.get("major_name"),
+                record.get("value"),
+            )
+            for record in records
+            if record.get("record_type") == "supplementary_threshold"
+        }
+        for record in compact_records:
+            key = (record.get("record_type"), record.get("method"), record.get("major_name"), record.get("value"))
+            if key not in existing_keys:
+                records.append(record)
+                existing_keys.add(key)
 
     if category == "xet_tuyen_bo_sung":
         # The supplementary source owns its submission deadline.  Keep that
@@ -1098,19 +1141,19 @@ def _parse_category_records(category: str, pages: list[dict[str, Any]]) -> list[
     # catalog, threshold, or tuition facts that are explicitly present in the
     # same verified source.
     if category != "nganh_dao_tao":
-        records.extend(parse_major_catalog(pages, include_thresholds=False))
+        records.extend(parse_major_catalog(semantic_pages, include_thresholds=False))
     if category != "nguong_dau_vao":
-        records.extend(parse_application_thresholds(pages))
+        records.extend(parse_application_thresholds(semantic_pages))
     if category != "hoc_phi":
-        records.extend(parse_tuition(pages))
+        records.extend(parse_tuition(semantic_pages))
     if category not in {"diem_trung_tuyen", "xet_tuyen_bo_sung"}:
-        records.extend(parse_admission_scores(pages))
+        records.extend(parse_admission_scores(semantic_pages))
     if category != "hoc_bong":
-        extend_as("hoc_bong", parse_scholarship(pages))
+        extend_as("hoc_bong", parse_scholarship(semantic_pages))
     if category != "cach_tinh_diem":
-        extend_as("cach_tinh_diem", parse_score_formulas(pages))
+        extend_as("cach_tinh_diem", parse_score_formulas(semantic_pages))
     if category not in {"lich_tuyen_sinh", "xet_tuyen_bo_sung"}:
-        extend_as("lich_tuyen_sinh", parse_deadlines(pages))
+        extend_as("lich_tuyen_sinh", parse_deadlines(semantic_pages))
 
     # The official source states a general THPT minimum and a general ĐGNL
     # minimum, then names Law/Law Economics as exceptions.  Materialize the
@@ -1187,15 +1230,32 @@ def build_structured_document(
 
     raw_file_path = Path(raw_path).resolve()
     raw_root_path = Path(raw_root).resolve()
-    page_values = [
-        {
-            "page": int(page["page"]),
-            "text": _clean_text(str(page.get("text", ""))),
-            "extraction_method": str(page.get("extraction_method") or extraction_method),
-            **({"warnings": [dict(item) for item in page.get("warnings", [])]} if page.get("warnings") else {}),
-        }
-        for page in pages
-    ]
+    page_values: list[dict[str, Any]] = []
+    for page in pages:
+        page_number = int(page.get("page_number", page["page"]))
+        page_warnings = [dict(item) for item in page.get("warnings", []) if isinstance(item, Mapping)]
+        page_values.append(
+            {
+                # ``page`` remains for compatibility with existing records;
+                # ``page_number`` is the explicit page-content contract.
+                "page": page_number,
+                "page_number": page_number,
+                "text": _clean_text(str(page.get("text", ""))),
+                "semantic_text": _clean_text(str(page.get("semantic_text", ""))),
+                "native_text": _clean_text(str(page.get("native_text", ""))),
+                "ocr_text": _clean_text(str(page.get("ocr_text", ""))),
+                "native_blocks": [dict(item) for item in page.get("native_blocks", []) if isinstance(item, Mapping)],
+                "native_words": [dict(item) for item in page.get("native_words", []) if isinstance(item, Mapping)],
+                "ocr_boxes": [dict(item) for item in page.get("ocr_boxes", []) if isinstance(item, Mapping)],
+                "ocr_lines": [dict(item) for item in page.get("ocr_lines", []) if isinstance(item, Mapping)],
+                "elements": [dict(item) for item in page.get("elements", []) if isinstance(item, Mapping)],
+                "tables": [dict(item) for item in page.get("tables", []) if isinstance(item, Mapping)],
+                "lists": [dict(item) for item in page.get("lists", []) if isinstance(item, Mapping)],
+                "warnings": page_warnings,
+                "extraction_method": str(page.get("extraction_method") or extraction_method),
+                "ocr_engine": str(page.get("ocr_engine") or ""),
+            }
+        )
     if not page_values:
         raise ValueError("PDF has no pages")
     combined_text = "\n\n".join(page["text"] for page in page_values if page["text"])
@@ -1227,15 +1287,56 @@ def build_structured_document(
                     "message": "Page has no extracted text; review the RAW PDF before indexing.",
                 }
             )
-    native_pages = sum(str(page.get("extraction_method")) in {"native", "native_pdf"} for page in page_values)
-    ocr_pages = sum(str(page.get("extraction_method")) == "ocr" for page in page_values)
+    native_pages = sum(
+        bool(str(page.get("native_text", "")).strip())
+        or str(page.get("extraction_method")) in {"native", "native_pdf", "mixed"}
+        for page in page_values
+    )
+    ocr_pages = sum(
+        bool(str(page.get("ocr_text", "")).strip())
+        or str(page.get("extraction_method")) in {"ocr", "mixed"}
+        for page in page_values
+    )
+    mixed_pages = sum(str(page.get("extraction_method")) == "mixed" for page in page_values)
     methods = {str(page.get("extraction_method", extraction_method)) for page in page_values}
-    extraction_name = "ocr" if methods == {"ocr"} else ("native" if methods <= {"native", "native_pdf"} else "mixed")
+    has_ocr_only_page = "ocr" in methods
+    has_native_only_page = bool(methods & {"native", "native_pdf"})
+    # Supplemental OCR inside image regions does not turn an otherwise
+    # native-text document into an OCR document.  ``mixed`` is reserved for a
+    # document containing both native-only and OCR-only pages.
+    extraction_name = "ocr" if methods and methods <= {"ocr"} else (
+        "mixed" if has_ocr_only_page and has_native_only_page else "native"
+    )
     raw_file = str(metadata.get("raw_file") or metadata.get("file") or "")
     if not raw_file:
         raw_file = raw_file_path.relative_to(Path.cwd()).as_posix() if raw_file_path.is_relative_to(Path.cwd()) else raw_file_path.as_posix()
     status = str(metadata.get("status") or metadata.get("verification_status") or "pending_review").strip().lower()
     verified = metadata.get("verified") is True and status == "verified"
+    records = _parse_category_records(category, page_values)
+    content_audit = {
+        "pages": len(page_values),
+        "headings": sum(1 for page in page_values for element in page["elements"] if element.get("type") == "heading"),
+        "paragraphs": sum(1 for page in page_values for element in page["elements"] if element.get("type") == "paragraph"),
+        "elements": sum(len(page["elements"]) for page in page_values),
+        "lists": sum(len(page["lists"]) for page in page_values),
+        "list_items": sum(len(item.get("items", [])) for page in page_values for item in page["lists"]),
+        "tables": sum(len(page["tables"]) for page in page_values),
+        "rows": sum(len(table.get("rows", [])) for page in page_values for table in page["tables"]),
+        "cells": sum(
+            len(row.get("cells", []))
+            for page in page_values
+            for table in page["tables"]
+            for row in table.get("rows", [])
+        ),
+        "native_chars": sum(len(page["native_text"]) for page in page_values),
+        "ocr_chars": sum(len(page["ocr_text"]) for page in page_values),
+        "final_chars": sum(len(page["text"]) for page in page_values),
+        "native_blocks": sum(len(page["native_blocks"]) for page in page_values),
+        "native_words": sum(len(page["native_words"]) for page in page_values),
+        "ocr_boxes": sum(len(page["ocr_boxes"]) for page in page_values),
+        "records": len(records),
+        "warnings": len(warning_values),
+    }
     structured = {
         "document_id": document_id,
         "title": title,
@@ -1262,11 +1363,19 @@ def build_structured_document(
             "page_count": len(page_values),
             "native_pages": native_pages,
             "ocr_pages": ocr_pages,
+            "mixed_pages": mixed_pages,
+            "element_count": content_audit["elements"],
+            "table_count": content_audit["tables"],
+            "list_count": content_audit["lists"],
+            "native_char_count": content_audit["native_chars"],
+            "ocr_char_count": content_audit["ocr_chars"],
+            "final_char_count": content_audit["final_chars"],
         },
+        "content_audit": content_audit,
         "extracted_links": extracted_links,
         "pages": page_values,
         "sections": _page_sections(title, page_values),
-        "records": _parse_category_records(category, page_values),
+        "records": records,
         "warnings": warning_values,
     }
     errors = validate_structured_document(structured)
@@ -1343,11 +1452,57 @@ def validate_structured_document(
             error(f"pages[{index}].page", "page must be a positive integer")
         else:
             page_numbers.append(number)
+        page_number = page.get("page_number")
+        if page_number is not None:
+            if isinstance(page_number, bool) or not isinstance(page_number, int) or page_number < 1:
+                error(f"pages[{index}].page_number", "page_number must be a positive integer")
+            elif page_number != number:
+                error(f"pages[{index}].page_number", "page_number must match page")
         if not isinstance(page.get("text"), str):
             error(f"pages[{index}].text", "page text must be a string")
+        for text_key in ("native_text", "ocr_text"):
+            if text_key in page and not isinstance(page.get(text_key), str):
+                error(f"pages[{index}].{text_key}", f"{text_key} must be a string")
+        for collection_key in ("elements", "tables", "lists", "native_blocks", "native_words", "ocr_boxes", "ocr_lines", "warnings"):
+            if collection_key in page and not isinstance(page.get(collection_key), list):
+                error(f"pages[{index}].{collection_key}", f"{collection_key} must be a list")
+        if isinstance(page.get("elements"), list):
+            for element_index, element in enumerate(page["elements"]):
+                if not isinstance(element, Mapping) or not str(element.get("type", "")).strip():
+                    error(f"pages[{index}].elements[{element_index}]", "element must have a type")
+        if isinstance(page.get("tables"), list):
+            for table_index, table in enumerate(page["tables"]):
+                table_path = f"pages[{index}].tables[{table_index}]"
+                if not isinstance(table, Mapping):
+                    error(table_path, "table must be an object")
+                    continue
+                if not str(table.get("table_id", "")).strip():
+                    error(f"{table_path}.table_id", "table_id must not be empty")
+                if not isinstance(table.get("headers"), list):
+                    error(f"{table_path}.headers", "headers must be a list")
+                if not isinstance(table.get("rows"), list):
+                    error(f"{table_path}.rows", "rows must be a list")
+                else:
+                    for row_index, row in enumerate(table["rows"]):
+                        if not isinstance(row, Mapping) or not isinstance(row.get("cells"), list):
+                            error(f"{table_path}.rows[{row_index}]", "table row must retain a cells list")
+                            continue
+                        for cell_index, cell in enumerate(row["cells"]):
+                            if not isinstance(cell, Mapping) or not isinstance(cell.get("text"), str):
+                                error(f"{table_path}.rows[{row_index}].cells[{cell_index}]", "table cell must retain text")
+        if isinstance(page.get("lists"), list):
+            for list_index, list_value in enumerate(page["lists"]):
+                list_path = f"pages[{index}].lists[{list_index}]"
+                if not isinstance(list_value, Mapping):
+                    error(list_path, "list must be an object")
+                    continue
+                if not isinstance(list_value.get("ordered"), bool):
+                    error(f"{list_path}.ordered", "ordered must be boolean")
+                if not isinstance(list_value.get("items"), list):
+                    error(f"{list_path}.items", "items must be a list")
         method = page.get("extraction_method")
-        if method not in {None, "native", "ocr", "native_pdf"}:
-            error(f"pages[{index}].extraction_method", "extraction_method must be native or ocr")
+        if method not in {None, "native", "ocr", "mixed", "native_pdf"}:
+            error(f"pages[{index}].extraction_method", "extraction_method must be native, ocr, or mixed")
     if page_numbers and page_numbers != list(range(1, len(page_numbers) + 1)):
         error("pages", "page indexes must be sequential starting at 1")
     if pages and not any(str(page.get("text", "")).strip() for page in pages if isinstance(page, Mapping)):
@@ -1355,6 +1510,14 @@ def validate_structured_document(
     extraction = document.get("extraction")
     if isinstance(extraction, Mapping) and extraction.get("page_count") != len(pages):
         error("extraction.page_count", "page_count must equal len(pages)")
+    content_audit = document.get("content_audit")
+    if isinstance(content_audit, Mapping):
+        if content_audit.get("pages") != len(pages):
+            error("content_audit.pages", "content_audit pages must equal len(pages)")
+        for key in ("headings", "paragraphs", "lists", "tables", "rows", "cells", "native_chars", "ocr_chars", "final_chars", "records", "warnings"):
+            value = content_audit.get(key)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+                error(f"content_audit.{key}", "audit count must be a non-negative integer")
 
     records = document.get("records")
     if not isinstance(records, list):
@@ -1601,6 +1764,40 @@ def build_chunk_documents(structured_document: Mapping[str, Any]) -> list[Docume
             if scalar is not None:
                 metadata[key] = scalar
         chunks.append(Document(page_content=text, metadata=metadata))
+    # Record-level chunks are the primary semantic index.  Enrollment PDFs
+    # also contain procedural dates, headings, and step text that are retained
+    # in ``pages[].text`` but are intentionally not duplicated into every
+    # small record.  Keep those page texts available to downstream RAG as
+    # bounded supplemental chunks; this does not alter the processed JSON or
+    # replace structured records.
+    if str(structured_document.get("category") or "") == "ho_so":
+        for page in structured_document.get("pages", []):
+            if not isinstance(page, Mapping):
+                continue
+            page_number = page.get("page_number", page.get("page", 1))
+            page_text = str(page.get("text") or "").strip()
+            if not page_text:
+                continue
+            metadata = dict(base_metadata)
+            metadata.update(
+                {
+                    "structured_record_id": f"page_{page_number}",
+                    "record_type": "page_text",
+                    "page": page_number,
+                    "data_role": structured_document.get("data_role", ""),
+                    "page_text_source": True,
+                }
+            )
+            chunks.append(
+                Document(
+                    page_content=(
+                        f"{_category_label(str(structured_document['category']), int(structured_document['year']))}\n"
+                        f"DHV {structured_document['year']} - {structured_document['title']}\n{page_text}"
+                    ),
+                    metadata=metadata,
+                )
+            )
+
     if not chunks:
         for section in structured_document.get("sections", []):
             if not isinstance(section, Mapping) or not str(section.get("text", "")).strip():

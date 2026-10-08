@@ -281,6 +281,12 @@ def _normalize(value: str) -> str:
 
 def _categories_from_question(question: str) -> tuple[str, ...]:
     category = topic_category(question)
+    if category == "nhap_hoc":
+        # The current verified 2026 corpus uses ``ho_so`` for enrollment
+        # documents, while ``nhap_hoc`` remains a valid legacy/future label.
+        # Apply the same semantic alias when callers use the retriever
+        # directly instead of going through QueryPlan routing.
+        return ("ho_so", "nhap_hoc")
     return (category,) if category else ()
 
 

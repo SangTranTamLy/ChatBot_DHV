@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +23,43 @@ RAW_ROOT = PROJECT_ROOT / "data" / "raw"
 
 
 class StructuredJSONPipelineTests(unittest.TestCase):
+    def test_page_model_retains_layout_tables_lists_and_ocr_fields(self) -> None:
+        raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = convert_pdf_to_structured_json(raw, raw_root=RAW_ROOT, output_root=Path(temp_dir), markdown_root=None)
+            document = load_structured_json(result.output_path)
+
+        self.assertEqual(document["extraction"]["page_count"], len(document["pages"]))
+        self.assertTrue(all(page["page_number"] == page["page"] for page in document["pages"]))
+        required_page_keys = {"text", "native_text", "ocr_text", "elements", "tables", "lists", "warnings"}
+        self.assertTrue(all(required_page_keys <= set(page) for page in document["pages"]))
+        tables = [table for page in document["pages"] for table in page["tables"]]
+        self.assertTrue(tables)
+        table = tables[0]
+        self.assertTrue(table["headers"])
+        self.assertTrue(table["rows"])
+        self.assertTrue(all(row["cells"] for row in table["rows"]))
+        self.assertTrue(any(page["lists"] for page in document["pages"]))
+        self.assertTrue(all("bbox" in word and "text" in word for page in document["pages"] for word in page["native_words"]))
+        self.assertEqual(validate_structured_document(document), [])
+
+    def test_content_audit_counts_page_structures_and_keeps_import_data(self) -> None:
+        raw = RAW_ROOT / "ho_so" / "HO_SO_NHAP_HOC_DAY_DU_DHV_2026.pdf"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = convert_pdf_to_structured_json(raw, raw_root=RAW_ROOT, output_root=Path(temp_dir), markdown_root=None)
+            document = load_structured_json(result.output_path)
+
+        audit = document["content_audit"]
+        self.assertEqual(audit["pages"], len(document["pages"]))
+        self.assertGreater(audit["final_chars"], 0)
+        self.assertGreaterEqual(audit["final_chars"], audit["native_chars"])
+        self.assertGreater(audit["records"], 0)
+        full_text = "\n".join(page["text"] for page in document["pages"])
+        for token in ("Hồ sơ", "nhập học", "học phí"):
+            self.assertIn(token.casefold(), full_text.casefold())
+        self.assertRegex(full_text.casefold(), r"giấy\s+tờ")
+        self.assertEqual(validate_structured_document(document), [])
+
     def test_catalog_json_has_pages_records_and_parent_child_programs(self) -> None:
         raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
         with tempfile.TemporaryDirectory() as temp_dir:

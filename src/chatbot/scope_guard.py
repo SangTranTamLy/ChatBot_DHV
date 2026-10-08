@@ -30,6 +30,9 @@ ADMISSIONS_KEYWORDS = frozenset(
         "giay to",
         "thu tuc",
         "nhap hoc",
+        "tan sinh vien",
+        "hoc lieu",
+        "phi nhap hoc",
         "xac nhan nhap hoc",
         "lich tuyen sinh",
         "lich xet tuyen",
@@ -160,7 +163,12 @@ FOREIGN_INSTITUTION_KEYWORDS = frozenset(
 )
 _OTHER_SCHOOL_MARKERS = (
     "truong khac",
+    "truong dai hoc khac",
+    "truong dh khac",
+    "truong cao dang khac",
     "dai hoc khac",
+    "cao dang khac",
+    "hoc vien khac",
     "truong ben kia",
     "truong nay khac",
 )
@@ -233,6 +241,11 @@ def _has_unknown_named_institution(normalized: str) -> bool:
 
 
 _EXTERNAL_ALIAS_DISPLAY = {
+    # ``Bách Khoa`` is a well-known bare alias, but it does not identify DHV
+    # and may refer to more than one institution.  Register the semantic
+    # institution alias instead of allowing it to fall through to DHV's
+    # unspecified-school default.
+    "bach khoa": "Bách Khoa",
     "van hien": "Văn Hiến",
     "van lang": "Văn Lang",
     "hoa sen": "Hoa Sen",
@@ -297,6 +310,14 @@ def _school_mentions(normalized: str) -> tuple[list[str], bool, bool]:
     if external_score_source and not _DGNL_EXTERNAL_SOURCE_RE.search(normalized):
         if "ĐHQG-HCM" not in mentions:
             mentions.append("ĐHQG-HCM")
+
+    # A generic phrase such as ``trường đại học khác`` does not identify a
+    # named institution, but it explicitly moves the question outside DHV.
+    # Keep this separate from the broad word ``trường`` so generic DHV
+    # questions (``Trường có những ngành nào?``) remain unspecified/default.
+    if any(_contains_scope_marker(normalized, marker) for marker in _OTHER_SCHOOL_MARKERS):
+        if "trường khác" not in mentions:
+            mentions.append("trường khác")
 
     if _has_unknown_named_institution(normalized) and not mentions:
         mentions.append("trường khác")

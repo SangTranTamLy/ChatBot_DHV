@@ -181,7 +181,7 @@ class TaskCTests(unittest.TestCase):
         enrollment = analyze_question("Đăng ký nhập học DHV ở đâu?")
         documents = analyze_question("Thủ tục đăng ký nhập học cần gì?")
         self.assertEqual(enrollment.intent, "HOI_NHAP_HOC")
-        self.assertEqual(route_question(enrollment).categories, ("nhap_hoc",))
+        self.assertEqual(route_question(enrollment).categories, ("ho_so", "nhap_hoc"))
         self.assertEqual(documents.intent, "HOI_HO_SO")
         self.assertEqual(route_question(documents).categories, ("ho_so",))
 

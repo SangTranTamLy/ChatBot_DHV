@@ -125,6 +125,12 @@ def validate_model_answer(
     yêu cầu LLM trả lời lại một lần nữa kèm hướng dẫn sửa lỗi và xác thực lại.
     """
 
+    scope_failure = _school_scope_boundary_failure(analysis)
+    if scope_failure:
+        # The validator is a second line of defence.  It must not accept DHV
+        # evidence when upstream analysis has already classified the question
+        # as external, mixed, or unresolved school scope.
+        return _failed(scope_failure)
     if not evidence.is_usable:
         return _failed("evidence_empty")
     evidence_failure = _evidence_contract_failure(evidence)
@@ -180,6 +186,19 @@ def _failed(reason: str) -> dict[str, object]:
         "status": "no_data",
         "_validation_reason": reason,
     }
+
+
+def _school_scope_boundary_failure(analysis: Mapping[str, object] | Any | None) -> str:
+    """Reject factual DHV output for a non-DHV school target."""
+
+    entities = _analysis_entities(analysis)
+    target_school = str(entities.get("target_school") or "").upper()
+    scope_reason = str(entities.get("scope_reason") or "").casefold()
+    if target_school in {"OTHER_SCHOOL", "MIXED", "AMBIGUOUS"}:
+        return "school_scope_boundary"
+    if scope_reason in {"external_school", "mixed_school", "ambiguous_school"}:
+        return "school_scope_boundary"
+    return ""
 
 
 def sanitize_answer(answer: str) -> str:

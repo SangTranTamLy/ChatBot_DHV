@@ -14,6 +14,8 @@ from typing import Any, Mapping, Sequence
 
 from .intent_classifier import IntentPrediction, predict_intent
 from .scope_guard import (
+    SCOPE_REASON_GENERAL_OUT_OF_SCOPE,
+    SCOPE_REASON_IN_SCOPE_DHV,
     TARGET_SCHOOL_AMBIGUOUS,
     TARGET_SCHOOL_DHV,
     TARGET_SCHOOL_MIXED,
@@ -53,6 +55,7 @@ INTENTS = (
 # 80/20 model contract for callers that use it as the RAG-intent vocabulary.
 SYSTEM_INTENTS = (
     "GREETING",
+    "THANKS",
     "SYSTEM_IDENTITY",
     "SYSTEM_SCOPE",
 )
@@ -77,6 +80,14 @@ SCORE_ENGINE_INSUFFICIENT_DATA = "insufficient-data"
 CATALOG_LIST = "LIST"
 CATALOG_COUNT = "COUNT"
 CATALOG_LIST_AND_COUNT = "LIST_AND_COUNT"
+
+# The verified 2026 corpus stores enrollment instructions under ``ho_so``.
+# Keep ``nhap_hoc`` as a forward-compatible alias because older manifests and
+# callers use that semantic label for the same enrollment domain.  Routing to
+# both categories prevents the intent label from becoming an empty Chroma
+# filter while retaining compatibility with a future verified ``nhap_hoc``
+# document.
+ENROLLMENT_CATEGORIES = ("ho_so", "nhap_hoc")
 
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 _CODE_RE = re.compile(r"\b(\d{7})\b")
@@ -190,6 +201,7 @@ _PROGRAM_ALIASES = (
 )
 _MAX_CANDIDATES = 8
 _MAX_LISTED_MAJORS = 24
+_MAX_LISTED_ENTITIES = 32
 _PROGRAM_CATALOG_TERMS = ("chuong trinh", "chuyen nganh")
 _WEBSITE_REQUEST_MARKERS = (
     " website ",
@@ -209,6 +221,38 @@ _SUPPLEMENTARY_MARKERS = (
     "nguong xet tuyen bo sung",
     "nguong bo sung",
 )
+_METHOD_PATTERNS = (
+    ("thpt", re.compile(r"\b(?:thi\s+tot\s+nghiep\s+thpt|thi\s+thpt|tot\s+nghiep\s+thpt)\b")),
+    ("hoc_ba", re.compile(r"\b(?:hoc\s+ba|hoc\s+tap\s+thpt)\b")),
+    ("dgnl", re.compile(r"\b(?:dgnl|danh\s+gia\s+nang\s+luc)\b")),
+)
+_REFERENCE_LIST_MARKERS = (
+    "cac nganh tren",
+    "cac nganh neu tren",
+    "nhung nganh tren",
+    "nhung nganh vua ke",
+    "cac nganh vua ke",
+    "cac chuong trinh tren",
+    "cac chuong trinh vua ke",
+    "nhung chuong trinh vua ke",
+    "nhung chuong trinh tren",
+    "cac phuong thuc tren",
+    "cac phuong thuc vua ke",
+)
+_ORDINAL_WORDS = {
+    "mot": 1,
+    "nhat": 1,
+    "hai": 2,
+    "ba": 3,
+    "bon": 4,
+    "tu": 4,
+    "nam": 5,
+    "sau": 6,
+    "bay": 7,
+    "tam": 8,
+    "chin": 9,
+    "muoi": 10,
+}
 _FORMULA_MARKERS = (
     "cach tinh diem",
     "cong thuc diem",
@@ -246,7 +290,11 @@ class ConversationState:
     interest: str | None = None
     candidate_majors: tuple[str, ...] = ()
     candidate_programs: tuple[str, ...] = ()
+    candidate_methods: tuple[str, ...] = ()
     last_listed_majors: tuple[str, ...] = ()
+    last_listed_programs: tuple[str, ...] = ()
+    last_listed_program_parents: tuple[str, ...] = ()
+    last_listed_methods: tuple[str, ...] = ()
     last_list_count: int = 0
     previous_intent: str | None = None
     current_school: str | None = None
@@ -288,8 +336,18 @@ class ConversationState:
             interest=_safe_str(interest),
             candidate_majors=_safe_str_tuple(value.get("candidate_majors")),
             candidate_programs=_safe_str_tuple(value.get("candidate_programs")),
+            candidate_methods=_safe_str_tuple(value.get("candidate_methods")),
             last_listed_majors=_safe_str_tuple(
                 value.get("last_listed_majors"), limit=_MAX_LISTED_MAJORS
+            ),
+            last_listed_programs=_safe_str_tuple(
+                value.get("last_listed_programs"), limit=_MAX_LISTED_ENTITIES
+            ),
+            last_listed_program_parents=_safe_str_tuple(
+                value.get("last_listed_program_parents"), limit=_MAX_LISTED_ENTITIES
+            ),
+            last_listed_methods=_safe_str_tuple(
+                value.get("last_listed_methods"), limit=4
             ),
             last_list_count=max(0, _safe_int(value.get("last_list_count"), 0)),
             previous_intent=_safe_str(value.get("previous_intent")),
@@ -312,7 +370,11 @@ class ConversationState:
             "interests": self.interest,
             "candidate_majors": list(self.candidate_majors),
             "candidate_programs": list(self.candidate_programs),
+            "candidate_methods": list(self.candidate_methods),
             "last_listed_majors": list(self.last_listed_majors),
+            "last_listed_programs": list(self.last_listed_programs),
+            "last_listed_program_parents": list(self.last_listed_program_parents),
+            "last_listed_methods": list(self.last_listed_methods),
             "last_list_count": self.last_list_count,
             "previous_intent": self.previous_intent,
             "current_school": self.current_school,
@@ -543,6 +605,18 @@ def _is_greeting(normalized: str) -> bool:
         "hi ban",
         "xin chao",
         "xin chao ban",
+    }
+
+
+def _is_thanks(normalized: str) -> bool:
+    cleaned = normalized.strip(" !?,.;:")
+    return cleaned in {
+        "cam on",
+        "cam on ban",
+        "cam on chatbot",
+        "thanks",
+        "thank you",
+        "tks",
     }
 
 
@@ -804,11 +878,11 @@ def _entity_filters_from_entities(entities: Mapping[str, object]) -> dict[str, o
     """Giữ entity filter nhỏ, có cấu trúc để trace/retriever dùng sau này."""
 
     filters: dict[str, object] = {}
-    for key in ("major_name", "major_code", "program_name", "parent_major"):
+    for key in ("major_name", "major_code", "program_name", "parent_major", "admission_method"):
         value = entities.get(key)
         if value:
             filters[key] = str(value)
-    for key in ("candidate_majors", "candidate_programs"):
+    for key in ("candidate_majors", "candidate_programs", "candidate_methods"):
         value = entities.get(key)
         if isinstance(value, Sequence) and not isinstance(value, str):
             values = [str(item) for item in value if str(item).strip()]
@@ -841,6 +915,19 @@ def _decomposed_subquery(
                     anchors.append(text)
     label = _DECOMPOSED_QUERY_LABELS.get(intent, intent)
     return " ".join((*anchors[:8], label, str(entities.get("year") or target_year)))
+
+
+def _extract_method_mentions(normalized: str) -> list[str]:
+    """Return admission methods in the order in which the user mentioned them."""
+
+    mentions: list[tuple[int, str]] = []
+    for method, pattern in _METHOD_PATTERNS:
+        mentions.extend((match.start(), method) for match in pattern.finditer(normalized))
+    ordered: list[str] = []
+    for _, method in sorted(mentions):
+        if method not in ordered:
+            ordered.append(method)
+    return ordered
 
 
 def _extract_entities(normalized: str, state: ConversationState) -> dict[str, object]:
@@ -878,17 +965,13 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     # A major next to a program can be an alternative choice, not the
     # program's parent. Resolve that relationship from evidence later.
     parent_major = None
-    admission_method = None
-    if "dgnl" in normalized or "danh gia nang luc" in normalized:
-        admission_method = "dgnl"
-    elif "hoc ba" in normalized or "hoc tap thpt" in normalized:
-        admission_method = "hoc_ba"
-    elif "tot nghiep thpt" in normalized or "thi thpt" in normalized or re.search(r"\bthpt\b", normalized):
-        admission_method = "thpt"
-    elif re.search(r"phuong thuc\s*1\b", normalized):
-        admission_method = "thpt"
-    elif re.search(r"phuong thuc\s*2\b", normalized):
-        admission_method = "hoc_ba"
+    method_mentions = _extract_method_mentions(normalized)
+    admission_method = method_mentions[0] if method_mentions else None
+    if admission_method is None:
+        if re.search(r"phuong thuc\s*1\b", normalized):
+            admission_method = "thpt"
+        elif re.search(r"phuong thuc\s*2\b", normalized):
+            admission_method = "hoc_ba"
 
     score_type = None
     if _has_supplementary_marker(normalized):
@@ -1000,6 +1083,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "parent_major": parent_major,
         "entity_type": entity_type,
         "admission_method": admission_method,
+        "candidate_methods": list(method_mentions),
         "score_type": score_type,
         "score_query_type": score_query_type,
         "score_value": score_value,
@@ -1014,6 +1098,277 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "admission_combination": combination_match.group(1).upper() if combination_match else None,
         "requested_information": [],
     }
+
+
+def _ordinal_index(normalized: str) -> int | None:
+    """Read Vietnamese ordinal references such as ``cái thứ hai``."""
+
+    match = re.search(
+        r"\b(?:cai|nganh|chuong trinh|phuong thuc)\s+(?:thu\s+)?(?P<value>\d+)\b",
+        normalized,
+    )
+    if match:
+        return int(match.group("value"))
+    match = re.search(
+        r"\b(?:cai|nganh|chuong trinh|phuong thuc)\s+thu\s+(?P<word>[a-z]+)\b",
+        normalized,
+    )
+    if match and match.group("word") in _ORDINAL_WORDS:
+        return _ORDINAL_WORDS[match.group("word")]
+    return None
+
+
+def _reference_kind(normalized: str, state: ConversationState) -> str | None:
+    if "phuong thuc" in normalized:
+        return "method"
+    if "chuong trinh" in normalized or "chuyen nganh" in normalized:
+        return "program"
+    if "nganh" in normalized:
+        return "major"
+    if "truong" in normalized or "dai hoc" in normalized:
+        return "school"
+    if "cai" in normalized:
+        if state.previous_intent == "DANH_SACH_CHUONG_TRINH" or state.last_listed_programs:
+            return "program"
+        if state.previous_intent == "HOI_PHUONG_THUC_XET_TUYEN" or state.last_listed_methods:
+            return "method"
+        return "major"
+    return None
+
+
+def _mark_ambiguous_reference(entities: dict[str, object], reason: str) -> None:
+    entities["coreference_ambiguous"] = True
+    entities["coreference_reason"] = reason
+    entities["entity_type"] = "ambiguous_reference"
+
+
+def _resolve_coreferences(
+    entities: dict[str, object],
+    normalized: str,
+    state: ConversationState,
+) -> None:
+    """Resolve bounded references without mixing major/program/method types."""
+
+    ordinal = _ordinal_index(normalized)
+    is_list_reference = any(marker in normalized for marker in _REFERENCE_LIST_MARKERS)
+    is_single_reference = bool(
+        re.search(
+            r"\b(?:nganh|chuong trinh|phuong thuc|truong|cai)\s+(?:do|nay|kia)\b",
+            normalized,
+        )
+    )
+    if "truong do" in normalized or "truong nay" in normalized:
+        entities["school_reference"] = True
+
+    # Explicit current-turn entities always win over a previous-turn reference.
+    explicit_entity = bool(
+        entities.get("major_name")
+        or entities.get("program_name")
+        or entities.get("major_code")
+        or entities.get("candidate_majors")
+        or entities.get("candidate_programs")
+        or entities.get("candidate_methods")
+    )
+
+    if is_list_reference and not explicit_entity:
+        kind = _reference_kind(normalized, state)
+        if kind == "major":
+            values = state.last_listed_majors or state.candidate_majors
+            if values:
+                entities["candidate_majors"] = list(values)
+                entities["entity_type"] = "major_list"
+            else:
+                _mark_ambiguous_reference(entities, "major_list_unavailable")
+        elif kind == "program":
+            values = state.last_listed_programs or state.candidate_programs
+            if values:
+                entities["candidate_programs"] = list(values)
+                entities["entity_type"] = "program_list"
+            else:
+                _mark_ambiguous_reference(entities, "program_list_unavailable")
+        elif kind == "method":
+            values = state.last_listed_methods or state.candidate_methods
+            if values:
+                entities["candidate_methods"] = list(values)
+                entities["entity_type"] = "method_list"
+            else:
+                _mark_ambiguous_reference(entities, "method_list_unavailable")
+
+    if ordinal is not None and not explicit_entity:
+        kind = _reference_kind(normalized, state)
+        if kind == "major":
+            values = state.last_listed_majors or state.candidate_majors
+        elif kind == "program":
+            values = state.last_listed_programs or state.candidate_programs
+        elif kind == "method":
+            values = state.last_listed_methods or state.candidate_methods
+        else:
+            values = ()
+        if not values or ordinal < 1 or ordinal > len(values):
+            _mark_ambiguous_reference(entities, "ordinal_without_resolvable_list")
+        else:
+            selected = values[ordinal - 1]
+            if kind == "major":
+                entities["major_name"] = selected
+                entities["entity_type"] = "major"
+            elif kind == "program":
+                entities["program_name"] = selected
+                entities["entity_type"] = "program"
+                parents = state.last_listed_program_parents
+                if ordinal <= len(parents) and parents[ordinal - 1]:
+                    entities["parent_major"] = parents[ordinal - 1]
+            elif kind == "method":
+                entities["admission_method"] = selected
+                entities["candidate_methods"] = list(values)
+                entities["entity_type"] = "method"
+
+    if is_single_reference and not explicit_entity and ordinal is None:
+        kind = _reference_kind(normalized, state)
+        if kind == "major":
+            values = state.candidate_majors or ((state.current_major,) if state.current_major else ())
+            if len(values) == 1:
+                entities["major_name"] = values[0]
+                entities["entity_type"] = "major"
+            elif not values and "nganh" in normalized and any(
+                marker in normalized
+                for marker in ("danh sach", "liet ke", "liet ra", "nhung nganh", "cac nganh")
+            ):
+                # In a first-turn catalogue request, phrases such as
+                # ``liệt kê những ngành đó`` use ``đó`` as a discourse
+                # filler, not as a request to resolve a missing entity.
+                entities["entity_type"] = "major_list"
+            else:
+                _mark_ambiguous_reference(entities, "major_reference_unresolved")
+        elif kind == "program":
+            values = state.candidate_programs or ((state.current_program,) if state.current_program else ())
+            if len(values) == 1:
+                entities["program_name"] = values[0]
+                entities["entity_type"] = "program"
+            else:
+                _mark_ambiguous_reference(entities, "program_reference_unresolved")
+        elif kind == "method":
+            values = state.candidate_methods or ((state.current_method,) if state.current_method else ())
+            if len(values) == 1:
+                entities["admission_method"] = values[0]
+                entities["entity_type"] = "method"
+            else:
+                _mark_ambiguous_reference(entities, "method_reference_unresolved")
+        elif kind == "major":
+            _mark_ambiguous_reference(entities, "entity_reference_unresolved")
+
+    if "cai kia" in normalized or "con cai kia" in normalized:
+        pools: tuple[str, ...] = ()
+        kind = _reference_kind(normalized, state)
+        if kind == "program":
+            pools = state.last_listed_programs or state.candidate_programs
+        elif kind == "major":
+            pools = state.last_listed_majors or state.candidate_majors
+        if len(pools) >= 2:
+            current_value = state.current_program if kind == "program" else state.current_major
+            alternatives = [value for value in pools if value != current_value]
+            if len(alternatives) == 1:
+                if kind == "program":
+                    entities["program_name"] = alternatives[0]
+                    entities["entity_type"] = "program"
+                else:
+                    entities["major_name"] = alternatives[0]
+                    entities["entity_type"] = "major"
+            elif len(alternatives) != len(pools):
+                _mark_ambiguous_reference(entities, "alternative_reference_ambiguous")
+        else:
+            _mark_ambiguous_reference(entities, "alternative_reference_unresolved")
+
+    if (
+        entities.get("admission_method")
+        and not entities.get("score_type")
+        and _is_score_amount_request(normalized)
+    ):
+        entities["score_type"] = APPLICATION_THRESHOLD
+        entities["score_query_type"] = APPLICATION_THRESHOLD_LOOKUP
+
+
+def should_inherit_context(
+    current_question: str,
+    current_intent: str,
+    previous_intent: str | None,
+    state: ConversationState | Mapping[str, object] | None,
+) -> bool:
+    """Decide whether the current turn is a semantic follow-up.
+
+    This intentionally keeps generic school-level questions independent from a
+    stale major/program slot while allowing explicit follow-up language such as
+    ``còn học phí?`` to reuse the prior entity.
+    """
+
+    active_state = ConversationState.from_value(state)
+    normalized = normalize_question(current_question)
+    if current_intent in {*ROUTER_ONLY_INTENTS, "OUT_OF_SCOPE", "SCHOOL_INFO"}:
+        return False
+    if previous_intent in {*ROUTER_ONLY_INTENTS, "OUT_OF_SCOPE"}:
+        return False
+    if any(marker in normalized for marker in ("nganh khac", "chuong trinh khac", "phuong thuc khac")):
+        return False
+    has_reference = bool(
+        any(marker in normalized for marker in _REFERENCE_LIST_MARKERS)
+        or re.search(r"\b(?:nganh|chuong trinh|phuong thuc|cai)\s+(?:do|nay|kia|thu)\b", normalized)
+    )
+    followup = any(marker in normalized for marker in ("con ", "thi sao", "vay", "bao nhieu", "diem"))
+    if current_intent == "HOI_HOC_PHI":
+        if not has_reference and any(
+            marker in normalized
+            for marker in ("cua truong", "truong", "dhv", "hien nay", "toan truong", "tong")
+        ):
+            return False
+        if has_reference or followup:
+            return bool(active_state.current_major or active_state.current_program)
+        # ``Học phí DHV hiện nay?`` and ``Học phí của trường?`` are generic.
+        return False
+    if current_intent in CONTEXT_INHERIT_EXCLUDED:
+        return has_reference or followup
+    context_available = bool(
+        active_state.current_major
+        or active_state.current_program
+        or active_state.current_method
+        or active_state.candidate_majors
+        or active_state.candidate_programs
+        or active_state.candidate_methods
+    )
+    return context_available and bool(has_reference or followup)
+
+
+_ADMISSIONS_CONTEXT_FOLLOWUP_MARKERS = (
+    "con ",
+    "thi sao",
+    "vay",
+    "bao nhieu",
+    "khi nao",
+    "can nop",
+    "can lam gi",
+    "nhu the nao",
+)
+
+
+def _is_admissions_context_followup(
+    normalized: str,
+    *,
+    current_intent: str,
+    previous_intent: str | None,
+) -> bool:
+    """Recognize a bounded follow-up even when no major slot exists.
+
+    Enrollment turns commonly establish only a topic (``HOI_NHAP_HOC`` or
+    ``HOI_HO_SO``), not a major/program.  Scope must still carry that topic to
+    short follow-ups such as ``còn phí thì sao?`` and ``cần nộp khi nào?``.
+    This helper is deliberately limited to known admissions intents and
+    continuation markers, so greetings and unrelated questions cannot reopen
+    retrieval from stale state.
+    """
+
+    return bool(
+        current_intent in INTENTS
+        and previous_intent in INTENTS
+        and any(marker in normalized for marker in _ADMISSIONS_CONTEXT_FOLLOWUP_MARKERS)
+    )
 
 
 _HARD_OUT_OF_SCOPE_MARKERS = (
@@ -1071,6 +1426,8 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         return "SYSTEM_IDENTITY"
     if _is_system_scope_request(normalized):
         return "SYSTEM_SCOPE"
+    if _is_thanks(normalized):
+        return "THANKS"
     if _is_greeting(normalized):
         return "GREETING"
     # Hard rejection patterns are safety signals, not an intent vocabulary.
@@ -1196,7 +1553,15 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         return "HOI_XET_TUYEN_BO_SUNG"
     if "ho so" in normalized or "giay to" in normalized or "thu tuc" in normalized:
         return "HOI_HO_SO"
-    if "lich tuyen sinh" in normalized or "lich xet tuyen" in normalized or "han xet tuyen" in normalized:
+    if (
+        "lich tuyen sinh" in normalized
+        or "lich xet tuyen" in normalized
+        or "han xet tuyen" in normalized
+        or (
+            any(marker in normalized for marker in ("tuyen sinh", "xet tuyen"))
+            and any(marker in normalized for marker in ("khi nao", "bao gio", "thoi gian", "ngay nao"))
+        )
+    ):
         return "HOI_LICH_TUYEN_SINH"
     if "nhap hoc" in normalized or "xac nhan nhap hoc" in normalized:
         return "HOI_NHAP_HOC"
@@ -1276,14 +1641,18 @@ def _apply_school_scope(
     if (
         target == TARGET_SCHOOL_UNSPECIFIED
         and state.current_school
-        and intent not in {"GREETING", "SYSTEM_IDENTITY", "SYSTEM_SCOPE"}
-        and (intent != "OUT_OF_SCOPE" or any(marker in normalized for marker in ("con", "vay", "thi sao", "bao nhieu", "diem")))
+        and intent not in {"GREETING", "THANKS", "SYSTEM_IDENTITY", "SYSTEM_SCOPE"}
+        and (
+            entities.get("school_reference")
+            or intent != "OUT_OF_SCOPE"
+            and any(marker in normalized for marker in ("con ", "vay", "thi sao", "bao nhieu", "diem"))
+        )
     ):
         target = state.current_school
         mentions = list(state.school_mentions)
     entities["target_school"] = target
     entities["school_mentions"] = mentions
-    entities["scope_reason"] = scope_reason(
+    resolved_scope_reason = scope_reason(
         normalized,
         target_school=target,
         has_admissions_entity=any(
@@ -1299,6 +1668,20 @@ def _apply_school_scope(
             )
         ),
     )
+    if (
+        target == TARGET_SCHOOL_UNSPECIFIED
+        and resolved_scope_reason == SCOPE_REASON_GENERAL_OUT_OF_SCOPE
+        and _is_admissions_context_followup(
+            normalized,
+            current_intent=intent,
+            previous_intent=state.previous_intent,
+        )
+    ):
+        # Keep the target UNSPECIFIED (the normal DHV default), while marking
+        # the semantic continuation as in-scope.  External/mixed/ambiguous
+        # school targets return earlier and can never be widened by state.
+        resolved_scope_reason = SCOPE_REASON_IN_SCOPE_DHV
+    entities["scope_reason"] = resolved_scope_reason
 
 
 def analyze_question(question: str, state: ConversationState | Mapping[str, object] | None = None, *, default_year: int = 2026) -> QueryAnalysis:
@@ -1308,6 +1691,7 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
     original = question if isinstance(question, str) else ""
     normalized = normalize_question(original)
     entities = _extract_entities(normalized, active_state)
+    _resolve_coreferences(entities, normalized, active_state)
     detected_school = detect_target_school(normalized)
     entities.update(detected_school)
     intent, intent_confidence, intent_source = _classify_intent(normalized, entities, active_state)
@@ -1377,6 +1761,10 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
 def _clarification_needed(analysis: QueryAnalysis, state: ConversationState) -> tuple[bool, str]:
     normalized = analysis.normalized_question
     score_type = analysis.entities.get("score_type") or state.current_score_type
+    if analysis.entities.get("coreference_ambiguous"):
+        return True, str(analysis.entities.get("coreference_reason") or "ambiguous_coreference")
+    if any(marker in normalized for marker in ("nganh khac", "chuong trinh khac", "phuong thuc khac")):
+        return True, "unresolved_entity_reference"
     if (
         analysis.entities.get("score_query_type") == PERSONAL_SCORE_COMPARISON
         and not analysis.entities.get("admission_method")
@@ -1399,12 +1787,17 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     school_target = str(entities.get("target_school") or TARGET_SCHOOL_UNSPECIFIED)
     can_inherit_dhv_entities = school_target in {TARGET_SCHOOL_DHV, TARGET_SCHOOL_UNSPECIFIED}
     resolved = replace(analysis, entities=entities)
+    inherit_context = can_inherit_dhv_entities and should_inherit_context(
+        resolved.normalized_question,
+        resolved.intent,
+        active_state.previous_intent,
+        active_state,
+    )
     if (
-        can_inherit_dhv_entities
+        inherit_context
         and not entities.get("major_name")
         and active_state.current_major
         and not entities.get("program_name")
-        and resolved.intent not in CONTEXT_INHERIT_EXCLUDED
         and not (
             resolved.intent == "DANH_SACH_CHUONG_TRINH"
             and _is_global_catalog_request(analysis.normalized_question)
@@ -1413,15 +1806,13 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
         entities["major_name"] = active_state.current_major
         entities["entity_type"] = "major"
     if (
-        can_inherit_dhv_entities
-        and resolved.intent not in CONTEXT_INHERIT_EXCLUDED
+        inherit_context
         and not entities.get("candidate_majors")
         and active_state.candidate_majors
     ):
         entities["candidate_majors"] = list(active_state.candidate_majors)
     if (
-        can_inherit_dhv_entities
-        and resolved.intent not in CONTEXT_INHERIT_EXCLUDED
+        inherit_context
         and not entities.get("candidate_programs")
         and active_state.candidate_programs
     ):
@@ -1518,7 +1909,12 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     elif resolved.intent == "HOI_LICH_TUYEN_SINH":
         categories = ("lich_tuyen_sinh",)
     elif resolved.intent == "HOI_NHAP_HOC":
-        categories = ("nhap_hoc",)
+        categories = ENROLLMENT_CATEGORIES
+        if any(
+            marker in resolved.normalized_question
+            for marker in ("phi nhap hoc", "hoc lieu")
+        ):
+            categories = (*ENROLLMENT_CATEGORIES, "hoc_phi")
     elif resolved.intent == "SCHOOL_INFO":
         categories = ("thong_tin_truong",)
     else:
@@ -1822,6 +2218,9 @@ def update_conversation_state(
     target_year: int = 2026,
     last_listed_majors: Sequence[str] | None = None,
     last_list_count: int | None = None,
+    last_listed_programs: Sequence[str] | None = None,
+    last_listed_program_parents: Sequence[str] | None = None,
+    last_listed_methods: Sequence[str] | None = None,
 ) -> ConversationState:
     """Update slots from one turn without retaining raw messages."""
 
@@ -1841,6 +2240,11 @@ def update_conversation_state(
     major = turn_major or current.current_major
     program = entities.get("program_name") or (None if major_changed else current.current_program)
     method = entities.get("admission_method") or current.current_method
+    method_changed = bool(
+        method
+        and current.current_method
+        and normalize_question(str(method)) != normalize_question(current.current_method)
+    )
     if method and "unspecified" in scores and method not in scores:
         scores[str(method)] = scores.pop("unspecified")
     score_type = entities.get("score_type") or current.current_score_type
@@ -1848,7 +2252,12 @@ def update_conversation_state(
     year = entities.get("year") or current.current_year or target_year
     candidate_majors = [] if major_changed else list(current.candidate_majors)
     candidate_programs = [] if major_changed else list(current.candidate_programs)
-    for key, target in (("candidate_majors", candidate_majors), ("candidate_programs", candidate_programs)):
+    candidate_methods = [] if method_changed else list(current.candidate_methods)
+    for key, target in (
+        ("candidate_majors", candidate_majors),
+        ("candidate_programs", candidate_programs),
+        ("candidate_methods", candidate_methods),
+    ):
         values = entities.get(key)
         for value in _safe_str_tuple(values):
             if value not in target:
@@ -1866,12 +2275,26 @@ def update_conversation_state(
         program = current.current_program
     listed_majors = () if major_changed else current.last_listed_majors
     listed_count = 0 if major_changed else current.last_list_count
+    listed_programs = () if major_changed else current.last_listed_programs
+    listed_program_parents = () if major_changed else current.last_listed_program_parents
+    listed_methods = () if method_changed else current.last_listed_methods
     if last_listed_majors is not None:
         listed_majors = _safe_str_tuple(last_listed_majors, limit=_MAX_LISTED_MAJORS)
         listed_count = max(
             0,
             last_list_count if last_list_count is not None else len(listed_majors),
         )
+    if last_listed_programs is not None:
+        listed_programs = _safe_str_tuple(last_listed_programs, limit=_MAX_LISTED_ENTITIES)
+        listed_program_parents = _safe_str_tuple(
+            last_listed_program_parents, limit=_MAX_LISTED_ENTITIES
+        )
+    elif len(candidate_programs) > 1 and analysis.intent == "DANH_SACH_CHUONG_TRINH":
+        listed_programs = tuple(candidate_programs[:_MAX_LISTED_ENTITIES])
+    if last_listed_methods is not None:
+        listed_methods = _safe_str_tuple(last_listed_methods, limit=4)
+    elif len(candidate_methods) > 1:
+        listed_methods = tuple(candidate_methods[:4])
     target_school = str(entities.get("target_school") or TARGET_SCHOOL_UNSPECIFIED)
     if target_school in {
         TARGET_SCHOOL_DHV,
@@ -1898,7 +2321,11 @@ def update_conversation_state(
         interest=str(interest) if interest else None,
         candidate_majors=tuple(candidate_majors[:_MAX_CANDIDATES]),
         candidate_programs=tuple(candidate_programs[:_MAX_CANDIDATES]),
+        candidate_methods=tuple(candidate_methods[:4]),
         last_listed_majors=listed_majors,
+        last_listed_programs=listed_programs,
+        last_listed_program_parents=listed_program_parents,
+        last_listed_methods=listed_methods,
         last_list_count=listed_count,
         previous_intent=analysis.intent,
         current_school=current_school,
@@ -1935,5 +2362,6 @@ __all__ = [
     "normalize_question",
     "route_question",
     "select_relevant_score_facts",
+    "should_inherit_context",
     "update_conversation_state",
 ]

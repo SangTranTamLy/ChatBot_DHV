@@ -1,0 +1,642 @@
+{
+  "dataset_audit": {
+    "total": 1000,
+    "split_counts": {
+      "test": 200,
+      "train": 800
+    },
+    "development_counts": {
+      "dev": 160,
+      "train": 640
+    },
+    "unique_ids": true,
+    "exact_duplicate_ids": {},
+    "exact_duplicate_questions": {},
+    "normalized_duplicate_questions": {},
+    "near_duplicate_count_capped_at_200": 0,
+    "near_duplicates": [],
+    "family_split_overlap": [],
+    "missing_fields": [],
+    "invalid_evidence": [],
+    "unsupported_factual_answers": [],
+    "wrong_year_sources": [],
+    "valid": true,
+    "test_lock_matches": true
+  },
+  "runtime_corpus": {
+    "files_seen": 7,
+    "verified_documents": 5,
+    "skipped_unverified": 2,
+    "skipped_internal": 0,
+    "skipped_other_year": 0,
+    "metadata_errors": 0
+  },
+  "dense_backend": {
+    "backend": "sentence-transformers",
+    "model": "BAAI/bge-m3",
+    "local_only": true,
+    "embedding_dimension": 1024,
+    "corpus_chunks": 247
+  },
+  "development_baseline": {
+    "split": "development_baseline",
+    "cases": 800,
+    "intent": {
+      "cases": 800,
+      "accuracy": 0.7887,
+      "macro_precision": 0.7429,
+      "macro_recall": 0.6504,
+      "macro_f1": 0.6687
+    },
+    "retrieval": [
+      {
+        "retriever": "Dense",
+        "eligible_cases": 736,
+        "hit_at_1": 0.6209,
+        "hit_at_3": 0.6739,
+        "hit_at_5": 0.6834,
+        "recall_at_1": 0.6209,
+        "recall_at_3": 0.6739,
+        "recall_at_5": 0.6834,
+        "mrr": 0.6473
+      },
+      {
+        "retriever": "BM25",
+        "eligible_cases": 736,
+        "hit_at_1": 0.6467,
+        "hit_at_3": 0.6848,
+        "hit_at_5": 0.6997,
+        "recall_at_1": 0.6467,
+        "recall_at_3": 0.6848,
+        "recall_at_5": 0.6997,
+        "mrr": 0.6651
+      },
+      {
+        "retriever": "Hybrid/RRF",
+        "eligible_cases": 736,
+        "hit_at_1": 0.6399,
+        "hit_at_3": 0.6916,
+        "hit_at_5": 0.6997,
+        "recall_at_1": 0.6399,
+        "recall_at_3": 0.6916,
+        "recall_at_5": 0.6997,
+        "mrr": 0.6648
+      }
+    ],
+    "evidence": {
+      "eligible_cases": 740,
+      "evidence_precision": 0.239,
+      "evidence_recall": 0.5784,
+      "evidence_hit_rate": 0.5784
+    },
+    "answer": {
+      "cases": 800,
+      "answer_correctness": 0.6038,
+      "status_accuracy": 0.7762,
+      "groundedness": 0.9608,
+      "faithfulness": 0.9608,
+      "unsupported_claim_rate": 0,
+      "required_fact_accuracy": 0.5824,
+      "safety_guarantee_violations": 0
+    },
+    "no_data": {
+      "expected": 16,
+      "predicted": 154,
+      "precision": 0.0779,
+      "recall": 0.75,
+      "accuracy": 0.75
+    },
+    "out_of_scope": {
+      "expected": 24,
+      "predicted": 52,
+      "precision": 0.4615,
+      "recall": 1.0,
+      "accuracy": 1
+    },
+    "clarification": {
+      "expected": 16,
+      "predicted": 13,
+      "precision": 0.9231,
+      "recall": 0.75,
+      "accuracy": 0.75
+    },
+    "multi_turn": {
+      "conversations": 8,
+      "state_retention_accuracy": 1,
+      "entity_carry_over_accuracy": 1,
+      "method_carry_over_accuracy": 1,
+      "score_carry_over_accuracy": 1,
+      "context_relevance_accuracy": 1
+    },
+    "year_isolation": {
+      "explicit_non_target_year_cases": 12,
+      "wrong_year_answers": 0
+    }
+  },
+  "final_test": {
+    "split": "final_test_200",
+    "cases": 200,
+    "intent": {
+      "cases": 200,
+      "accuracy": 0.755,
+      "macro_precision": 0.6746,
+      "macro_recall": 0.5888,
+      "macro_f1": 0.5837
+    },
+    "retrieval": [
+      {
+        "retriever": "Dense",
+        "eligible_cases": 184,
+        "hit_at_1": 0.5543,
+        "hit_at_3": 0.6141,
+        "hit_at_5": 0.6304,
+        "recall_at_1": 0.5543,
+        "recall_at_3": 0.6141,
+        "recall_at_5": 0.6304,
+        "mrr": 0.5862
+      },
+      {
+        "retriever": "BM25",
+        "eligible_cases": 184,
+        "hit_at_1": 0.6196,
+        "hit_at_3": 0.6576,
+        "hit_at_5": 0.6793,
+        "recall_at_1": 0.6196,
+        "recall_at_3": 0.6576,
+        "recall_at_5": 0.6793,
+        "mrr": 0.6404
+      },
+      {
+        "retriever": "Hybrid/RRF",
+        "eligible_cases": 184,
+        "hit_at_1": 0.6087,
+        "hit_at_3": 0.6522,
+        "hit_at_5": 0.6902,
+        "recall_at_1": 0.6087,
+        "recall_at_3": 0.6522,
+        "recall_at_5": 0.6902,
+        "mrr": 0.6358
+      }
+    ],
+    "evidence": {
+      "eligible_cases": 188,
+      "evidence_precision": 0.2252,
+      "evidence_recall": 0.5798,
+      "evidence_hit_rate": 0.5798
+    },
+    "answer": {
+      "cases": 200,
+      "answer_correctness": 0.585,
+      "status_accuracy": 0.7,
+      "groundedness": 0.9309,
+      "faithfulness": 0.9309,
+      "unsupported_claim_rate": 0,
+      "required_fact_accuracy": 0.5745,
+      "safety_guarantee_violations": 0
+    },
+    "no_data": {
+      "expected": 4,
+      "predicted": 49,
+      "precision": 0.0204,
+      "recall": 0.25,
+      "accuracy": 0.25
+    },
+    "out_of_scope": {
+      "expected": 4,
+      "predicted": 16,
+      "precision": 0.25,
+      "recall": 1.0,
+      "accuracy": 1
+    },
+    "clarification": {
+      "expected": 4,
+      "predicted": 4,
+      "precision": 1.0,
+      "recall": 1.0,
+      "accuracy": 1
+    },
+    "multi_turn": {
+      "conversations": 2,
+      "state_retention_accuracy": 1,
+      "entity_carry_over_accuracy": 1,
+      "method_carry_over_accuracy": 1,
+      "score_carry_over_accuracy": 1,
+      "context_relevance_accuracy": 1
+    },
+    "year_isolation": {
+      "explicit_non_target_year_cases": 4,
+      "wrong_year_answers": 0
+    }
+  },
+  "intent": {
+    "cases": 200,
+    "accuracy": 0.755,
+    "macro_precision": 0.6746,
+    "macro_recall": 0.5888,
+    "macro_f1": 0.5837
+  },
+  "intent_model": {
+    "model_path": "C:\\Users\\Sang\\OneDrive\\Desktop\\ChatBot_DHV\\models\\phase5_intent_classifier.json",
+    "training_examples": 636,
+    "test_rows_used_for_training": 0,
+    "development_train": {
+      "cases": 636,
+      "accuracy": 1,
+      "macro_precision": 1.0,
+      "macro_recall": 1.0,
+      "macro_f1": 1.0,
+      "per_intent": [
+        {
+          "intent": "DANH_SACH_NGANH",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 16
+        },
+        {
+          "intent": "HOI_CACH_TINH_DIEM",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 8
+        },
+        {
+          "intent": "HOI_CHUONG_TRINH",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 36
+        },
+        {
+          "intent": "HOI_DIEM_TRUNG_TUYEN",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 136
+        },
+        {
+          "intent": "HOI_HOC_BONG",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 60
+        },
+        {
+          "intent": "HOI_HOC_PHI",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 52
+        },
+        {
+          "intent": "HOI_HO_SO",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 60
+        },
+        {
+          "intent": "HOI_LICH_TUYEN_SINH",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 8
+        },
+        {
+          "intent": "HOI_NGANH",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 52
+        },
+        {
+          "intent": "HOI_NGUONG_DAU_VAO",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 72
+        },
+        {
+          "intent": "HOI_NHAP_HOC",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 28
+        },
+        {
+          "intent": "HOI_PHUONG_THUC_XET_TUYEN",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 44
+        },
+        {
+          "intent": "HOI_XET_TUYEN_BO_SUNG",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 48
+        },
+        {
+          "intent": "OUT_OF_SCOPE",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 16
+        }
+      ]
+    },
+    "development_dev": {
+      "cases": 160,
+      "accuracy": 0.9625,
+      "macro_precision": 0.9577,
+      "macro_recall": 0.9487,
+      "macro_f1": 0.9487,
+      "per_intent": [
+        {
+          "intent": "DANH_SACH_NGANH",
+          "precision": 0.7,
+          "recall": 0.875,
+          "f1": 0.7778,
+          "support": 8
+        },
+        {
+          "intent": "HOI_CACH_TINH_DIEM",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 4
+        },
+        {
+          "intent": "HOI_CHUONG_TRINH",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 8
+        },
+        {
+          "intent": "HOI_DIEM_TRUNG_TUYEN",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 32
+        },
+        {
+          "intent": "HOI_HOC_BONG",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 16
+        },
+        {
+          "intent": "HOI_HOC_PHI",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 8
+        },
+        {
+          "intent": "HOI_HO_SO",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 16
+        },
+        {
+          "intent": "HOI_NGANH",
+          "precision": 0.9091,
+          "recall": 0.8333,
+          "f1": 0.8696,
+          "support": 12
+        },
+        {
+          "intent": "HOI_NGUONG_DAU_VAO",
+          "precision": 0.9524,
+          "recall": 1.0,
+          "f1": 0.9756,
+          "support": 20
+        },
+        {
+          "intent": "HOI_NHAP_HOC",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 8
+        },
+        {
+          "intent": "HOI_PHUONG_THUC_XET_TUYEN",
+          "precision": 0.8889,
+          "recall": 1.0,
+          "f1": 0.9412,
+          "support": 8
+        },
+        {
+          "intent": "HOI_XET_TUYEN_BO_SUNG",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 12
+        },
+        {
+          "intent": "OUT_OF_SCOPE",
+          "precision": 1.0,
+          "recall": 0.625,
+          "f1": 0.7692,
+          "support": 8
+        }
+      ]
+    },
+    "final_test_200": {
+      "cases": 196,
+      "accuracy": 0.9745,
+      "macro_precision": 0.9737,
+      "macro_recall": 0.9392,
+      "macro_f1": 0.9477,
+      "per_intent": [
+        {
+          "intent": "DANH_SACH_NGANH",
+          "precision": 0.8,
+          "recall": 1.0,
+          "f1": 0.8889,
+          "support": 8
+        },
+        {
+          "intent": "HOI_CHUONG_TRINH",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 12
+        },
+        {
+          "intent": "HOI_DIEM_TRUNG_TUYEN",
+          "precision": 0.9756,
+          "recall": 1.0,
+          "f1": 0.9877,
+          "support": 40
+        },
+        {
+          "intent": "HOI_HOC_BONG",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 20
+        },
+        {
+          "intent": "HOI_HOC_PHI",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 14
+        },
+        {
+          "intent": "HOI_HO_SO",
+          "precision": 0.9091,
+          "recall": 1.0,
+          "f1": 0.9524,
+          "support": 20
+        },
+        {
+          "intent": "HOI_NGANH",
+          "precision": 1.0,
+          "recall": 0.9375,
+          "f1": 0.9677,
+          "support": 16
+        },
+        {
+          "intent": "HOI_NGUONG_DAU_VAO",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 26
+        },
+        {
+          "intent": "HOI_NHAP_HOC",
+          "precision": 1.0,
+          "recall": 0.8333,
+          "f1": 0.9091,
+          "support": 12
+        },
+        {
+          "intent": "HOI_PHUONG_THUC_XET_TUYEN",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 12
+        },
+        {
+          "intent": "HOI_XET_TUYEN_BO_SUNG",
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0,
+          "support": 12
+        },
+        {
+          "intent": "OUT_OF_SCOPE",
+          "precision": 1.0,
+          "recall": 0.5,
+          "f1": 0.6667,
+          "support": 4
+        }
+      ]
+    }
+  },
+  "retrieval": [
+    {
+      "retriever": "Dense",
+      "eligible_cases": 184,
+      "hit_at_1": 0.5543,
+      "hit_at_3": 0.6141,
+      "hit_at_5": 0.6304,
+      "recall_at_1": 0.5543,
+      "recall_at_3": 0.6141,
+      "recall_at_5": 0.6304,
+      "mrr": 0.5862
+    },
+    {
+      "retriever": "BM25",
+      "eligible_cases": 184,
+      "hit_at_1": 0.6196,
+      "hit_at_3": 0.6576,
+      "hit_at_5": 0.6793,
+      "recall_at_1": 0.6196,
+      "recall_at_3": 0.6576,
+      "recall_at_5": 0.6793,
+      "mrr": 0.6404
+    },
+    {
+      "retriever": "Hybrid/RRF",
+      "eligible_cases": 184,
+      "hit_at_1": 0.6087,
+      "hit_at_3": 0.6522,
+      "hit_at_5": 0.6902,
+      "recall_at_1": 0.6087,
+      "recall_at_3": 0.6522,
+      "recall_at_5": 0.6902,
+      "mrr": 0.6358
+    }
+  ],
+  "evidence": {
+    "eligible_cases": 188,
+    "evidence_precision": 0.2252,
+    "evidence_recall": 0.5798,
+    "evidence_hit_rate": 0.5798
+  },
+  "deterministic_facts": {
+    "fact_selection_accuracy": 0.5745,
+    "method_mapping_accuracy": 1,
+    "major_mapping_accuracy": 0.92,
+    "year_accuracy": 0.985
+  },
+  "answer": {
+    "cases": 200,
+    "answer_correctness": 0.585,
+    "status_accuracy": 0.7,
+    "groundedness": 0.9309,
+    "faithfulness": 0.9309,
+    "unsupported_claim_rate": 0,
+    "required_fact_accuracy": 0.5745,
+    "safety_guarantee_violations": 0
+  },
+  "no_data": {
+    "expected": 4,
+    "predicted": 49,
+    "precision": 0.0204,
+    "recall": 0.25,
+    "accuracy": 0.25
+  },
+  "out_of_scope": {
+    "expected": 4,
+    "predicted": 16,
+    "precision": 0.25,
+    "recall": 1.0,
+    "accuracy": 1
+  },
+  "clarification": {
+    "expected": 4,
+    "predicted": 4,
+    "precision": 1.0,
+    "recall": 1.0,
+    "accuracy": 1
+  },
+  "multi_turn": {
+    "conversations": 2,
+    "state_retention_accuracy": 1,
+    "entity_carry_over_accuracy": 1,
+    "method_carry_over_accuracy": 1,
+    "score_carry_over_accuracy": 1,
+    "context_relevance_accuracy": 1
+  },
+  "year_isolation": {
+    "explicit_non_target_year_cases": 4,
+    "wrong_year_answers": 0
+  },
+  "failure_breakdown": {
+    "VALIDATOR_ERROR": 13,
+    "INTENT_ERROR": 49,
+    "EVIDENCE_ERROR": 34
+  },
+  "evaluation_status": "EVALUATION_READY",
+  "quality_status": "NEEDS_IMPROVEMENT",
+  "final_test_completed": true,
+  "holdout_policy": "test_200 is locked and report-only; no tuning performed"
+}
