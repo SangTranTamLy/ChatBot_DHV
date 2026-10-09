@@ -15,6 +15,7 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
 from src.config.settings import Settings, settings
+from src.chatbot.year_semantics import extract_requested_year
 from src.ingestion.chroma_lifecycle import close_chroma_store
 from src.ingestion.embeddings import create_embeddings
 
@@ -168,10 +169,9 @@ def _bm25_scores(query: str, documents: Iterable[Document]) -> dict[str, float]:
 
 
 def requested_year(question: str) -> int | None:
-    """Trả về số năm gồm 4 chữ số được nhắc đến rõ ràng, nếu có."""
+    """Trả năm dữ liệu được hỏi, bỏ qua năm tốt nghiệp chỉ làm điều kiện."""
 
-    match = _YEAR_RE.search(question or "")
-    return int(match.group(1)) if match else None
+    return extract_requested_year(question)
 
 
 def topic_category(question: str) -> str | None:

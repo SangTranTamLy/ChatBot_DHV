@@ -12,6 +12,14 @@ env/
 # Local agent metadata and temporary workspace folders
 .agents/
 tmp*/
+.qa_tmp/
+.test_tmp/
+torchinductor_*/
+
+# Local agent/task context (not runtime source)
+ChatBot_DHV_Agent_Tasks_V2/
+DHV_AGENT_MASTER_PLAN_UPDATED/
+reports/TONG_QUAN_AGENT
 
 # Python cache and test artifacts
 __pycache__/
@@ -30,6 +38,18 @@ data/processed/**
 # Generated vector store
 chroma_db/*
 !chroma_db/.gitkeep
+chroma_db_*/
+chroma_stage_*/
+chroma_backup_*/
+
+# Generated QA/evaluation result dumps
+.reports/
+reports/*.jsonl
+reports/*_results.json
+reports/*_results.csv
+reports/phase5/results/
+reports/phase5_1000_legacy/
+reports/screenshots/
 
 # Runtime files
 *.log

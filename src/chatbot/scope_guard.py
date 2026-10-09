@@ -44,11 +44,15 @@ ADMISSIONS_KEYWORDS = frozenset(
         "phuong thuc",
         "to hop",
         "hinh thuc xet tuyen",
+        "cach xet tuyen",
+        "cach thuc xet tuyen",
+        "lay may mon",
         "hoc ba",
         "hoc tap thpt",
         "danh gia nang luc",
         "dgnl",
         "thi tot nghiep thpt",
+        "thi tot nghiep",
         "thi thpt",
         "cach tinh diem",
         "cong thuc diem",
@@ -73,15 +77,31 @@ ADMISSIONS_KEYWORDS = frozenset(
         "nhan ho so bo sung",
         "diem san",
         "diem trung tuyen",
+        "trung tuyen",
         "diem chuan",
         "diem xet tuyen",
         "nguong dau vao",
         "nganh",
         "chuong trinh",
         "uu tien",
+        "cong diem",
+        "diem khuyen khich",
+        "duoc cong bao nhieu diem",
+        "duoc cong may diem",
+        "thi sinh khuyet tat",
+        "kiem tra nang luc tieng anh",
+        "khoan hoc ky",
+        "hoc ky i",
+        "tong chi phi",
+        "so tien hoc ky",
+        "hoan tat xac nhan",
+        "xac nhan truoc",
+        "giay chung nhan ket qua thi",
+        "dong tien mat",
         "thong tin truong",
         "thong tin ve truong",
         "thong tin ve dhv",
+        "gioi thieu ve truong",
         "gioi thieu truong",
         "gioi thieu ve dhv",
         "dhv la truong",
@@ -179,33 +199,93 @@ _GENERIC_INSTITUTION_FOLLOWERS = frozenset(
     {
         "bao",
         "ban",
+        "bat",
+        "bo",
+        "cao",
         "cach",
         "can",
         "co",
         "cua",
+        "cu",
+        "con",
+        "cong",
+        "da",
+        "dao",
+        "danh",
+        "de",
+        "di",
+        "do",
+        "doanh",
+        "dam",
+        "doi",
         "duoc",
+        "giai",
+        "giao",
         "gi",
         "gì",
+        "gom",
         "hop",
         "hoc",
+        "hoat",
+        "hinh",
+        "huong",
+        "kinh",
+        "ky",
         "khong",
+        "kia",
         "la",
+        "lay",
+        "lam",
+        "lien",
+        "linh",
         "minh",
         "nam",
         "nao",
         "nganh",
+        "nghe",
+        "nghiep",
+        "ngay",
+        "nop",
         "nhan",
         "nhieu",
         "nay",
+        "ngoai",
+        "noi",
+        "nhu",
+        "mo",
         "o",
+        "phu",
+        "quoc",
+        "ra",
+        "se",
         "tai",
+        "sinh",
+        "thanh",
+        "thuc",
         "theo",
+        "thi",
+        "tiep",
         "thong",
         "tin",
+        "to",
+        "chuc",
+        "chuyen",
+        "giup",
+        "phong",
+        "nhom",
+        "trien",
+        "trong",
+        "tu",
         "truong",
         "tuyen",
+        "va",
+        "ve",
+        "voi",
         "vay",
         "xet",
+        "ay",
+        "te",
+        "mieng",
     }
 )
 _INSTITUTION_REFERENCE_RE = re.compile(
@@ -270,9 +350,11 @@ def _school_mentions(normalized: str) -> tuple[list[str], bool, bool]:
         _contains_scope_marker(normalized, marker)
         for marker in (
             "dhv",
+            "dai hoc hung vuong tp ho chi minh",
             "dai hoc hung vuong tphcm",
             "dai hoc hung vuong tp hcm",
             "dai hoc hung vuong thanh pho ho chi minh",
+            "hung vuong tp ho chi minh",
             "hung vuong tphcm",
             "hung vuong tp hcm",
             "hung vuong thanh pho ho chi minh",
@@ -319,7 +401,7 @@ def _school_mentions(normalized: str) -> tuple[list[str], bool, bool]:
         if "trường khác" not in mentions:
             mentions.append("trường khác")
 
-    if _has_unknown_named_institution(normalized) and not mentions:
+    if _has_unknown_named_institution(normalized) and not mentions and not explicit_dhv:
         mentions.append("trường khác")
 
     return mentions, explicit_dhv, ambiguous_hung_vuong
@@ -338,7 +420,19 @@ def detect_target_school(question: str) -> dict[str, object]:
         mention != "Trường Đại học Hùng Vương TP.HCM" and mention != "Hùng Vương"
         for mention in mentions
     )
-    if explicit_dhv and has_external:
+    comparison_markers = (
+        "so sanh",
+        "so voi",
+        "khac nhau",
+        "khac biet",
+        "nen chon truong nao",
+    )
+    explicit_comparison = (
+        explicit_dhv
+        and has_external
+        and any(_contains_scope_marker(normalized, marker) for marker in comparison_markers)
+    )
+    if explicit_comparison:
         target = TARGET_SCHOOL_MIXED
         reason = SCOPE_REASON_MIXED_SCHOOL
     elif explicit_dhv:
@@ -438,6 +532,7 @@ def scope_reason(
     *,
     target_school: str | None = None,
     has_admissions_entity: bool = False,
+    has_verified_school_info: bool = False,
 ) -> str:
     """Trả về lý do phạm vi để trace phân biệt external với câu hỏi chung."""
 
@@ -451,7 +546,23 @@ def scope_reason(
         return SCOPE_REASON_AMBIGUOUS_SCHOOL
     if is_personal_life_advice(normalized) and not has_admissions_entity:
         return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
+    if has_verified_school_info:
+        return SCOPE_REASON_IN_SCOPE_DHV
     if _is_tuition_unit_question(normalized):
+        return SCOPE_REASON_IN_SCOPE_DHV
+    if has_admissions_entity and any(
+        marker in normalized
+        for marker in ("hoc luc", "lop 12", "du dieu kien", "xet", "nguong", "diem san")
+    ):
+        return SCOPE_REASON_IN_SCOPE_DHV
+    raw_date_count = len(re.findall(r"\b\d{1,2}\s*[./-]\s*\d{1,2}\b", question or ""))
+    if raw_date_count >= 2 and "moc" in normalized and "huong dan" in normalized:
+        return SCOPE_REASON_IN_SCOPE_DHV
+    if (
+        "huong dan" in normalized
+        and len(re.findall(r"\b\d{1,2}/\d{1,2}\b", normalized)) >= 2
+        and "moc" in normalized
+    ):
         return SCOPE_REASON_IN_SCOPE_DHV
     if any(keyword in normalized for keyword in ADMISSIONS_KEYWORDS):
         return SCOPE_REASON_IN_SCOPE_DHV
@@ -469,6 +580,7 @@ def is_in_scope(
     *,
     has_admissions_entity: bool = False,
     target_school: str | None = None,
+    has_verified_school_info: bool = False,
 ) -> bool:
     """Trả về xem một câu hỏi có vẻ liên quan đến tuyển sinh DHV hay không."""
 
@@ -481,6 +593,7 @@ def is_in_scope(
         normalized,
         target_school=target_school,
         has_admissions_entity=has_admissions_entity,
+        has_verified_school_info=has_verified_school_info,
     )
     if reason in {
         SCOPE_REASON_EXTERNAL_SCHOOL,

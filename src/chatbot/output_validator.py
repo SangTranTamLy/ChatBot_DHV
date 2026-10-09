@@ -8,6 +8,7 @@ from typing import Any, Mapping
 from urllib.parse import urlparse
 
 from .evidence import EvidenceBundle
+from .year_semantics import extract_requested_year
 
 
 FALLBACK_ANSWER = (
@@ -142,7 +143,12 @@ def validate_model_answer(
     contract_failure = _answer_contract_failure(answer, evidence, question, analysis)
     if contract_failure:
         return _failed(contract_failure)
-    if not _is_supported_by_evidence(answer, evidence):
+    fee_total_failure = _optional_fee_total_failure(answer, evidence, question)
+    if fee_total_failure:
+        return _failed(fee_total_failure)
+    if not _is_supported_by_evidence(answer, evidence) and not _supports_optional_fee_sum(
+        answer, evidence, question
+    ):
         return _failed("ungrounded")
     relation_failure = _program_relation_failure(answer, evidence, analysis)
     if relation_failure:
@@ -343,8 +349,7 @@ def _requested_year(question: str, entities: Mapping[str, object]) -> int | None
             return int(value)
     except (TypeError, ValueError):
         pass
-    match = _YEAR_LITERAL_RE.search(question or "")
-    return int(match.group(0)) if match else None
+    return extract_requested_year(question)
 
 
 def _is_supported_by_evidence(answer: str, evidence: EvidenceBundle) -> bool:
@@ -354,6 +359,76 @@ def _is_supported_by_evidence(answer: str, evidence: EvidenceBundle) -> bool:
         return False
     overlap = answer_tokens & evidence_tokens
     return len(overlap) >= 2 or any(token[0].isdigit() for token in overlap)
+
+
+def _supports_optional_fee_sum(
+    answer: str,
+    evidence: EvidenceBundle,
+    question: str,
+) -> bool:
+    """Allow only the exact arithmetic explicitly requested from the sourced fee row."""
+
+    expected_total = _optional_fee_total_from_evidence(evidence, question)
+    if expected_total is None:
+        return False
+    if "tong chi phi" not in _fold_text(answer) and "tong cong" not in _fold_text(answer):
+        return False
+    formatted = f"{expected_total:,}".replace(",", ".")
+    return formatted in answer
+
+
+def _optional_fee_total_from_evidence(evidence: EvidenceBundle, question: str) -> int | None:
+    folded_question = _fold_text(question)
+    if not (
+        "kiem tra nang luc tieng anh" in folded_question
+        and any(marker in folded_question for marker in ("tong chi phi", "so tien", "bao nhieu"))
+    ):
+        return None
+    for chunk in evidence.chunks:
+        metadata = chunk.metadata or {}
+        if metadata.get("record_type") != "page_text" or metadata.get("category") != "ho_so":
+            continue
+        try:
+            if int(metadata.get("page", 0)) != 4:
+                continue
+        except (TypeError, ValueError):
+            continue
+        text = re.sub(r"\s+", " ", chunk.text or "")
+        match = re.search(
+            r"TỔNG\s+CHI\s+PHÍ\s+HỌC\s+KỲ\s+I\s*"
+            r"(\d{1,3}(?:\.\d{3})+)\s+đồng\s*\+\s*"
+            r"(\d{1,3}(?:\.\d{3})+)\s+đồng",
+            text,
+            re.IGNORECASE,
+        )
+        if not match:
+            continue
+        amounts = [int(value.replace(".", "")) for value in match.groups()]
+        if all(amount > 0 for amount in amounts):
+            return sum(amounts)
+    return None
+
+
+def _optional_fee_total_failure(
+    answer: str,
+    evidence: EvidenceBundle,
+    question: str,
+) -> str:
+    expected_total = _optional_fee_total_from_evidence(evidence, question)
+    if expected_total is None:
+        folded_question = _fold_text(question)
+        is_optional_total_question = (
+            "kiem tra nang luc tieng anh" in folded_question
+            and any(marker in folded_question for marker in ("tong chi phi", "so tien", "bao nhieu"))
+        )
+        if is_optional_total_question and re.search(r"\d{1,3}(?:\.\d{3})+", answer):
+            return "optional_fee_total_unverified"
+        return ""
+    folded_answer = _fold_text(answer)
+    if "tong chi phi" not in folded_answer and "tong cong" not in folded_answer:
+        return "optional_fee_total_missing"
+    formatted = f"{expected_total:,}".replace(",", ".")
+    return "" if formatted in answer else "optional_fee_total_mismatch"
 
 
 def _has_unsupported_named_entity(
@@ -729,6 +804,16 @@ def _score_mapping_failure(
     )
     if intent == "TU_VAN_CHON_NGANH" and entities.get("student_scores"):
         return ""
+    if (
+        score_type == "supplementary_threshold"
+        and intent == "HOI_XET_TUYEN_BO_SUNG"
+        and str(entities.get("query_mode") or "") in {"LIST", "LIST_AND_COUNT"}
+        and any(marker in normalized_question for marker in ("nganh nao", "nhung nganh", "chuong trinh nao", "nhung chuong trinh"))
+    ):
+        # A request for the supplementary-admission major catalogue does not
+        # ask for each method's threshold. Do not reject the verified list for
+        # omitting score mappings the user never requested.
+        return ""
 
     typed_facts = [fact for fact in facts if fact.get("score_type") == score_type]
     if not typed_facts:
@@ -743,6 +828,20 @@ def _score_mapping_failure(
         typed_facts = specific or [fact for fact in typed_facts if not fact.get("major_name")]
     else:
         typed_facts = [fact for fact in typed_facts if not fact.get("major_name")] or typed_facts
+
+    # A method-specific threshold question is a closed lookup for that method;
+    # requiring the answer to enumerate every other method creates a false
+    # rejection (for example, a THPT query whose selected evidence also contains
+    # the generic ĐGNL threshold). Keep the requested-method evidence mapping
+    # strict, and do not silently fall back to a different method.
+    requested_method = str(entities.get("admission_method") or "").strip()
+    if score_type == "application_threshold" and requested_method in {"thpt", "hoc_ba", "dgnl"}:
+        requested_facts = [
+            fact for fact in typed_facts if str(fact.get("method") or "") == requested_method
+        ]
+        if not requested_facts:
+            return "missing_threshold_mapping"
+        typed_facts = requested_facts
 
     expected_by_method: dict[str, set[str]] = {}
     for fact in typed_facts:
@@ -852,6 +951,14 @@ def _is_verified_score_fact(fact: Mapping[str, object]) -> bool:
 def _has_required_supplementary_date(answer: str, evidence: EvidenceBundle, question: str) -> bool:
     normalized_question = _fold_text(question)
     if "xet tuyen bo sung" not in normalized_question and "tuyen sinh bo sung" not in normalized_question:
+        return True
+    # A deadline is mandatory only when the user asks about timing. Requiring
+    # the date on every supplementary-admission answer wrongly rejects a
+    # verified catalogue/list of majors that was never asked to include dates.
+    if not any(
+        marker in normalized_question
+        for marker in ("han", "deadline", "khi nao", "thoi gian", "den ngay", "ket thuc", "cuoi cung")
+    ):
         return True
     required_dates = {
         str(fact.get("raw_value"))

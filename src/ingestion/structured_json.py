@@ -802,11 +802,11 @@ def parse_score_formulas(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def parse_admission_methods(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     fallback_patterns = (
-        ("thpt", re.compile(r"^Xét kết quả kỳ thi tốt nghiệp THPT", re.IGNORECASE)),
-        ("hoc_ba", re.compile(r"^Xét tuyển kết quả học tập THPT", re.IGNORECASE)),
-        ("dgnl", re.compile(r"^Xét kết quả kỳ thi Đánh giá năng lực", re.IGNORECASE)),
-        ("h_sca", re.compile(r"^Xét kết quả bài thi Đánh giá năng lực chuyên biệt", re.IGNORECASE)),
-        ("trung_cap", re.compile(r"^Xét tuyển đối với thí sinh tốt nghiệp trung cấp", re.IGNORECASE)),
+        ("thpt", re.compile(r"^(?:\d+\.\d+\.?\s*)?Xét kết quả kỳ thi tốt nghiệp THPT", re.IGNORECASE)),
+        ("hoc_ba", re.compile(r"^(?:\d+\.\d+\.?\s*)?Xét tuyển kết quả học tập THPT", re.IGNORECASE)),
+        ("dgnl", re.compile(r"^(?:\d+\.\d+\.?\s*)?Xét kết quả kỳ thi Đánh giá năng lực", re.IGNORECASE)),
+        ("h_sca", re.compile(r"^(?:\d+\.\d+\.?\s*)?Xét kết quả bài thi Đánh giá năng lực chuyên biệt", re.IGNORECASE)),
+        ("trung_cap", re.compile(r"^(?:\d+\.\d+\.?\s*)?Xét tuyển đối với thí sinh tốt nghiệp trung cấp", re.IGNORECASE)),
     )
     for page in pages:
         for line in _nonempty_lines(str(page.get("text", ""))):
@@ -1764,39 +1764,38 @@ def build_chunk_documents(structured_document: Mapping[str, Any]) -> list[Docume
             if scalar is not None:
                 metadata[key] = scalar
         chunks.append(Document(page_content=text, metadata=metadata))
-    # Record-level chunks are the primary semantic index.  Enrollment PDFs
-    # also contain procedural dates, headings, and step text that are retained
-    # in ``pages[].text`` but are intentionally not duplicated into every
-    # small record.  Keep those page texts available to downstream RAG as
-    # bounded supplemental chunks; this does not alter the processed JSON or
-    # replace structured records.
-    if str(structured_document.get("category") or "") == "ho_so":
-        for page in structured_document.get("pages", []):
-            if not isinstance(page, Mapping):
-                continue
-            page_number = page.get("page_number", page.get("page", 1))
-            page_text = str(page.get("text") or "").strip()
-            if not page_text:
-                continue
-            metadata = dict(base_metadata)
-            metadata.update(
-                {
-                    "structured_record_id": f"page_{page_number}",
-                    "record_type": "page_text",
-                    "page": page_number,
-                    "data_role": structured_document.get("data_role", ""),
-                    "page_text_source": True,
-                }
+    # Semantic records remain the primary index, but they do not necessarily
+    # cover every meaningful paragraph, heading, procedure, or table note on
+    # a PDF page. Preserve page text as supplemental RAG material for every
+    # verified document. This is additive: it does not replace structured
+    # records or change the processed JSON. The original category/provenance
+    # and page number stay attached so downstream filters remain authoritative.
+    for page in structured_document.get("pages", []):
+        if not isinstance(page, Mapping):
+            continue
+        page_number = page.get("page_number", page.get("page", 1))
+        page_text = str(page.get("text") or "").strip()
+        if not page_text:
+            continue
+        metadata = dict(base_metadata)
+        metadata.update(
+            {
+                "structured_record_id": f"page_{page_number}",
+                "record_type": "page_text",
+                "page": page_number,
+                "data_role": structured_document.get("data_role", ""),
+                "page_text_source": True,
+            }
+        )
+        chunks.append(
+            Document(
+                page_content=(
+                    f"{_category_label(str(structured_document['category']), int(structured_document['year']))}\n"
+                    f"DHV {structured_document['year']} - {structured_document['title']}\n{page_text}"
+                ),
+                metadata=metadata,
             )
-            chunks.append(
-                Document(
-                    page_content=(
-                        f"{_category_label(str(structured_document['category']), int(structured_document['year']))}\n"
-                        f"DHV {structured_document['year']} - {structured_document['title']}\n{page_text}"
-                    ),
-                    metadata=metadata,
-                )
-            )
+        )
 
     if not chunks:
         for section in structured_document.get("sections", []):

@@ -12,6 +12,7 @@ from src.chatbot.query_analysis import (
     ConversationState,
     analyze_question,
     route_question,
+    should_inherit_context,
     update_conversation_state,
 )
 from src.chatbot.rag_chain import ask_chatbot
@@ -325,10 +326,30 @@ class CoreferenceAndStateTests(unittest.TestCase):
 
         followup = analyze_question("Còn học phí?", state)
         followup_plan = route_question(followup, state)
-        self.assertEqual(followup_plan.entity_filters["major_name"], "Công nghệ thông tin")
+        self.assertTrue(
+            should_inherit_context(
+                followup.normalized_question,
+                followup.intent,
+                state.previous_intent,
+                state,
+            )
+        )
+        # The prior major remains conversational context, but tuition in this
+        # corpus is school-level. Do not push an inherited major filter into
+        # retrieval and accidentally hide the verified general tuition rows.
+        self.assertNotIn("major_name", followup_plan.entity_filters)
+        self.assertEqual(state.current_major, "Công nghệ thông tin")
 
         generic = analyze_question("Học phí của trường bao nhiêu?", state)
         generic_plan = route_question(generic, state)
+        self.assertFalse(
+            should_inherit_context(
+                generic.normalized_question,
+                generic.intent,
+                state.previous_intent,
+                state,
+            )
+        )
         self.assertNotIn("major_name", generic_plan.entity_filters)
 
     def test_explicit_major_overrides_previous_major(self) -> None:

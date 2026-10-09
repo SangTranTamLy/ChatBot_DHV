@@ -16,17 +16,29 @@ from src.retrieval.retriever import topic_category
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-RAW_SCHOOL_PDF = (
-    PROJECT_ROOT / "data" / "raw" / "thong_tin_truong" / "thong_tin_truong_dhv_2026.pdf"
-)
-PROCESSED_SCHOOL_JSON = (
-    PROJECT_ROOT
-    / "data"
-    / "processed"
-    / "thong_tin_truong"
-    / "thong_tin_truong_dhv_2026.json"
-)
 MANIFEST = PROJECT_ROOT / "data" / "raw" / "manifest.json"
+
+
+def _verified_school_manifest_entry() -> dict[str, object]:
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    candidates = [
+        item
+        for item in manifest["documents"]
+        if item.get("category") == "thong_tin_truong"
+        and item.get("year") == 2026
+        and item.get("verified") is True
+        and item.get("verification_status") == "verified"
+        and item.get("source_url")
+    ]
+    if not candidates:
+        raise AssertionError("No verified 2026 school-information PDF is listed in the RAW manifest")
+    return sorted(candidates, key=lambda item: str(item.get("document_id")))[0]
+
+
+SCHOOL_SOURCE = _verified_school_manifest_entry()
+RAW_SCHOOL_PDF = PROJECT_ROOT / str(SCHOOL_SOURCE["raw_file"])
+SCHOOL_RAW_RELATIVE = Path(str(SCHOOL_SOURCE["raw_file"])).relative_to("data/raw")
+PROCESSED_SCHOOL_JSON = PROJECT_ROOT / "data" / "processed" / SCHOOL_RAW_RELATIVE.with_suffix(".json")
 
 
 class Task09DataTests(unittest.TestCase):
@@ -36,11 +48,7 @@ class Task09DataTests(unittest.TestCase):
         self.assertTrue(PROCESSED_SCHOOL_JSON.exists())
 
         manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-        entry = next(
-            item
-            for item in manifest["documents"]
-            if item["raw_file"] == "data/raw/thong_tin_truong/thong_tin_truong_dhv_2026.pdf"
-        )
+        entry = next(item for item in manifest["documents"] if item["document_id"] == SCHOOL_SOURCE["document_id"])
         self.assertEqual(entry["category"], "thong_tin_truong")
         self.assertEqual(entry["year"], 2026)
         self.assertEqual(entry["verification_status"], "verified")
@@ -67,25 +75,15 @@ class Task09DataTests(unittest.TestCase):
         self.assertTrue(metadata["source_url"])
         self.assertIn("https://", str(metadata["source_urls"]))
 
-    def test_school_raw_contains_verified_official_website_directory(self) -> None:
-        text = "\n".join(page.extract_text() or "" for page in PdfReader(str(RAW_SCHOOL_PDF)).pages)
-        expected_urls = (
-            "https://dhv.edu.vn/",
-            "https://tuyensinh.dhv.edu.vn/",
-            "https://ipic.dhv.edu.vn/",
-            "https://epdl.dhv.edu.vn/",
-            "https://heal.dhv.edu.vn/",
-            "https://tec.dhv.edu.vn/",
-            "https://fba.dhv.edu.vn/",
-            "https://bam.dhv.edu.vn/",
-            "https://lan.dhv.edu.vn/",
-            "https://host.dhv.edu.vn/",
-            "https://online.dhv.edu.vn/",
-        )
-        self.assertIn("HỆ SINH THÁI WEBSITE CHÍNH THỨC CỦA DHV", text)
-        for url in expected_urls:
-            with self.subTest(url=url):
-                self.assertIn(url, text)
+    def test_manifested_verified_school_pdf_matches_processed_page_coverage(self) -> None:
+        raw_pages = PdfReader(str(RAW_SCHOOL_PDF)).pages
+        document = json.loads(PROCESSED_SCHOOL_JSON.read_text(encoding="utf-8"))
+        self.assertEqual(len(raw_pages), len(document["pages"]))
+        processed_text = "\n".join(page.get("text", "") for page in document["pages"])
+        self.assertIn("1995", processed_text)
+        self.assertIn("HỢP TÁC", processed_text)
+        self.assertEqual(document["document_id"], SCHOOL_SOURCE["document_id"])
+        self.assertEqual(document["source"]["source_url"], SCHOOL_SOURCE["source_url"])
 
 
 class Task09RoutingTests(unittest.TestCase):

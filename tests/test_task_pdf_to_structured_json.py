@@ -124,6 +124,7 @@ class StructuredJSONPipelineTests(unittest.TestCase):
             output_root = Path(temp_dir)
             result = convert_pdf_to_structured_json(raw, raw_root=RAW_ROOT, output_root=output_root, markdown_root=None)
             loaded = load_verified_documents(output_root)
+            page_count = len(load_structured_json(result.output_path)["pages"])
 
         self.assertEqual(loaded.stats.verified_documents, 1)
         tuition_documents = [document for document in loaded.documents if document.metadata.get("record_type") == "tuition"]
@@ -137,6 +138,31 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(document.metadata["total_cost_vnd"], 14250000)
         self.assertEqual(document.metadata["page"], 1)
         self.assertTrue(document.metadata["source_file"].endswith("HO_SO_NHAP_HOC_DAY_DU_DHV_2026.pdf"))
+
+        page_text_documents = [
+            item for item in loaded.documents
+            if item.metadata.get("record_type") == "page_text"
+        ]
+        self.assertEqual(len(page_text_documents), page_count)
+        self.assertTrue(all(item.metadata.get("page_text_source") is True for item in page_text_documents))
+
+    def test_page_text_supplements_records_for_facts_not_structured_as_records(self) -> None:
+        raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = convert_pdf_to_structured_json(
+                raw,
+                raw_root=RAW_ROOT,
+                output_root=Path(temp_dir),
+                markdown_root=None,
+            )
+            loaded = load_verified_documents(Path(temp_dir))
+
+        mos_chunks = [
+            item for item in loaded.documents
+            if item.metadata.get("record_type") == "page_text" and "MOS" in item.page_content
+        ]
+        self.assertTrue(mos_chunks)
+        self.assertTrue(any("được cộng 1,50 điểm" in item.page_content for item in mos_chunks))
 
     def test_validation_rejects_unofficial_sources_and_missing_traceability(self) -> None:
         invalid = {

@@ -487,8 +487,14 @@ class TaskFGenerationTests(unittest.TestCase):
             llm=WrongRelationLLM(),
             conversation_state={"current_major": "Công nghệ thông tin", "current_year": 2026},
         )
-        self.assertEqual(result["status"], "no_data")
-        self.assertEqual(result["sources"], [])
+        # The evidence path can safely replace the model's bad draft with the
+        # verified program-to-major relation. The contract is to reject the
+        # invented 7340101 claim, not to reject a correct grounded answer.
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("Công nghệ thông tin", result["answer"])
+        self.assertIn("7480201", result["answer"])
+        self.assertNotIn("7340101", result["answer"])
+        self.assertTrue(result["sources"])
 
 
 class TaskFConversationTests(unittest.TestCase):

@@ -30,11 +30,12 @@ class TaskResponseRegressionTests(unittest.TestCase):
     def test_school_info_uses_overview_sections(self) -> None:
         result, _ = self._ask("thông tin trường")
 
-        self.assertEqual(result["status"], "no_data")
-        self.assertEqual(result["answer_plan"]["mode"], "NO_DATA")
-        self.assertNotIn("1995", result["answer"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["answer_plan"]["mode"], "OVERVIEW")
+        self.assertGreater(result["trace"]["evidence_count"], 0)
+        self.assertIn("sứ mệnh", result["answer"].casefold())
         self.assertNotIn("[Evidence", result["answer"])
-        self.assertNotIn("Nguồn chính thức", result["answer"])
+        self.assertTrue(any("dhv.edu.vn" in source.get("url", "") for source in result["sources"]))
 
     def test_major_count_does_not_dump_the_catalogue(self) -> None:
         result, _ = self._ask("DHV có bao nhiêu ngành")
@@ -61,7 +62,7 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertIn("không phải kết luận trúng tuyển", result["answer"])
         self.assertNotIn("đủ điều kiện xét tuyển", result["answer"])
 
-    def test_local_generation_failure_keeps_verified_tuition_usable(self) -> None:
+    def test_generic_tuition_uses_verified_line_without_conflicting_total(self) -> None:
         class InvalidLocalLLM(LocalLLM):
             def __init__(self) -> None:
                 self.prompts: list[str] = []
@@ -79,9 +80,10 @@ class TaskResponseRegressionTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertIn("Học phí HKI (10 tín chỉ): 12.500.000 đồng", result["answer"])
-        self.assertEqual(len(llm.prompts), 2)
+        self.assertNotIn("Tổng chi phí học kỳ I: 14.250.000 đồng", result["answer"])
+        self.assertFalse(llm.prompts)
 
-    def test_local_generation_failure_keeps_scholarship_policy_structured(self) -> None:
+    def test_verified_scholarship_policy_is_structured_without_generation(self) -> None:
         class InvalidLocalLLM(LocalLLM):
             def __init__(self) -> None:
                 self.prompts: list[str] = []
@@ -100,7 +102,7 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertGreaterEqual(str(result["answer"]).count("- "), 3)
         self.assertIn("50%", result["answer"])
-        self.assertEqual(len(llm.prompts), 2)
+        self.assertFalse(llm.prompts)
 
     def test_formula_does_not_turn_into_a_threshold_answer(self) -> None:
         result, _ = self._ask("Cách tính điểm xét tuyển học bạ")

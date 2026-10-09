@@ -316,6 +316,7 @@ def _render_welcome() -> None:
             "Bạn đang cần hỗ trợ nội dung nào?",
             unsafe_allow_html=False,
         )
+        st.caption(DISCLAIMER)
 
 def _record_and_render_exchange(question: str) -> None:
     """Lưu trữ và hiển thị một lượt hỏi đáp, bao gồm xử lý lỗi service an toàn."""
@@ -359,7 +360,6 @@ _render_chat_history()
 
 if isinstance(typed_question, str) and typed_question.strip():
     _record_and_render_exchange(typed_question.strip())
-else:
+elif not st.session_state.messages:
     _render_welcome()
 
-st.caption(DISCLAIMER)

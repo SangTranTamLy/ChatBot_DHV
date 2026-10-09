@@ -603,6 +603,18 @@ def _extract_structured_facts(
                         )
             continue
 
+        if record_type == "admission_method":
+            fact = {
+                "score_type": "admission_method",
+                "method_number": metadata.get("method_number"),
+                "method_text": metadata.get("method_text"),
+                "category": category,
+                **_fact_provenance(chunk),
+            }
+            if _remember_fact(seen_facts, fact):
+                facts.append(fact)
+            continue
+
         if record_type in {
             "application_threshold",
             "admission_score",
@@ -740,6 +752,59 @@ def _parse_admission_table_facts(
                     **_fact_provenance(chunk),
                 }
             )
+    # Native/OCR extraction can preserve each table cell on its own line:
+    # ordinal, code, wrapped major name, then three numeric method cells.
+    # Recover only this explicit row shape; do not infer values across rows.
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines() if line.strip()]
+    score_cell = re.compile(r"^(\d+(?:[.,]\d+)?)(?:\(\*\))?$")
+    for index in range(len(lines) - 1):
+        if not re.fullmatch(r"\d{1,3}", lines[index]):
+            continue
+        if not re.fullmatch(r"\d{7,9}", lines[index + 1]):
+            continue
+        name_start = index + 2
+        score_start = None
+        for position in range(name_start, min(len(lines), name_start + 8)):
+            if score_cell.fullmatch(lines[position]):
+                score_start = position
+                break
+            if (
+                position + 1 < len(lines)
+                and re.fullmatch(r"\d{1,3}", lines[position])
+                and re.fullmatch(r"\d{7,9}", lines[position + 1])
+            ):
+                break
+        if score_start is None or score_start == name_start:
+            continue
+        parsed_values: list[tuple[str, str]] = []
+        position = score_start
+        while position < len(lines) and len(parsed_values) < 3:
+            match = score_cell.fullmatch(lines[position])
+            if not match:
+                break
+            parsed_values.append((match.group(1), lines[position]))
+            position += 1
+        if len(parsed_values) != 3:
+            continue
+        major_name = " ".join(lines[name_start:score_start]).strip(" •*-")
+        if not major_name:
+            continue
+        major_code = lines[index + 1]
+        for method, (numeric_value, _raw_cell) in zip(
+            ("thpt", "hoc_ba", "dgnl"), parsed_values
+        ):
+            facts.append(
+                {
+                    "major_name": major_name,
+                    "major_code": major_code,
+                    "score_type": "admission_score",
+                    "method": method,
+                    "raw_value": numeric_value,
+                    "value": _numeric_or_none(numeric_value),
+                    "category": "diem_trung_tuyen",
+                    **_fact_provenance(chunk),
+                }
+            )
     return facts
 
 
@@ -751,6 +816,7 @@ def _remember_fact(seen: set[tuple[object, ...]], fact: dict[str, object]) -> bo
         fact.get("method"),
         fact.get("raw_value"),
         fact.get("category"),
+        fact.get("method_number"),
     )
     if identity in seen:
         return False
