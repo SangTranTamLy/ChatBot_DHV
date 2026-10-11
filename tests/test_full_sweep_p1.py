@@ -752,6 +752,142 @@ class IntentAndYearSweepTests(unittest.TestCase):
         self.assertIn("Giá trị thật", str(answer))
         self.assertIn("tiếp cận môi trường Doanh nghiệp", str(answer))
 
+    def test_detailed_admission_method_list_uses_verified_page_explanations(self) -> None:
+        analysis = analyze_question(
+            "DHV có những phương thức xét tuyển? Liệt kê chi tiết từng phương thức."
+        )
+        method_facts = (
+            (1, "Xét kết quả kỳ thi tốt nghiệp THPT năm 2026"),
+            (2, "Xét tuyển kết quả học tập THPT (học bạ)"),
+            (3, "Xét kết quả kỳ thi Đánh giá năng lực"),
+            (4, "Xét kết quả bài thi Đánh giá năng lực chuyên biệt (H-SCA)"),
+            (5, "Xét tuyển đối với thí sinh tốt nghiệp trung cấp"),
+        )
+        source_text = (
+            "1.1.2. Các phương thức xét tuyển năm 2026\n"
+            "a. Xét kết quả kỳ thi tốt nghiệp THPT năm 2026\n"
+            "Thí sinh đăng ký xét tuyển dựa trên tổng điểm 03 môn thi tốt nghiệp THPT theo tổ hợp xét tuyển.\n"
+            "• Toán + 02 môn có điểm cao nhất trong các môn được trường công bố.\n"
+            "b. Xét tuyển kết quả học tập THPT (học bạ)\n"
+            "Điểm trung bình kết quả học tập của 03 năm THPT (lớp 10, 11, 12) theo một trong hai cách tính:\n"
+            "• Tổng điểm tổ hợp 03 môn xét tuyển theo ngành\n"
+            "• Toán hoặc Ngữ văn + (điểm trung bình toàn bộ các môn lớp 10, 11, 12) x 2\n"
+            "c. Xét kết quả kỳ thi Đánh giá năng lực\n"
+            "Thí sinh dùng kết quả kỳ thi năm 2026 do ĐHQG-HCM tổ chức, từ 600 điểm trở lên.\n"
+            "d. Xét kết quả bài thi Đánh giá năng lực chuyên biệt (H-SCA)\n"
+            "Thí sinh dùng kết quả H-SCA năm 2026 kết hợp với kết quả học tập THPT.\n"
+            "e. Xét tuyển đối với thí sinh tốt nghiệp trung cấp\n"
+            "Áp dụng cho người tốt nghiệp trung cấp nghề cùng nhóm ngành và hoàn thành chương trình văn hóa THPT.\n"
+            "1.2. Chính sách cộng điểm khuyến khích"
+        )
+        metadata = {
+            "record_type": "page_text",
+            "category": "phuong_thuc_xet_tuyen",
+            "year": 2026,
+            "school_code": "DHV",
+            "status": "verified",
+            "source_url": "https://tuyensinh.dhv.edu.vn/",
+            "source_file": "data/raw/phuong_thuc_xet_tuyen/V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf",
+            "document_id": "method-details-fixture",
+            "page": 3,
+            "chunk_index": 0,
+        }
+        evidence = EvidenceBundle(
+            chunks=(EvidenceChunk(text=source_text, metadata=metadata),),
+            context=source_text,
+            sources=({"title": "Phương thức DHV 2026", "url": "https://tuyensinh.dhv.edu.vn/"},),
+            score_facts=tuple(
+                {
+                    "score_type": "admission_method",
+                    "method_number": number,
+                    "method_text": text,
+                    "category": "phuong_thuc_xet_tuyen",
+                }
+                for number, text in method_facts
+            ),
+        )
+
+        result = _evidence_catalog_answer(analysis, evidence, ConversationState())
+
+        self.assertIsNotNone(result)
+        answer = str(result["answer"])
+        self.assertIn("có 5 phương thức", answer)
+        self.assertIn("tổng điểm 03 môn thi tốt nghiệp THPT", answer)
+        self.assertIn("lớp 10, 11, 12", answer)
+        self.assertIn("600 điểm trở lên", answer)
+        self.assertIn("kết hợp với kết quả học tập THPT", answer)
+        self.assertIn("cùng nhóm ngành", answer)
+
+    def test_broad_scholarship_answer_uses_full_verified_page_context(self) -> None:
+        question = "DHV có những học bổng nào?"
+
+        class ScholarshipPageRetriever:
+            def __init__(self) -> None:
+                self.call: dict[str, object] = {}
+
+            def retrieve_with_audit(
+                self,
+                _question: str,
+                *,
+                categories: tuple[str, ...],
+                retrieval_query: str,
+                **kwargs: object,
+            ) -> dict[str, object]:
+                self.call = {
+                    "categories": categories,
+                    "retrieval_query": retrieval_query,
+                    **kwargs,
+                }
+                return {
+                    "documents": [
+                        Document(
+                            page_content=(
+                                "Năm 2026, DHV công bố Quỹ học bổng Hào khí Hùng Vương "
+                                "lên đến 75 tỷ đồng.\n"
+                                "Học bổng Tài năng có mức hỗ trợ từ 30% đến 100% học phí toàn khóa."
+                            ),
+                            metadata={
+                                "title": "Phương thức và học bổng DHV 2026",
+                                "category": "phuong_thuc_xet_tuyen",
+                                "record_type": "page_text",
+                                "year": 2026,
+                                "school_code": "DHV",
+                                "status": "verified",
+                                "verification_status": "verified",
+                                "source_url": "https://tuyensinh.dhv.edu.vn/",
+                                "source_file": "data/raw/phuong_thuc_xet_tuyen/V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf",
+                                "chunk_id": "full-scholarship-page-context",
+                            },
+                        )
+                    ]
+                }
+
+        class GroundedLLM:
+            def __init__(self) -> None:
+                self.prompt = ""
+
+            def generate(self, prompt: str) -> str:
+                self.prompt = prompt
+                return (
+                    "Quỹ học bổng Hào khí Hùng Vương lên đến 75 tỷ đồng. "
+                    "Học bổng Tài năng hỗ trợ từ 30% đến 100% học phí toàn khóa."
+                )
+
+        retriever = ScholarshipPageRetriever()
+        llm = GroundedLLM()
+        result = ask_chatbot(question, retriever=retriever, llm=llm)
+
+        self.assertEqual(retriever.call["categories"], ("hoc_bong", "phuong_thuc_xet_tuyen", "ho_so"))
+        self.assertEqual(retriever.call["top_k"], 64)
+        self.assertIn("Quỹ học bổng Hào khí Hùng Vương", llm.prompt)
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("75 tỷ đồng", str(result["answer"]))
+        self.assertIn("30% đến 100%", str(result["answer"]))
+        self.assertEqual(
+            result["sources"],
+            [{"title": "Phương thức và học bổng DHV 2026", "url": "https://tuyensinh.dhv.edu.vn/"}],
+        )
+
     def test_school_code_can_be_read_across_wrapped_native_lines(self) -> None:
         analysis = analyze_question("Mã trường dùng trong tuyển sinh là gì?")
         evidence = EvidenceBundle(
@@ -919,7 +1055,10 @@ class IntentAndYearSweepTests(unittest.TestCase):
             "status": "verified", "year": 2026, "school_code": "DHV",
             "source_url": "https://dhv.edu.vn/",
         }
-        exact_row = "TỔNG CHI PHÍ HỌC KỲ I\n14.250.000 đồng + 250.000 đồng"
+        exact_row = (
+            "TỔNG CHI PHÍ HỌC KỲ I\n14.250.000 đồng + 250.000 đồng\n"
+            "Kiểm tra năng lực Tiếng Anh (nếu có): 250.000 đồng"
+        )
         incorrect_record = (
             "Học phí HKI: 12.500.000 đồng\nKiểm tra năng lực Tiếng Anh: 5.000.000 đồng\n"
             "Tổng chi phí học kỳ I: 14.250.000 đồng"
@@ -963,6 +1102,30 @@ class IntentAndYearSweepTests(unittest.TestCase):
             )["status"],
             "ok",
         )
+
+        excluded_question = (
+            "Nếu em không thuộc diện kiểm tra tiếng Anh thì tổng các khoản học kỳ I trong bảng là bao nhiêu?"
+        )
+        excluded_analysis = analyze_question(excluded_question)
+        excluded_answer = _evidence_tuition_total_answer(excluded_analysis, evidence)
+        self.assertIsNotNone(excluded_answer)
+        self.assertIn("14.250.000 đồng", str(excluded_answer))
+        self.assertNotIn("tổng cộng 14.500.000", str(excluded_answer))
+        excluded_validated = validate_model_answer(
+            str(excluded_answer), evidence, question=excluded_question, analysis=excluded_analysis
+        )
+        self.assertEqual(excluded_validated["status"], "ok", msg=str(excluded_validated))
+        wrong_excluded_total = validate_model_answer(
+            "Tổng chi phí học kỳ I là 14.500.000 đồng.",
+            evidence,
+            question=excluded_question,
+            analysis=excluded_analysis,
+        )
+        self.assertEqual(wrong_excluded_total["status"], "no_data")
+        self.assertEqual(wrong_excluded_total["_validation_reason"], "optional_fee_total_mismatch")
+
+        excluded_plan = route_question(excluded_analysis)
+        self.assertEqual(excluded_plan.categories, ("hoc_phi", "ho_so"))
 
     def test_optional_english_fee_keeps_table_cell_amount_after_duplicate_line_dedup(self) -> None:
         question = "Kiểm tra năng lực tiếng Anh có phải ai cũng đóng 250.000 đồng không?"

@@ -47,7 +47,10 @@ class ProcessedJSONMigrationTests(unittest.TestCase):
             result.stats.verified_documents,
             sum(1 for entry in manifest["documents"] if entry["verified"] is True),
         )
-        self.assertEqual(result.stats.skipped_unverified, 2)
+        self.assertEqual(
+            result.stats.skipped_unverified,
+            sum(1 for entry in manifest["documents"] if entry["verified"] is not True),
+        )
         self.assertEqual(result.stats.metadata_errors, 0)
         self.assertTrue(result.documents)
         self.assertTrue(all(document.metadata["source_file"].endswith(".pdf") for document in result.documents))

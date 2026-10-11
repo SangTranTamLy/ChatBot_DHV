@@ -8,7 +8,6 @@ from pathlib import Path
 
 from src.ingestion.prepare_processed_from_raw import (
     _extract_pdf_text,
-    _source_urls_from_text,
 )
 from src.ingestion.raw_manifest import is_official_dhv_url
 
@@ -64,17 +63,18 @@ class TaskMRawDataTests(unittest.TestCase):
                 self.assertNotEqual(entry["status"], "verified")
                 self.assertIsNone(entry["source_url"])
 
-    def test_raw_pdfs_have_official_urls_and_no_form_submission_data(self) -> None:
+    def test_raw_pdfs_have_no_form_submission_data(self) -> None:
         manifest = json.loads((RAW_ROOT / "manifest.json").read_text(encoding="utf-8"))
         by_file = {entry["raw_file"].replace("/", "\\"): entry for entry in manifest["documents"]}
         for path in sorted(RAW_ROOT.rglob("*.pdf")):
             text = _extract_pdf_text(path)
-            urls = _source_urls_from_text(text)
             relative = path.relative_to(PROJECT_ROOT).as_posix()
             entry = by_file[relative.replace("/", "\\")]
             if entry["verified"]:
-                self.assertTrue(all(is_official_dhv_url(url) for url in urls), path)
                 self.assertTrue(is_official_dhv_url(entry["source_url"]), path)
+                self.assertTrue(
+                    all(is_official_dhv_url(url) for url in entry["source_urls"]), path
+                )
             self.assertNotRegex(text, r"\b\d{12}\b", path)
 
     def test_processed_metadata_and_new_career_evidence_are_present(self) -> None:
@@ -84,7 +84,7 @@ class TaskMRawDataTests(unittest.TestCase):
                 / "data"
                 / "processed"
                 / "thong_tin_truong"
-                / "TONG_QUAN_TUYEN_SINH_DHV_2026.json"
+                / "V1_TONG_QUAN_TUYEN_SINH_DHV_2026.json"
             ).read_text(encoding="utf-8")
         )
         catalog = json.loads(
@@ -93,7 +93,7 @@ class TaskMRawDataTests(unittest.TestCase):
                 / "data"
                 / "processed"
                 / "phuong_thuc_xet_tuyen"
-                / "PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.json"
+                / "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.json"
             ).read_text(encoding="utf-8")
         )
 

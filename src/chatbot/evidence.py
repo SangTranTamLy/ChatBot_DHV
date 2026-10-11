@@ -39,6 +39,26 @@ _SUPPLEMENTARY_DATE_FACT_RE = re.compile(
     r"(?:đến\s+hết\s+ngày|đến\s+ngày)\s*(\d{1,2}/\d{1,2}/\d{4})",
     re.IGNORECASE,
 )
+_INTENT_CONTENT_MARKERS = {
+    "HOI_DANG_KY_XET_TUYEN": (
+        "dang ky xet tuyen",
+        "dang ky nguyen vong",
+        "dang ky nv",
+        "dang ky vao dhv",
+        "nguyen tac chung",
+        "thoi gian dang ky",
+        "dang ky truc tuyen",
+        "nop ho so truc tiep",
+        "cong thong tin tuyen sinh",
+        "cong tuyen sinh",
+        "xet tuyen bo sung",
+        "dieu kien tham gia xet tuyen",
+        "dieu kien xet tuyen",
+        "cong diem khuyen khich",
+        "thi sinh khuyet tat",
+        "hoc luc lop 12",
+    ),
+}
 _ADMISSION_TABLE_ROW_START_RE = re.compile(r"(?m)^\s*\d+\s+(\d{7,9})\s+")
 _ADMISSION_TABLE_ROW_RE = re.compile(
     r"^\d+\s+(?P<code>\d{7,9})\s+"
@@ -259,6 +279,18 @@ def _selection_filter_reason(
     return None
 
 
+def _intent_content_filter_reason(document: Document, intent: str | None) -> str | None:
+    """Reject category-matching chunks that do not discuss the requested intent."""
+
+    markers = _INTENT_CONTENT_MARKERS.get(str(intent or ""))
+    if not markers:
+        return None
+    content = _fold_text(document.page_content)
+    if any(marker in content for marker in markers):
+        return None
+    return "intent_content_mismatch"
+
+
 def _entity_row_subset(text: str, entity_values: tuple[str, ...]) -> str:
     """Lấy nguyên row ngành/chương trình thay vì nguyên bảng rộng vào prompt."""
 
@@ -315,7 +347,6 @@ def select_evidence_documents(
     provenance; không tạo fact mới. Đây là ranh giới cuối trước khi build prompt.
     """
 
-    del intent  # Reserved for future intent-specific policies; categories are authoritative.
     materialized = list(documents)
     category_values = tuple(
         str(category) for category in categories or () if str(category)
@@ -334,6 +365,8 @@ def select_evidence_documents(
             categories=category_values,
             target_year=target_year,
         )
+        if reason is None:
+            reason = _intent_content_filter_reason(document, intent)
         base = {
             "rank": rank,
             "chunk_id": metadata.get("chunk_id"),

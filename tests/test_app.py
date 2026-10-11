@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
@@ -17,14 +18,23 @@ def _app() -> AppTest:
 
 
 class StreamlitAppTests(unittest.TestCase):
-    def test_empty_state_has_welcome_chat_input_and_privacy_notice_without_suggestions(self) -> None:
+    def test_empty_state_has_welcome_quick_questions_chat_input_and_privacy_notice(self) -> None:
         at = _app()
 
         self.assertFalse(at.exception)
         self.assertEqual(at.title[0].value, "CHATBOT TƯ VẤN TUYỂN SINH DHV")
         self.assertEqual(len(at.chat_message), 1)
         self.assertEqual(len(at.chat_input), 1)
-        self.assertEqual(len(at.pills), 0)
+        self.assertEqual(len(at.pills), 1)
+        self.assertEqual(
+            at.pills[0].options,
+            [
+                "Chỉ tiêu tuyển sinh",
+                "Học phí",
+                "Điểm chuẩn 2026",
+                "Cách thức nộp hồ sơ",
+            ],
+        )
         expected_welcome = (
             "Xin chào! Tôi là ChatBot DHV – Trợ lý Tuyển sinh Trường Đại học Hùng Vương TP.HCM.\n\n"
             "Tôi có thể giải đáp nhanh cho bạn về:\n\n"
@@ -39,7 +49,6 @@ class StreamlitAppTests(unittest.TestCase):
             + [element.value for element in at.caption]
         )
         self.assertNotIn("Gợi ý tiếp theo", rendered_text)
-        self.assertNotIn("Câu hỏi gợi ý", rendered_text)
         self.assertTrue(any("Không nhập CCCD" in element.value for element in at.info))
         self.assertTrue(any("dữ liệu tuyển sinh DHV" in element.value for element in at.caption))
 
@@ -111,6 +120,29 @@ class StreamlitAppTests(unittest.TestCase):
             any("chỉ hỗ trợ các câu hỏi liên quan" in element.value for element in at.markdown)
         )
         self.assertEqual(at.session_state["state"], at.session_state["conversation_state"])
+        self.assertEqual(len(at.pills), 0)
+
+    def test_starter_question_sends_its_full_query_to_chat_service(self) -> None:
+        with patch(
+            "src.chatbot.chat_service.ask_chatbot",
+            return_value={"answer": "Học phí theo dữ liệu DHV.", "status": "ok"},
+        ) as ask_chatbot:
+            at = _app()
+            at.pills[0].set_value("Học phí").run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertEqual(
+            at.session_state["messages"][-2:],
+            [
+                {"role": "user", "content": "Học phí DHV năm 2026 là bao nhiêu?"},
+                {
+                    "role": "assistant",
+                    "content": "Học phí theo dữ liệu DHV.",
+                    "status": "ok",
+                },
+            ],
+        )
+        self.assertEqual(ask_chatbot.call_args.args[0], "Học phí DHV năm 2026 là bao nhiêu?")
         self.assertEqual(len(at.pills), 0)
 
     def test_history_hides_backend_sources_and_renders_all_service_statuses(self) -> None:

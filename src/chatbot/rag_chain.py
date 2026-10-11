@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import replace
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
 from src.config.settings import Settings, settings
@@ -42,6 +42,7 @@ from .output_validator import (
 from .query_analysis import (
     ConversationState,
     QueryAnalysis,
+    QueryPlan,
     analyze_question,
     deterministic_score_comparisons,
     deterministic_score_evaluation,
@@ -56,6 +57,13 @@ from .query_analysis import (
     should_inherit_context,
     normalize_entity_name,
     update_conversation_state,
+)
+from .query_decomposer import decompose_question, should_attempt_decomposition
+from .query_semantics import (
+    excludes_optional_english_test,
+    is_semester_fee_total_question,
+    mentions_optional_english_test,
+    should_include_optional_english_fee,
 )
 from .scope_guard import is_in_scope
 from .scope_guard import (
@@ -83,6 +91,7 @@ _RETRYABLE_VALIDATION_REASONS = frozenset(
         "ungrounded_entity",
         "advisory_choices_incomplete",
         "unsupported_contact_value",
+        "unsupported_contact_channel",
         "unsupported_date",
         "program_catalog_missing",
         "program_catalog_parent_mismatch",
@@ -211,6 +220,8 @@ def _trace(
     }
     if evidence_selection is not None:
         trace["evidence_selection"] = evidence_selection.to_dict()
+    if getattr(plan, "pre_rag_decomposition", None) is not None:
+        trace["pre_rag_decomposition"] = dict(plan.pre_rag_decomposition)
     if answer_plan is not None:
         trace["answer_plan"] = answer_plan.to_dict()
     return trace
@@ -460,13 +471,12 @@ def _retrieve(
             # not just the first few majors returned by the default top-k.
             expanded_score_top_k = max(expanded_score_top_k or 0, 64)
         expanded_scholarship_top_k = None
-        if getattr(plan, "intent", "") == "HOI_HOC_BONG" and any(
-            marker in normalized_query
-            for marker in ("toi da", "cao nhat", "tong diem", "to hop", "diem thi")
-        ):
-            # Maximum/rule questions can require comparing multiple verified
-            # policy rows rather than whichever scholarship chunk ranks first.
-            expanded_scholarship_top_k = 64
+        if getattr(plan, "intent", "") == "HOI_HOC_BONG":
+            # Scholarship facts are split across several verified PDFs and
+            # compact policy records. Include the bounded scholarship corpus;
+            # list answers need the policy pages, not only the highest-ranked
+            # isolated award fragments.
+            expanded_scholarship_top_k = 96
         expanded_enrollment_top_k = None
         if (
             (
@@ -484,6 +494,18 @@ def _retrieve(
             # top-k of four can hide the actual document list behind a fee or
             # support row, so expand only this bounded category.
             expanded_enrollment_top_k = 64
+        expanded_supplementary_detail_top_k = None
+        if (
+            getattr(plan, "intent", "") == "HOI_XET_TUYEN_BO_SUNG"
+            and any(marker in normalized_query for marker in (
+                "nhan ho so", "thoi gian nhan ho so", "han nhan ho so",
+                "nop ho so", "truc tuyen", "co so",
+            ))
+        ):
+            # The round, deadline, application route, and intake locations are
+            # held in one page-text section; expand this bounded category so
+            # retrieval does not stop at a threshold record.
+            expanded_supplementary_detail_top_k = 32
         expanded_admission_detail_top_k = None
         is_result_notification = (
             getattr(plan, "intent", "") == "HOI_DANG_KY_XET_TUYEN"
@@ -545,6 +567,7 @@ def _retrieve(
                 or expanded_score_top_k is not None
                 or expanded_scholarship_top_k is not None
                 or expanded_enrollment_top_k is not None
+                or expanded_supplementary_detail_top_k is not None
                 or expanded_admission_detail_top_k is not None
                 or expanded_enumeration_top_k is not None
             ):
@@ -557,6 +580,7 @@ def _retrieve(
                         expanded_score_top_k,
                         expanded_scholarship_top_k,
                         expanded_enrollment_top_k,
+                        expanded_supplementary_detail_top_k,
                         expanded_admission_detail_top_k,
                         expanded_enumeration_top_k,
                     )
@@ -616,6 +640,7 @@ def _dedupe_sources(results: list[dict[str, object]]) -> list[dict[str, str]]:
 
 
 _MULTI_ISSUE_LABELS = {
+    "SCHOOL_INFO": "Thông tin trường",
     "HOI_HOC_PHI": "Học phí",
     "HOI_HOC_BONG": "Học bổng",
     "DANH_SACH_CHUONG_TRINH": "Chương trình đào tạo",
@@ -630,6 +655,7 @@ _MULTI_ISSUE_LABELS = {
     "HOI_NHAP_HOC": "Nhập học",
     "HOI_DANG_KY_XET_TUYEN": "Đăng ký xét tuyển",
     "HOI_CO_SO_LIEN_HE": "Cơ sở và liên hệ",
+    "OUT_OF_SCOPE": "Sự kiện và hoạt động trường",
 }
 
 
@@ -651,19 +677,85 @@ def _ask_multi_issue(
     evidence_bundles = []
     score_evaluations: list[dict[str, object]] = []
     sub_answer_plans: list[dict[str, object]] = []
+    school_overview_evidence_prioritized: list[bool] = []
+    sub_evidence_boundaries: list[str | None] = []
+    retrieved_document_counts: list[int] = []
+    selected_evidence_counts: list[int] = []
+    retrieval_call_count = 0
     active_llm: Any | None = None
     for subplan in plan.subplans:
         subquery = subplan.retrieval_query
-        documents, audit = _retrieve(retriever, subquery, subplan)
-        audits.append(audit.to_dict() if audit is not None else None)
         sub_analysis = replace(
             analysis,
+            question=subquery,
+            normalized_question=normalize_question(subquery),
             intent=subplan.intent,
             entities={
                 **analysis.entities,
                 "issue_intents": [],
                 "requested_information": [subplan.intent],
             },
+        )
+        if subplan.intent == "OUT_OF_SCOPE":
+            evidence = build_evidence([], settings_obj=settings_obj)
+            sub_answer_plan = plan_answer(
+                sub_analysis,
+                evidence=evidence,
+                status="out_of_scope",
+                deterministic=True,
+            )
+            sub_results.append(
+                {
+                    "answer": (
+                        "Mình chưa có nguồn đã xác minh về sự kiện hoặc hoạt động "
+                        "của trường trong dữ liệu tuyển sinh DHV, nên chưa thể trả lời phần này."
+                    ),
+                    "sources": [],
+                    "status": "out_of_scope",
+                    "evidence_boundary": "unsupported_event_topic_outside_approved_scope",
+                    "answer_plan": sub_answer_plan.to_dict(),
+                    "intent": subplan.intent,
+                }
+            )
+            audits.append(None)
+            selections.append(
+                {
+                    "candidate_count": 0,
+                    "selected_count": 0,
+                    "selected": [],
+                    "filtered": [],
+                    "filter_reasons": [],
+                    "skipped_reason": "unsupported_event_topic_outside_approved_scope",
+                }
+            )
+            evidence_bundles.append(evidence)
+            score_evaluations.append(
+                {"status": "not_requested", "reason": "unsupported_event_topic"}
+            )
+            sub_answer_plans.append(sub_answer_plan.to_dict())
+            school_overview_evidence_prioritized.append(False)
+            sub_evidence_boundaries.append(
+                "unsupported_event_topic_outside_approved_scope"
+            )
+            retrieved_document_counts.append(0)
+            selected_evidence_counts.append(0)
+            continue
+
+        documents, audit = _retrieve(retriever, subquery, subplan)
+        retrieval_call_count += 1
+        retrieved_document_counts.append(len(documents))
+        audits.append(audit.to_dict() if audit is not None else None)
+        overview_analysis = replace(
+            sub_analysis,
+            question=subquery,
+            normalized_question=normalize_question(subquery),
+        )
+        overview_issue = (
+            subplan.intent == "SCHOOL_INFO"
+            and (
+                _is_generic_school_overview_request(overview_analysis)
+                or _has_school_overview_request_marker(analysis.normalized_question)
+            )
         )
         selection = select_evidence_documents(
             documents,
@@ -674,27 +766,134 @@ def _ask_multi_issue(
             intent=subplan.intent,
         )
         selections.append(selection.to_dict())
-        evidence = build_evidence(selection.documents, settings_obj=settings_obj)
+        selected_documents = list(selection.documents)
+        overview_prioritized = False
+        if overview_issue:
+            selected_documents = _prioritize_school_overview_documents(
+                selected_documents,
+                target_year=settings_obj.target_year,
+            )
+            overview_prioritized = bool(
+                selected_documents
+                and _is_verified_school_overview_intro_document(
+                    selected_documents[0],
+                    target_year=settings_obj.target_year,
+                )
+            )
+        school_overview_evidence_prioritized.append(overview_prioritized)
+        evidence = build_evidence(selected_documents, settings_obj=settings_obj)
+        selected_evidence_counts.append(len(evidence.chunks))
         evidence_bundles.append(evidence)
         sub_analysis = enrich_analysis_from_evidence(sub_analysis, evidence)
         score_comparisons = deterministic_score_comparisons(sub_analysis, evidence)
         score_evaluation = deterministic_score_evaluation(sub_analysis, evidence)
         score_evaluations.append(score_evaluation)
-        sub_status = (
-            "ok"
-            if evidence.is_usable and score_evaluation.get("status") != "insufficient-data"
-            else "no_data"
-        )
+        validated_overview = None
+        overview_sources: list[dict[str, str]] = []
+        if overview_issue:
+            overview_answer = _evidence_overview_answer(
+                overview_analysis,
+                evidence,
+                target_year=settings_obj.target_year,
+            )
+            _, overview_urls = _overview_intro_evidence(
+                evidence,
+                target_year=settings_obj.target_year,
+            )
+            overview_sources = _overview_sources(evidence, overview_urls)
+            if overview_answer and overview_sources:
+                validated_overview = validate_model_answer(
+                    overview_answer,
+                    evidence,
+                    question=subquery,
+                    analysis=overview_analysis,
+                    target_year=settings_obj.target_year,
+                )
+        website_result = None
+        if (
+            subplan.intent == "HOI_CO_SO_LIEN_HE"
+            and sub_analysis.entities.get("website_request")
+        ):
+            website_result = _official_links_answer(
+                sub_analysis,
+                evidence,
+                verified_documents=selected_documents,
+                target_year=settings_obj.target_year,
+            )
+        scholarship_result = None
+        if subplan.intent == "HOI_HOC_BONG":
+            scholarship_answer = _evidence_scholarship_answer(sub_analysis, evidence)
+            if scholarship_answer:
+                scholarship_result = validate_model_answer(
+                    scholarship_answer,
+                    evidence,
+                    question=subquery,
+                    analysis=sub_analysis,
+                    target_year=settings_obj.target_year,
+                )
+        if website_result is not None:
+            sub_status = str(website_result.get("status") or "no_data")
+        else:
+            registration_answer = (
+                _evidence_general_registration_answer(sub_analysis, evidence)
+                if subplan.intent == "HOI_DANG_KY_XET_TUYEN"
+                else None
+            )
+            sub_status = (
+                "ok"
+                if (
+                validated_overview
+                and validated_overview.get("status") == "ok"
+                )
+                or registration_answer is not None
+                or (
+                    scholarship_result is not None
+                    and scholarship_result.get("status") == "ok"
+                )
+                or (
+                    not overview_issue
+                    and evidence.is_usable
+                    and score_evaluation.get("status") != "insufficient-data"
+                )
+                else "no_data"
+            )
         sub_answer_plan = plan_answer(
             sub_analysis,
             evidence=evidence,
             status=sub_status,
-            deterministic=subplan.intent
-            in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"},
+            deterministic=(
+                overview_issue
+                or website_result is not None
+                or registration_answer is not None
+                or scholarship_result is not None
+                or subplan.intent in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}
+            ),
         )
         sub_answer_plans.append(sub_answer_plan.to_dict())
 
-        if not evidence.is_usable or score_evaluation.get("status") == "insufficient-data":
+        if website_result is not None:
+            sub_result = dict(website_result)
+        elif overview_issue:
+            if validated_overview and validated_overview.get("status") == "ok":
+                sub_result = dict(validated_overview)
+                sub_result["sources"] = overview_sources
+            else:
+                sub_result = {
+                    "answer": FALLBACK_ANSWER,
+                    "sources": [],
+                    "status": "no_data",
+                    "evidence_boundary": "school_overview_missing_matching_evidence",
+                }
+        elif registration_answer:
+            sub_result = {
+                "answer": registration_answer,
+                "sources": [dict(source) for source in evidence.sources],
+                "status": "ok",
+            }
+        elif scholarship_result is not None:
+            sub_result = dict(scholarship_result)
+            sub_result.pop("_validation_reason", None)
+        elif not evidence.is_usable or score_evaluation.get("status") == "insufficient-data":
             sub_result: dict[str, object] = {
                 "answer": FALLBACK_ANSWER,
                 "sources": [],
@@ -733,10 +932,16 @@ def _ask_multi_issue(
                     ),
                     answer_plan=sub_answer_plan,
                     score_comparisons=score_comparisons,
+                    target_year=settings_obj.target_year,
                 )
                 sub_result.pop("_validation_reason", None)
         sub_result["answer_plan"] = sub_answer_plan.to_dict()
         sub_result["intent"] = subplan.intent
+        sub_evidence_boundaries.append(
+            str(sub_result.get("evidence_boundary"))
+            if sub_result.get("evidence_boundary")
+            else None
+        )
         sub_results.append(sub_result)
 
     next_state = update_conversation_state(state, analysis, target_year=settings_obj.target_year)
@@ -759,6 +964,10 @@ def _ask_multi_issue(
         status=status,
     )
     trace = _trace(analysis, plan, next_state, answer_plan=merged_answer_plan)
+    trace["retrieval_calls"] = retrieval_call_count
+    trace["retrieved_docs_count"] = sum(retrieved_document_counts)
+    trace["retrieved_chunks"] = sum(retrieved_document_counts)
+    trace["evidence_count"] = sum(selected_evidence_counts)
     trace["multi_issue"] = {
         "subplans": [subplan.to_dict() for subplan in plan.subplans],
         "subqueries": [subplan.retrieval_query for subplan in plan.subplans],
@@ -774,6 +983,10 @@ def _ask_multi_issue(
             ],
         },
         "statuses": [result.get("status") for result in sub_results],
+        "retrieved_docs_counts": retrieved_document_counts,
+        "evidence_counts": selected_evidence_counts,
+        "school_overview_evidence_prioritized": school_overview_evidence_prioritized,
+        "evidence_boundaries": sub_evidence_boundaries,
     }
     trace["score_comparisons"] = []
     trace["score_engine"] = score_evaluations
@@ -933,10 +1146,155 @@ def _bullet_content_lines(evidence: Any) -> list[str]:
     return unique
 
 
-def _evidence_overview_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+def _is_generic_school_overview_request(analysis: QueryAnalysis) -> bool:
+    normalized = normalize_question(analysis.normalized_question)
+    return analysis.intent == "SCHOOL_INFO" and _has_school_overview_request_marker(normalized)
+
+
+def _has_school_overview_request_marker(normalized_question: str) -> bool:
+    overview_markers = (
+        "thong tin truong",
+        "thong tin ve truong",
+        "gioi thieu ve truong",
+        "gioi thieu truong",
+        "thong tin ve dhv",
+        "gioi thieu ve dhv",
+        "tong quan ve truong",
+    )
+    return any(marker in normalized_question for marker in overview_markers)
+
+
+def _is_school_overview_intro_heading(line: str) -> bool:
+    folded = normalize_question(line).strip(" .:-")
+    # Structured page text retains the PDF's numbered section headings,
+    # e.g. ``1.1. TỔNG QUAN VỀ TRƯỜNG``. Strip that semantic section prefix
+    # before comparing the actual heading label.
+    heading = re.sub(r"^\d+(?:\.\d+)*\.?\s*", "", folded)
+    return (
+        heading in {"tong quan ve truong", "gioi thieu"}
+        or bool(re.fullmatch(r"\d+(?:\s+\d+)*\s+gioi thieu", heading))
+    )
+
+
+def _is_verified_school_overview_intro_document(
+    document: Any,
+    *,
+    target_year: int,
+) -> bool:
+    metadata = getattr(document, "metadata", {}) or {}
+    if (
+        str(metadata.get("category") or "") != "thong_tin_truong"
+        or str(metadata.get("school_code") or "").upper() != "DHV"
+        or str(metadata.get("status") or "").casefold() != "verified"
+    ):
+        return False
+    try:
+        if int(metadata.get("year")) != target_year:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return any(
+        _is_school_overview_intro_heading(line)
+        for line in str(getattr(document, "page_content", "") or "").splitlines()
+    )
+
+
+def _prioritize_school_overview_documents(
+    documents: list[Any],
+    *,
+    target_year: int,
+) -> list[Any]:
+    """Put verified overview evidence first, before broad context can crowd it out."""
+    return [
+        document
+        for _, document in sorted(
+            enumerate(documents),
+            key=lambda item: (
+                0 if _is_verified_school_overview_intro_document(
+                    item[1], target_year=target_year
+                ) else 1,
+                item[0],
+            ),
+        )
+    ]
+
+
+def _overview_intro_evidence(
+    evidence: Any,
+    *,
+    target_year: int = settings.target_year,
+) -> tuple[list[str], set[str]]:
+    """Extract only the opening facts under a verified school-introduction heading."""
+
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if (
+            str(metadata.get("category") or "") != "thong_tin_truong"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or str(metadata.get("status") or "").casefold() != "verified"
+        ):
+            continue
+        try:
+            if int(metadata.get("year")) != target_year:
+                continue
+        except (TypeError, ValueError):
+            continue
+
+        lines = [re.sub(r"\s+", " ", line).strip() for line in str(chunk.text).splitlines()]
+        heading_index = None
+        for index, line in enumerate(lines):
+            if _is_school_overview_intro_heading(line):
+                heading_index = index
+                break
+        if heading_index is None:
+            continue
+
+        body_lines: list[str] = []
+        for line in lines[heading_index + 1:]:
+            if not line:
+                continue
+            if re.match(r"^\s*\d+(?:\.\d+)+\.?\s+", line):
+                break
+            if line == line.upper() and re.search(r"[A-ZÀ-ỸĐ]", line):
+                break
+            body_lines.append(line)
+
+        sentences = _split_source_sentences(" ".join(body_lines))[:3]
+        if sentences:
+            url = str(metadata.get("source_url") or "").strip()
+            return sentences, ({url} if url else set())
+    return [], set()
+
+
+def _overview_sources(evidence: Any, overview_urls: set[str]) -> list[dict[str, str]]:
+    if not overview_urls:
+        return []
+    return [
+        dict(source)
+        for source in getattr(evidence, "sources", ()) or ()
+        if str(source.get("url") or "") in overview_urls
+    ]
+
+
+def _evidence_overview_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+    *,
+    target_year: int = settings.target_year,
+) -> str | None:
     normalized = analysis.normalized_question
-    if not any(marker in normalized for marker in ("gioi thieu", "tong quan ve truong", "thong tin truong")):
+    if not any(marker in normalized for marker in (
+        "gioi thieu", "tong quan ve truong", "thong tin truong", "thong tin ve truong",
+    )):
         return None
+    intro_sentences, _ = _overview_intro_evidence(
+        evidence,
+        target_year=target_year,
+    )
+    if intro_sentences:
+        return "Thông tin khái quát về DHV theo tài liệu đã xác minh:\n" + "\n".join(
+            f"- {sentence}" for sentence in intro_sentences
+        )
     sentences = _evidence_sentences(evidence)
 
     def sentence_containing(*fragments: str) -> str | None:
@@ -1250,30 +1608,36 @@ def _evidence_tuition_answer(evidence: Any) -> str | None:
 
 
 def _evidence_tuition_total_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    """Calculate an explicitly requested optional-fee total from a sourced breakdown."""
+    """Calculate a semester total from the verified page-text fee breakdown."""
 
     normalized_question = normalize_question(analysis.normalized_question)
-    if not any(marker in normalized_question for marker in ("kiem tra nang luc tieng anh", "thi tieng anh")):
-        return None
-    asks_total_explicitly = any(
-        marker in normalized_question
-        for marker in ("tong cac khoan", "tong chi phi", "tong tien", "tinh tong", "tong cong")
-    ) or (
-        "so tien" in normalized_question
-        and "hoc ky i" in normalized_question
-        and any(marker in normalized_question for marker in ("thanh bao nhieu", "se la bao nhieu", "bao nhieu"))
-    )
-    if not asks_total_explicitly:
+    if not is_semester_fee_total_question(normalized_question):
         return None
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
-        if str(metadata.get("record_type") or "") != "page_text":
+        if (
+            str(metadata.get("record_type") or "") != "page_text"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
+            or str(metadata.get("category") or "") != "ho_so"
+        ):
             continue
         try:
             page = int(metadata.get("page", 0))
+            year = int(metadata.get("year", 0))
         except (TypeError, ValueError):
-            page = 0
-        if page != 4 or str(metadata.get("category") or "") != "ho_so":
+            continue
+        expected_year = int(analysis.entities.get("year") or settings.target_year)
+        if page != 4 or year != expected_year:
+            continue
+        source_url = str(metadata.get("source_url") or "").strip()
+        parsed_source = urlparse(source_url)
+        source_host = (parsed_source.hostname or "").lower().rstrip(".")
+        if (
+            parsed_source.scheme.lower() != "https"
+            or not source_host
+            or not (source_host == "dhv.edu.vn" or source_host.endswith(".dhv.edu.vn"))
+        ):
             continue
         text = re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or ""))
         match = re.search(
@@ -1288,14 +1652,32 @@ def _evidence_tuition_total_answer(analysis: QueryAnalysis, evidence: Any) -> st
         amounts = [int(value.replace(".", "")) for value in match.groups()]
         if any(amount <= 0 for amount in amounts):
             continue
-        total = amounts[0] + amounts[1]
-        formatted = f"{total:,}".replace(",", ".")
         base = f"{amounts[0]:,}".replace(",", ".")
         extra = f"{amounts[1]:,}".replace(",", ".")
+        folded_text = normalize_question(text)
+        if mentions_optional_english_test(normalized_question) and not mentions_optional_english_test(folded_text):
+            continue
+        if excludes_optional_english_test(normalized_question) and not any(
+            marker in folded_text for marker in ("neu co", "neu ap dung", "tuy truong hop", "chi ap dung")
+        ):
+            continue
+        if should_include_optional_english_fee(normalized_question):
+            total = amounts[0] + amounts[1]
+            formatted = f"{total:,}".replace(",", ".")
+            return (
+                "Theo bảng chi phí nhập học, tổng chi phí học kỳ I gồm "
+                f"{base} đồng và khoản kiểm tra tiếng Anh {extra} đồng, "
+                f"tổng cộng {formatted} đồng."
+            )
+        if excludes_optional_english_test(normalized_question):
+            return (
+                "Theo bảng chi phí nhập học, tổng các khoản học kỳ I trước khoản kiểm tra "
+                f"tiếng Anh là {base} đồng. Khoản kiểm tra tiếng Anh {extra} đồng chỉ áp dụng "
+                f"nếu thuộc diện kiểm tra; trường hợp bạn nêu không cộng khoản này, nên tổng là {base} đồng."
+            )
         return (
-            "Theo bảng chi phí nhập học, tổng chi phí học kỳ I là "
-            f"{base} đồng + {extra} đồng phí kiểm tra năng lực tiếng Anh, "
-            f"tổng cộng {formatted} đồng."
+            f"Theo bảng chi phí nhập học, tổng các khoản cơ bản học kỳ I là {base} đồng. "
+            f"Khoản kiểm tra tiếng Anh {extra} đồng chỉ cộng thêm nếu áp dụng."
         )
     return None
 
@@ -1423,17 +1805,71 @@ def _evidence_application_registration_answer(analysis: QueryAnalysis, evidence:
         sites = [
             re.sub(r"\s+", " ", line).strip()
             for line in raw_text.splitlines()
-            if re.match(r"\s*•?\s*Cơ sở [12]\s*:", line, re.IGNORECASE)
+            if re.match(r"\s*(?:\d+\.\s*)?•?\s*Cơ sở [12]\s*:", line, re.IGNORECASE)
         ]
         if len(sites) < 2:
             continue
-        return (
+        answer = (
             "Với đợt xét tuyển bổ sung, tài liệu DHV nêu hai cách: "
             + route.group(0)
             + "\n"
             + "\n".join(f"- {site.lstrip('• ')}" for site in sites[:2])
         )
+        deadline = re.search(
+            r"Thời gian nhận hồ sơ đến hết ngày\s+(\d{1,2}/\d{1,2}/\d{4})",
+            flattened,
+            re.IGNORECASE,
+        )
+        if deadline and any(marker in normalized for marker in ("khi nao", "thoi gian", "den khi nao", "han nhan")):
+            answer += f"\nThời gian nhận hồ sơ đến hết ngày {deadline.group(1)}."
+        return answer
     return None
+
+
+def _evidence_general_registration_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Extract the general application rule/deadline only for a how-to query."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    if not any(marker in normalized for marker in (
+        "cach dang ky", "dang ky tuyen sinh", "dang ky xet tuyen",
+    )):
+        return None
+    if any(marker in normalized for marker in (
+        "o dau", "cong dang ky", "cong tuyen sinh", "website", "trang web",
+        "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung",
+        "du dieu kien", "dieu kien", "hoc luc", "cong diem", "khuyet tat",
+    )):
+        return None
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        " ".join(
+            str(getattr(chunk, "text", "") or "")
+            for chunk in getattr(evidence, "chunks", ()) or ()
+        ),
+    ).strip()
+    principle = re.search(
+        r"Nguyên tắc chung:\s*(.+?)"
+        r"(?=\s+(?:Thời gian đăng ký xét tuyển:|Các phương thức xét tuyển gồm:|1\.\d+\.|$))",
+        text,
+        re.IGNORECASE,
+    )
+    deadline = re.search(
+        r"Thời gian đăng ký xét tuyển:\s*(?:Đến hết ngày\s*)?(\d{1,2}/\d{1,2}/\d{4})",
+        text,
+        re.IGNORECASE,
+    )
+    answer_parts: list[str] = []
+    if principle:
+        answer_parts.append(principle.group(1).strip().rstrip(" .;"))
+    if deadline:
+        answer_parts.append(
+            f"Thời gian đăng ký xét tuyển được nêu đến hết ngày {deadline.group(1)}."
+        )
+    if not answer_parts:
+        return None
+    return "Năm 2026, " + ". ".join(answer_parts).rstrip(".") + "."
 
 
 def _evidence_result_notification_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -1554,6 +1990,34 @@ def _prioritize_enrollment_document_records(documents: list[Any]) -> list[Any]:
         if "2.2 chuan bi ho so nhap hoc" in text:
             return 1, position
         return 2, position
+
+    return [document for _, document in sorted(enumerate(documents), key=priority)]
+
+
+def _prioritize_scholarship_catalog_documents(documents: list[Any]) -> list[Any]:
+    """Put the verified policy pages containing named scholarship headings first."""
+
+    def priority(item: tuple[int, Any]) -> tuple[int, int, int]:
+        position, document = item
+        metadata = getattr(document, "metadata", {}) or {}
+        if (
+            str(metadata.get("record_type") or "") == "page_text"
+            and str(metadata.get("category") or "") == "phuong_thuc_xet_tuyen"
+            and str(metadata.get("school_code") or "").upper() == "DHV"
+            and str(metadata.get("status") or "").casefold() == "verified"
+        ):
+            text = str(getattr(document, "page_content", "") or "")
+            if re.search(r"(?m)^\s*\d+\.\d+\.\s+.*học bổng", text, re.IGNORECASE):
+                try:
+                    page = int(metadata.get("page") or 0)
+                except (TypeError, ValueError):
+                    page = 99
+                try:
+                    chunk_index = int(metadata.get("chunk_index") or 0)
+                except (TypeError, ValueError):
+                    chunk_index = position
+                return 0, page, chunk_index
+        return 1, 99, position
 
     return [document for _, document in sorted(enumerate(documents), key=priority)]
 
@@ -1838,17 +2302,169 @@ def _evidence_program_relation_answer(analysis: QueryAnalysis, evidence: Any) ->
     return f"Có. {program} là chương trình thuộc ngành {parent}{code_text}, theo danh mục DHV đã xác minh."
 
 
+def _verified_admission_conditions_section(evidence: Any, *, target_year: int) -> list[str]:
+    """Return the complete general-condition section from verified source pages only."""
+
+    grouped: dict[str, list[tuple[int, int, list[str]]]] = {}
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        parsed = urlparse(str(metadata.get("source_url") or "").strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        try:
+            year = int(metadata.get("year"))
+            page = int(metadata.get("page") or 0)
+            chunk_index = int(metadata.get("chunk_index") or 0)
+        except (TypeError, ValueError):
+            continue
+        if (
+            metadata.get("record_type") != "page_text"
+            or str(metadata.get("category") or "") != "phuong_thuc_xet_tuyen"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or year != target_year
+            or parsed.scheme.lower() != "https"
+            or not (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+        ):
+            continue
+        source = str(metadata.get("source_file") or metadata.get("document_id") or "")
+        if not source:
+            continue
+        lines = [
+            re.sub(r"\s+", " ", line).strip()
+            for line in str(getattr(chunk, "text", "") or "").splitlines()
+            if line.strip()
+        ]
+        if lines:
+            grouped.setdefault(source, []).append((page, chunk_index, lines))
+
+    for source_chunks in grouped.values():
+        lines: list[str] = []
+        seen: set[tuple[int, str]] = set()
+        for page, _, chunk_lines in sorted(source_chunks, key=lambda item: (item[0], item[1])):
+            for line in chunk_lines:
+                key = (page, normalize_question(line))
+                if key not in seen:
+                    seen.add(key)
+                    lines.append(line)
+        start = next(
+            (index for index, line in enumerate(lines) if "dieu kien xet tuyen" in normalize_question(line)),
+            None,
+        )
+        if start is None:
+            continue
+        section_lines: list[str] = []
+        for line in lines[start + 1 :]:
+            if re.match(r"^\d+\.\d+(?:\.\d+)*\.?\s", normalize_question(line)):
+                break
+            section_lines.append(line)
+        blocks: list[str] = []
+        current = ""
+        for line in section_lines:
+            if re.match(r"^\d+\.\s+", line) or normalize_question(line).startswith("rieng doi voi"):
+                if current:
+                    blocks.append(current.strip())
+                current = line
+            elif current:
+                current = f"{current} {line}".strip()
+            else:
+                current = line
+        if current:
+            blocks.append(current.strip())
+        if blocks:
+            return blocks
+    return []
+
+
+def _requested_admission_method_number(analysis: QueryAnalysis) -> int | None:
+    normalized = normalize_question(analysis.normalized_question)
+    method = str(analysis.entities.get("admission_method") or "").casefold()
+    if method == "thpt" or any(marker in normalized for marker in ("thi tot nghiep", "thi thpt", "diem thi thpt")):
+        return 1
+    if method == "hoc_ba" or "hoc ba" in normalized or "hoc tap thpt" in normalized:
+        return 2
+    if method == "dgnl" or "dgnl" in normalized or "danh gia nang luc" in normalized:
+        return 3
+    if method == "h_sca" or re.search(r"\bh\s*[- ]?\s*sca\b", normalized) or "nang luc chuyen biet" in normalized:
+        return 4
+    if method == "trung_cap" or "trung cap" in normalized:
+        return 5
+    return None
+
+
+def _asks_for_each_admission_method(normalized: str) -> bool:
+    asks_all = any(
+        marker in normalized
+        for marker in ("tung phuong thuc", "moi phuong thuc", "cac phuong thuc", "tat ca phuong thuc")
+    )
+    asks_conditions = any(
+        marker in normalized
+        for marker in ("dieu kien", "yeu cau", "tieu chi", "can dap ung", "chi tiet")
+    )
+    return asks_all and asks_conditions
+
+
 def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     normalized = normalize_question(analysis.normalized_question)
-    if not any(marker in normalized for marker in ("dieu kien", "duoc tham gia xet tuyen", "tot nghiep")):
+    if not bool(analysis.entities.get("admission_condition_request")) and not any(
+        marker in normalized
+        for marker in ("dieu kien", "du dieu kien", "duoc tham gia xet tuyen", "co xet duoc khong", "hoc luc", "lop 12", "tot nghiep")
+    ):
         return None
-    for sentence in _evidence_sentences(evidence):
-        folded = normalize_question(sentence)
-        if "xet tuyen" not in folded or "tot nghiep" not in folded:
-            continue
-        if any(marker in folded for marker in ("duoc cong nhan", "tuong duong", "du dieu kien", "duoc dang ky")):
-            return f"Theo thông tin tuyển sinh DHV: {sentence.strip()}"
-    return None
+
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    method_details = _method_details_from_evidence(evidence, target_year=target_year)
+    labels = {
+        1: "Thi tốt nghiệp THPT",
+        2: "Học bạ THPT",
+        3: "Đánh giá năng lực (ĐGNL)",
+        4: "Đánh giá năng lực chuyên biệt (H-SCA)",
+        5: "Tốt nghiệp trung cấp",
+    }
+    if _asks_for_each_admission_method(normalized):
+        if all(number in method_details for number in range(1, 6)):
+            return "Điều kiện/mô tả theo từng phương thức trong tài liệu DHV 2026:\n" + "\n".join(
+                f"{number}. {labels[number]}: {method_details[number]}"
+                for number in range(1, 6)
+            )
+        return None
+
+    major = normalize_question(str(analysis.entities.get("major_name") or ""))
+    requested_method = _requested_admission_method_number(analysis)
+    if requested_method and major not in {"luat", "luat kinh te"}:
+        detail = method_details.get(requested_method)
+        if detail:
+            return (
+                f"Theo phương thức {labels[requested_method]} của DHV năm {target_year}: {detail}"
+            )
+        return None
+
+    blocks = _verified_admission_conditions_section(evidence, target_year=target_year)
+    if len(blocks) < 3:
+        return None
+    general = [
+        block for block in blocks
+        if not normalize_question(block).startswith("rieng doi voi") and not re.match(r"^\d+\.\s+", block)
+    ]
+    law_intro = next(
+        (block for block in blocks if normalize_question(block).startswith("rieng doi voi")),
+        None,
+    )
+    law_conditions = [block for block in blocks if re.match(r"^\d+\.\s+", block)]
+    if not general or not law_intro or len(law_conditions) < 2:
+        return None
+
+    answer_lines = ["Điều kiện chung theo tài liệu tuyển sinh DHV:"]
+    answer_lines.extend(f"- {item}" for item in general)
+    answer_lines.append("Riêng đối với ngành Luật và Luật Kinh tế, thí sinh cần đáp ứng đồng thời:")
+    answer_lines.extend(f"- {item.split('. ', 1)[-1]}" for item in law_conditions[:2])
+    student_scores = analysis.entities.get("student_scores")
+    if major in {"luat", "luat kinh te"} and student_scores and any(
+        marker in normalized for marker in ("hoc luc", "lop 12")
+    ):
+        answer_lines.append(
+            "Điểm thi riêng lẻ không thay thế điều kiện về học lực lớp 12; các yêu cầu trong tài liệu phải được đáp ứng đồng thời."
+        )
+    return "\n".join(answer_lines)
 
 
 def _evidence_subject_minimum_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -2543,11 +3159,150 @@ def _evidence_admission_method_presence_answer(
     return None
 
 
+def _evidence_method_calculation_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+) -> str | None:
+    """Return the published transcript-score formula for paraphrased how-is-it-calculated questions."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    if (
+        analysis.intent != "HOI_PHUONG_THUC_XET_TUYEN"
+        or analysis.entities.get("admission_method") != "hoc_ba"
+        or not any(
+            marker in normalized
+            for marker in (
+                "tinh diem",
+                "diem duoc tinh",
+                "tinh the nao",
+                "ca ba nam",
+                "ba nam",
+                "binh quan",
+                "diem trung binh",
+            )
+        )
+    ):
+        return None
+    detail = _method_details_from_evidence(
+        evidence,
+        target_year=int(analysis.entities.get("year") or settings.target_year),
+    ).get(2)
+    if not detail:
+        # Retrieval for one named method may return the exact page-4 method
+        # subsection but omit the section heading on page 3. Extract only the
+        # explicitly labelled học-bạ method from verified DHV page text; do
+        # not fall back to similarly worded scholarship formulas.
+        for chunk in getattr(evidence, "chunks", ()) or ():
+            metadata = getattr(chunk, "metadata", {}) or {}
+            parsed = urlparse(str(metadata.get("source_url") or "").strip())
+            host = (parsed.hostname or "").lower().rstrip(".")
+            try:
+                year = int(metadata.get("year"))
+            except (TypeError, ValueError):
+                continue
+            if not (
+                metadata.get("record_type") == "page_text"
+                and str(metadata.get("category") or "") == "phuong_thuc_xet_tuyen"
+                and str(metadata.get("school_code") or "").upper() == "DHV"
+                and str(metadata.get("status") or "").casefold() == "verified"
+                and year == int(analysis.entities.get("year") or settings.target_year)
+                and parsed.scheme.lower() == "https"
+                and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+            ):
+                continue
+            lines = [
+                re.sub(r"\s+", " ", line).strip()
+                for line in str(getattr(chunk, "text", "") or "").splitlines()
+                if line.strip()
+            ]
+            start = next(
+                (
+                    index for index, line in enumerate(lines)
+                    if "xet tuyen ket qua hoc tap thpt hoc ba"
+                    in re.sub(r"[^a-z0-9]+", " ", normalize_question(line)).strip()
+                ),
+                None,
+            )
+            if start is None:
+                continue
+            end = next(
+                (
+                    index for index in range(start + 1, len(lines))
+                    if re.match(
+                        r"^c[.)]?\s*xet ket qua ky thi danh gia nang luc\b",
+                        normalize_question(lines[index]),
+                    )
+                ),
+                len(lines),
+            )
+            section = lines[start + 1:end]
+            if section:
+                detail = "\n".join(section)
+                break
+    if not detail:
+        return None
+    return f"Theo phương thức xét tuyển học bạ DHV {analysis.entities.get('year') or settings.target_year}: {detail}"
+
+
+def _evidence_vocational_same_group_eligibility_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+) -> str | None:
+    """Answer the vocational same-group admission condition from Method 5 only."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    if not (
+        "trung cap" in normalized
+        and "cung nhom nganh" in normalized
+        and any(marker in normalized for marker in ("co the vao", "du dieu kien", "xet tuyen", "dang ky"))
+    ):
+        return None
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if (
+            str(metadata.get("category") or "") != "phuong_thuc_xet_tuyen"
+            or str(metadata.get("record_type") or "") != "page_text"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
+        ):
+            continue
+        try:
+            if int(metadata.get("year", 0)) != settings.target_year:
+                continue
+        except (TypeError, ValueError):
+            continue
+        source_url = str(metadata.get("source_url") or "").strip()
+        parsed_source = urlparse(source_url)
+        source_host = (parsed_source.hostname or "").lower().rstrip(".")
+        if (
+            parsed_source.scheme.lower() != "https"
+            or not source_host
+            or not (source_host == "dhv.edu.vn" or source_host.endswith(".dhv.edu.vn"))
+        ):
+            continue
+        source_text = normalize_question(str(getattr(chunk, "text", "") or ""))
+        required_conditions = (
+            "trung cap nghe cung nhom nganh du tuyen dai hoc",
+            "hoan thanh chuong trinh van hoa thpt theo quy dinh",
+        )
+        if all(condition in source_text for condition in required_conditions):
+            return (
+                "Phương thức 5 của DHV áp dụng đối với thí sinh đã tốt nghiệp trung cấp nghề "
+                "cùng nhóm ngành dự tuyển đại học và đã hoàn thành chương trình văn hóa THPT "
+                "theo quy định."
+            )
+    return None
+
+
 def _evidence_major_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     """Answer a specific Law-grade eligibility question from the published rule."""
 
     normalized = normalize_question(analysis.normalized_question)
     major = normalize_question(str(analysis.entities.get("major_name") or ""))
+    if major in {"luat", "luat kinh te"}:
+        complete_answer = _evidence_eligibility_answer(analysis, evidence)
+        if complete_answer:
+            return complete_answer
     if major not in {"luat", "luat kinh te"} or not any(
         marker in normalized for marker in ("hoc luc", "lop 12")
     ):
@@ -2596,7 +3351,61 @@ def _evidence_major_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -
     return (
         "Với ngành Luật, tài liệu tuyển sinh yêu cầu đồng thời:\n"
         + "\n".join(f"- {condition.strip(' •')}" for condition in dict.fromkeys(conditions[:2]))
-        + "\nTheo điều kiện bạn nêu, phần yêu cầu về học lực lớp 12 cần được đáp ứng; điểm 18,5 không thay thế điều kiện học lực."
+        + "\nĐiểm thi riêng lẻ không thay thế điều kiện học lực lớp 12; các yêu cầu trong tài liệu phải được đáp ứng đồng thời."
+    )
+
+
+def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """List named scholarship headings once, using verified school policy pages."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    asks_for_list = (
+        analysis.entities.get("query_mode") in {"LIST", "LIST_AND_COUNT"}
+        or any(marker in normalized for marker in ("nhung hoc bong nao", "cac hoc bong", "liet ke hoc bong"))
+    )
+    if analysis.intent != "HOI_HOC_BONG" or not asks_for_list:
+        return None
+
+    headings: list[str] = []
+    seen: set[str] = set()
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        parsed = urlparse(str(metadata.get("source_url") or "").strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        try:
+            year = int(metadata.get("year"))
+        except (TypeError, ValueError):
+            continue
+        if not (
+            metadata.get("record_type") == "page_text"
+            and str(metadata.get("category") or "") in {"phuong_thuc_xet_tuyen", "ho_so"}
+            and str(metadata.get("school_code") or "").upper() == "DHV"
+            and str(metadata.get("status") or "").casefold() == "verified"
+            and year == target_year
+            and parsed.scheme.lower() == "https"
+            and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+        ):
+            continue
+        for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not re.match(r"^\d+\.\d+\.\s+", line):
+                continue
+            folded = normalize_question(line)
+            if "hoc bong" not in folded:
+                continue
+            title = re.sub(r"^\d+\.\d+\.\s*", "", line).strip(" .")
+            key = normalize_question(title)
+            if title and key not in seen:
+                seen.add(key)
+                headings.append(title)
+    if not headings:
+        return None
+    if analysis.entities.get("query_mode") == "COUNT":
+        return f"Tài liệu tuyển sinh DHV {target_year} có {len(headings)} đề mục/chính sách học bổng được nêu rõ."
+    return (
+        f"Các đề mục/chính sách học bổng được nêu trong tài liệu tuyển sinh DHV {target_year}:\n"
+        + "\n".join(f"{index}. {title}" for index, title in enumerate(headings, start=1))
     )
 
 
@@ -2616,6 +3425,14 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         cleaned = re.sub(r"h\s+ọc", "học", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"(Tổng điểm 3 môn)\s*(\d+(?:[.,]\d+)?)\s*≤\s*(\d+(?:[.,]\d+)?)\s*điểm", r"\1 từ \2 đến \3 điểm", cleaned, flags=re.IGNORECASE)
         cleaned = re.sub(r"\s*\(tương(?:\s+đương)?\b[^)]*$", "", cleaned, flags=re.IGNORECASE)
+        trailing_numbered_heading = re.search(
+            r"(?<!\w)(\d+(?:\.\d+)+\.?\s+.+)$",
+            cleaned,
+        )
+        if trailing_numbered_heading and _is_scholarship_heading(
+            trailing_numbered_heading.group(1)
+        ):
+            cleaned = cleaned[:trailing_numbered_heading.start()].rstrip()
         return cleaned.rstrip(" ,;:")
 
     def unique_policy_lines(values: Any) -> list[str]:
@@ -2700,6 +3517,19 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
                 f"Mức cao nhất trong các điều kiện học bổng xét theo điểm được nêu là {maximum:g}%:\n"
                 + "\n".join(f"- {line.lstrip('• ').strip()}" for line in maximum_lines)
             )
+    has_verified_policy_page = any(
+        str((getattr(chunk, "metadata", {}) or {}).get("record_type") or "") == "page_text"
+        and str((getattr(chunk, "metadata", {}) or {}).get("category") or "")
+        in {"phuong_thuc_xet_tuyen", "ho_so"}
+        and str((getattr(chunk, "metadata", {}) or {}).get("school_code") or "").upper() == "DHV"
+        and str((getattr(chunk, "metadata", {}) or {}).get("status") or "").casefold() == "verified"
+        for chunk in getattr(evidence, "chunks", ()) or ()
+    )
+    if has_verified_policy_page:
+        # Complete page context is available; do not build a broad answer by
+        # concatenating isolated scholarship records from different sections.
+        return None
+
     relevant_markers = tuple(normalize_question(marker) for marker in (
         "học bổng",
         "điều kiện",
@@ -2715,6 +3545,7 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     selected = [
         line for line in lines
         if any(marker in normalize_question(line) for marker in relevant_markers)
+        and not _is_scholarship_heading(line)
     ]
     if not selected:
         return None
@@ -2731,6 +3562,45 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         )
     return "Mình tóm tắt các chính sách và điều kiện học bổng đang có trong dữ liệu DHV 2026:\n" + "\n".join(
         f"- {line}" for line in selected_lines
+    )
+
+
+def _is_scholarship_heading(line: str) -> bool:
+    """Exclude document/section labels that match 'học bổng' but state no fact."""
+
+    text = str(line).strip()
+    folded = normalize_question(text)
+    numbered_heading = re.match(r"^\d+(?:\.\d+)+\.?\s+(.+)$", text)
+    if numbered_heading:
+        heading_text = numbered_heading.group(1).strip()
+        normalized_heading = normalize_question(heading_text)
+        has_fact_value = bool(
+            re.search(
+                r"\b\d+(?:[.,]\d+)?\s*(?:%|ty|trieu|dong|vnd|diem|ngay|thang|nam|tin chi)\b",
+                normalized_heading,
+            )
+        )
+        has_rule_detail = bool(
+            re.search(
+                r"\b(?:danh cho|ap dung|dieu kien|ho tro|duoc hoan|hoan lai|mien giam|bat buoc|neu|khi)\b",
+                normalized_heading,
+            )
+        )
+        if (
+            "hoc bong" in normalized_heading
+            and ":" not in heading_text
+            and not has_fact_value
+            and not has_rule_detail
+        ):
+            return True
+    return bool(
+        folded in {"hoc bong dhv 2026", "hoc bong hoc phi"}
+        or re.match(r"^dhv\s+20\d{2}\s*[-–]", text, re.IGNORECASE)
+        or (
+            text.isupper()
+            and "hoc bong" in folded
+            and not re.search(r"\d|%|dong|ty", folded)
+        )
     )
 
 
@@ -3162,11 +4032,16 @@ def _realize_generation_artifact(
     evidence: Any,
     score_facts: Any,
     score_comparisons: Any,
+    target_year: int = settings.target_year,
 ) -> str:
     """Dọn output echo/context theo plan; không thay đổi dữ kiện evidence."""
 
     if answer_plan.mode == "OVERVIEW":
-        overview = _evidence_overview_answer(analysis, evidence)
+        overview = _evidence_overview_answer(
+            analysis,
+            evidence,
+            target_year=target_year,
+        )
         if overview:
             return overview
     if answer_plan.mode == "COMPARISON":
@@ -3235,6 +4110,7 @@ def _validated_generation(
     score_facts: Any,
     answer_plan: AnswerPlan,
     score_comparisons: Any = (),
+    target_year: int = settings.target_year,
 ) -> dict[str, object]:
     raw_answer = active_llm.generate(prompt)
     generated_answer = (
@@ -3245,6 +4121,7 @@ def _validated_generation(
             evidence=evidence,
             score_facts=score_facts,
             score_comparisons=score_comparisons,
+            target_year=target_year,
         )
         if _is_generation_artifact(raw_answer)
         else raw_answer
@@ -3254,6 +4131,7 @@ def _validated_generation(
         evidence,
         question=question,
         analysis=analysis,
+        target_year=target_year,
     )
     reason = validated.get("_validation_reason")
     retry_advisory_fallback = reason == "model_fallback" and analysis.intent == "TU_VAN_CHON_NGANH"
@@ -3277,6 +4155,7 @@ def _validated_generation(
                 evidence=evidence,
                 score_facts=score_facts,
                 score_comparisons=score_comparisons,
+                target_year=target_year,
             )
             if _is_generation_artifact(retry_answer)
             else retry_answer
@@ -3286,6 +4165,7 @@ def _validated_generation(
             evidence,
             question=question,
             analysis=analysis,
+            target_year=target_year,
         )
     return validated
 
@@ -3517,6 +4397,175 @@ def _program_rows_from_evidence(
     return rows
 
 
+def _method_details_from_evidence(
+    evidence: Any,
+    *,
+    target_year: int,
+) -> dict[int, str]:
+    """Read method explanations from verified page text, not short catalog labels."""
+
+    grouped: dict[str, list[tuple[int, int, list[str]]]] = {}
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if (
+            str(metadata.get("record_type") or "") != "page_text"
+            or str(metadata.get("category") or "") != "phuong_thuc_xet_tuyen"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or str(metadata.get("status") or "").casefold() != "verified"
+        ):
+            continue
+        try:
+            if int(metadata.get("year")) != target_year:
+                continue
+            page = int(metadata.get("page") or 0)
+            chunk_index = int(metadata.get("chunk_index") or 0)
+        except (TypeError, ValueError):
+            continue
+
+        source = str(
+            metadata.get("source_file")
+            or metadata.get("structured_document_id")
+            or metadata.get("document_id")
+            or ""
+        )
+        lines: list[str] = []
+        for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            folded = normalize_question(line)
+            if (
+                not line
+                or re.fullmatch(r"\d+", folded)
+                or folded.startswith(("dhv 2026 -", "phuong thuc xet tuyen dhv 2026", "tong quan tuyen sinh dhv 2026"))
+            ):
+                continue
+            lines.append(line)
+        if source and lines:
+            grouped.setdefault(source, []).append((page, chunk_index, lines))
+
+    def format_body(lines: list[str]) -> str:
+        parts: list[str] = []
+        paragraph = ""
+        bullet = ""
+
+        def flush_paragraph() -> None:
+            nonlocal paragraph
+            if paragraph:
+                parts.append(paragraph.strip())
+                paragraph = ""
+
+        def flush_bullet() -> None:
+            nonlocal bullet
+            if bullet:
+                parts.append(f"- {bullet.strip()}")
+                bullet = ""
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith(("•", "- ", "– ")):
+                flush_paragraph()
+                flush_bullet()
+                bullet = line.lstrip("•-– ").strip()
+                continue
+            if bullet:
+                if bullet.endswith((".", "!", "?", ")")):
+                    flush_bullet()
+                    paragraph = line
+                else:
+                    bullet = f"{bullet} {line}"
+                continue
+            if paragraph and paragraph.endswith((".", "!", "?")):
+                flush_paragraph()
+            paragraph = f"{paragraph} {line}".strip()
+        flush_paragraph()
+        flush_bullet()
+        return "\n".join(dict.fromkeys(item for item in parts if item))[:1800]
+
+    candidates: list[tuple[int, int, dict[int, str]]] = []
+    for source, page_chunks in grouped.items():
+        lines: list[str] = []
+        seen_chunk_texts: set[tuple[int, str]] = set()
+        for page, _, chunk_lines in sorted(page_chunks):
+            chunk_key = (page, normalize_question("\n".join(chunk_lines)))
+            if chunk_key in seen_chunk_texts:
+                continue
+            seen_chunk_texts.add(chunk_key)
+            for line in chunk_lines:
+                # Only collapse adjacent duplicate lines caused by overlapping
+                # chunks. Identical lines elsewhere can be distinct list items
+                # (for example, both subject-combination bullets end in the
+                # same word and punctuation).
+                if lines and normalize_question(lines[-1]) == normalize_question(line):
+                    continue
+                lines.append(line)
+
+        anchor = next(
+            (
+                index
+                for index, line in enumerate(lines)
+                if "cac phuong thuc xet tuyen nam 2026" in normalize_question(line)
+                or "cac phuong thuc xet tuyen gom" in normalize_question(line)
+            ),
+            None,
+        )
+        if anchor is None:
+            # A method-specific retrieval can legitimately return page 4
+            # without page 3's section header. Accept only the exact official
+            # transcript-method heading; similarly worded scholarship rules
+            # on later pages are deliberately not a fallback anchor.
+            method_heading = next(
+                (
+                    index
+                    for index, line in enumerate(lines)
+                    if "xet tuyen ket qua hoc tap thpt hoc ba" in normalize_question(line)
+                ),
+                None,
+            )
+            if method_heading is not None:
+                anchor = method_heading - 1
+        if anchor is None:
+            continue
+        end = len(lines)
+        for index in range(anchor + 1, len(lines)):
+            if re.match(r"^\d+(?:\.\d+)+\.?\s+", normalize_question(lines[index])):
+                end = index
+                break
+        section_lines = lines[anchor + 1:end]
+        headings: list[tuple[int, int]] = []
+        for index, line in enumerate(section_lines):
+            match = re.match(r"^([a-e])(?:\.|\s)+xet\b", normalize_question(line))
+            if match:
+                headings.append((index, ord(match.group(1)) - ord("a") + 1))
+        details: dict[int, str] = {}
+        for position, (start, method_number) in enumerate(headings):
+            stop = headings[position + 1][0] if position + 1 < len(headings) else len(section_lines)
+            detail = format_body(section_lines[start + 1:stop])
+            if method_number == 1:
+                detail = re.split(
+                    r"(?:Các tổ hợp xét tuyển được thiết kế linh hoạt|Việc đăng ký nguyện vọng)",
+                    detail,
+                    maxsplit=1,
+                    flags=re.IGNORECASE,
+                )[0].strip()
+            elif method_number == 5:
+                # The page continues with a separately labelled set of
+                # group/major-specific rules. Keep those out of the vocational
+                # method's own eligibility statement instead of misattributing
+                # them to every vocational applicant.
+                detail = re.split(r"Khối công nghệ\s*:", detail, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+            if detail:
+                details[method_number] = detail
+        if details:
+            candidates.append((len(details), sum(map(len, details.values())), details))
+
+    if not candidates:
+        return {}
+    _, _, best = max(candidates, key=lambda candidate: (candidate[0], candidate[1]))
+    # Do not label an incomplete subset as a full, detailed method list.
+    return best if len(best) == 5 else {}
+
+
 def _evidence_catalog_answer(
     analysis: QueryAnalysis,
     evidence: Any,
@@ -3730,6 +4779,33 @@ def _evidence_catalog_answer(
             for text in unique_methods
         ]
         lines = [f"{index}. {text}" for index, text in enumerate(cleaned_methods, start=1)]
+
+        detail_requested = any(
+            marker in normalize_question(analysis.normalized_question)
+            for marker in ("chi tiet", "cu the", "dieu kien", "moi phuong thuc", "tung phuong thuc")
+        )
+        method_details = (
+            _method_details_from_evidence(
+                evidence,
+                target_year=int(analysis.entities.get("year") or settings.target_year),
+            )
+            if detail_requested
+            else {}
+        )
+        if method_details:
+            detailed_lines = [
+                f"{index}. {text}\n{method_details[index]}"
+                for index, text in enumerate(cleaned_methods, start=1)
+            ]
+            answer = (
+                f"Hiện tại DHV có {count} phương thức xét tuyển chính. Chi tiết theo tài liệu đã xác minh:\n"
+                + "\n".join(detailed_lines)
+            )
+            return {
+                "answer": answer,
+                "sources": [dict(source) for source in evidence.sources],
+                "status": "ok",
+            }
         
         if operation == "COUNT":
             answer = f"Hiện tại Trường Đại học Hùng Vương TP.HCM (DHV) áp dụng {count} phương thức xét tuyển nhé."
@@ -3799,7 +4875,13 @@ def _requested_website_entry(normalized_question: str) -> tuple[str, str, str] |
     return None
 
 
-def _official_links_answer(analysis: QueryAnalysis, evidence: Any) -> dict[str, object] | None:
+def _official_links_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+    *,
+    verified_documents: Iterable[Any] = (),
+    target_year: int = settings.target_year,
+) -> dict[str, object] | None:
     """Trả provenance chính thức từ backend; UI quyết định không hiển thị URL."""
 
     if not analysis.entities.get("website_request"):
@@ -3843,7 +4925,30 @@ def _official_links_answer(analysis: QueryAnalysis, evidence: Any) -> dict[str, 
             if host in {"dhv.edu.vn", "www.dhv.edu.vn"} and urlparse(url).path in {"", "/"}:
                 title = "Website trường"
             elif host == "tuyensinh.dhv.edu.vn":
-                title = "Cổng tuyển sinh 2026"
+                title = f"Cổng tuyển sinh {target_year}"
+            add_source(url, title)
+
+    # Evidence context is size-limited, but a count query must consider every
+    # selected verified record, including records clipped out of that context.
+    for document in verified_documents:
+        metadata = getattr(document, "metadata", {}) or {}
+        if (
+            str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+        ):
+            continue
+        try:
+            if int(metadata.get("year")) != target_year:
+                continue
+        except (TypeError, ValueError):
+            continue
+        title = str(metadata.get("title") or "Nguồn chính thức DHV")
+        for url in metadata_urls(metadata):
+            host = (urlparse(url).hostname or "").lower().rstrip(".")
+            if host in {"dhv.edu.vn", "www.dhv.edu.vn"} and urlparse(url).path in {"", "/"}:
+                title = "Website trường"
+            elif host == "tuyensinh.dhv.edu.vn":
+                title = f"Cổng tuyển sinh {target_year}"
             add_source(url, title)
 
     # Keep compatibility with test/adaptor documents that expose only the
@@ -3856,19 +4961,58 @@ def _official_links_answer(analysis: QueryAnalysis, evidence: Any) -> dict[str, 
 
     requested_entry = _requested_website_entry(analysis.normalized_question)
     website_kind = str(analysis.entities.get("website_kind") or "")
-    if requested_entry is not None:
+    if analysis.entities.get("website_count_request"):
+        sites_by_host: dict[str, dict[str, str]] = {}
+        for source in all_sources:
+            parsed = urlparse(source["url"])
+            host = (parsed.hostname or "").lower().rstrip(".")
+            canonical_host = host[4:] if host.startswith("www.") else host
+            if not canonical_host:
+                continue
+            current = sites_by_host.get(canonical_host)
+            is_root = parsed.path in {"", "/"}
+            current_is_root = bool(
+                current and urlparse(current["url"]).path in {"", "/"}
+            )
+            if current is None or (is_root and not current_is_root):
+                sites_by_host[canonical_host] = dict(source)
+        sources = list(sites_by_host.values())
+        sources.sort(
+            key=lambda source: (
+                0 if (urlparse(source["url"]).hostname or "").lower() == "dhv.edu.vn" else
+                1 if (urlparse(source["url"]).hostname or "").lower() == "tuyensinh.dhv.edu.vn" else
+                2,
+                (urlparse(source["url"]).hostname or "").lower(),
+            )
+        )
+    elif requested_entry is not None:
         _, requested_host, requested_title = requested_entry
         requested_sources = [
             source
             for source in all_sources
             if (urlparse(source["url"]).hostname or "").lower().rstrip(".") == requested_host
         ]
+        if requested_host == "tuyensinh.dhv.edu.vn" and not requested_sources:
+            # Some verified DHV material links to the admissions landing page
+            # on the main host rather than the dedicated subdomain. Accept
+            # only that semantically matching path, never an arbitrary other
+            # DHV website as a substitute for the requested portal.
+            requested_sources = [
+                source
+                for source in all_sources
+                if (urlparse(source["url"]).hostname or "").lower().rstrip(".")
+                in {"dhv.edu.vn", "www.dhv.edu.vn"}
+                and urlparse(source["url"]).path.rstrip("/").casefold()
+                in {"/tuyen-sinh", "/tuyen_sinh", "/admissions"}
+            ]
         root_sources = [
             source for source in requested_sources if urlparse(source["url"]).path in {"", "/"}
         ]
         sources = root_sources or requested_sources
         for source in sources:
-            source["title"] = requested_title
+            source_host = (urlparse(source["url"]).hostname or "").lower().rstrip(".")
+            if source_host == requested_host:
+                source["title"] = requested_title
     elif website_kind == "school_website":
         school_sources = [
             source
@@ -3891,11 +5035,35 @@ def _official_links_answer(analysis: QueryAnalysis, evidence: Any) -> dict[str, 
         ]
     else:
         sources = list(all_sources)
-    if not sources:
-        sources = list(all_sources)
 
     if not sources:
+        if (
+            analysis.entities.get("website_count_request")
+            or requested_entry is not None
+            or website_kind in {"school_website", "admissions_portal"}
+        ):
+            return {
+                "answer": FALLBACK_ANSWER,
+                "sources": [],
+                "status": "no_data",
+                "evidence_boundary": "requested_website_not_in_verified_evidence",
+            }
         return None
+
+    if analysis.entities.get("website_count_request"):
+        answer_lines = [
+            "Trong các nguồn DHV đã xác minh, tìm thấy "
+            f"{len(sources)} website/cổng thông tin khác nhau:"
+        ]
+        answer_lines.extend(
+            f"- **{source['title']}:** [{source['url']}]({source['url']})"
+            for source in sources
+        )
+        return {
+            "answer": "\n".join(answer_lines),
+            "sources": sources,
+            "status": "ok",
+        }
 
     lines = [
         "Chào bạn! Bạn có thể xem thông tin tuyển sinh Trường Đại học Hùng Vương TP.HCM tại các nguồn chính thức sau:",
@@ -3934,11 +5102,175 @@ def _candidate_values(analysis: QueryAnalysis) -> tuple[str, ...]:
     return tuple(values) if len(values) > 1 else ()
 
 
+def _try_pre_rag_decomposition(
+    *,
+    analysis: QueryAnalysis,
+    plan: QueryPlan,
+    llm: Any | None,
+    query_planner: Any | None,
+    settings_obj: Settings,
+) -> tuple[QueryAnalysis, QueryPlan, Any | None]:
+    """Optionally split an in-scope compound query before any retrieval."""
+
+    if not should_attempt_decomposition(analysis, plan):
+        return analysis, plan, llm
+
+    planner_llm = query_planner
+    if planner_llm is None and llm is not None:
+        trace: dict[str, object] = {
+            "status": "skipped",
+            "reason": "separate_planner_not_configured_for_injected_generator",
+            "parts": [],
+        }
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+    try:
+        if planner_llm is None:
+            planner_llm = LocalLLM(settings_obj=settings_obj)
+        outcome = decompose_question(analysis.question, planner_llm)
+    except Exception:
+        outcome = None
+
+    if outcome is None:
+        trace: dict[str, object] = {
+            "status": "rejected",
+            "reason": "planner_unavailable",
+            "parts": [],
+        }
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+
+    trace = outcome.to_dict()
+    if not outcome.accepted:
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+
+    shared_entity_keys = (
+        "year",
+        "target_school",
+        "school_mentions",
+        "explicit_school",
+        "scope_reason",
+        "major_name",
+        "major_code",
+        "program_name",
+        "parent_major",
+        "entity_type",
+        "candidate_majors",
+        "candidate_programs",
+        "admission_method",
+        "candidate_methods",
+        "score_type",
+        "score_query_type",
+        "score_value",
+        "student_scores",
+        "interest",
+        "admission_combination",
+    )
+    neutral_state = ConversationState(current_year=settings_obj.target_year)
+    subplans: list[QueryPlan] = []
+    sub_analyses: list[QueryAnalysis] = []
+    rejection_reason: str | None = None
+    for part in outcome.parts:
+        child_analysis = analyze_question(
+            part,
+            neutral_state,
+            default_year=settings_obj.target_year,
+        )
+        child_target = str(child_analysis.entities.get("target_school") or "UNSPECIFIED")
+        if child_target in {"OTHER_SCHOOL", "MIXED", "AMBIGUOUS"}:
+            rejection_reason = "part_crosses_school_boundary"
+            break
+        if child_analysis.intent in {
+            "OUT_OF_SCOPE",
+            "MULTI_ISSUE",
+            "GREETING",
+            "THANKS",
+            "SYSTEM_IDENTITY",
+            "SYSTEM_SCOPE",
+        }:
+            rejection_reason = "part_not_independently_routable"
+            break
+
+        child_entities = dict(child_analysis.entities)
+        for key in shared_entity_keys:
+            inherited = analysis.entities.get(key)
+            current = child_entities.get(key)
+            if inherited not in (None, "", [], {}, ()) and current in (None, "", [], {}, ()):
+                child_entities[key] = inherited
+        child_analysis = replace(child_analysis, entities=child_entities)
+        child_plan = route_question(
+            child_analysis,
+            neutral_state,
+            target_year=settings_obj.target_year,
+        )
+        if child_plan.needs_clarification:
+            rejection_reason = "part_requires_clarification"
+            break
+        if not child_plan.categories or child_plan.subplans:
+            rejection_reason = "part_has_no_supported_route"
+            break
+        if int(child_entities.get("year") or settings_obj.target_year) != int(
+            analysis.entities.get("year") or settings_obj.target_year
+        ):
+            rejection_reason = "part_year_conflicts_with_question"
+            break
+        subplans.append(child_plan)
+        sub_analyses.append(child_analysis)
+
+    intents = [child.intent for child in sub_analyses]
+    if rejection_reason is None and (
+        len(subplans) < 2 or len(set(intents)) != len(intents)
+    ):
+        rejection_reason = "parts_do_not_resolve_distinct_issues"
+    if rejection_reason is not None:
+        trace = {
+            **trace,
+            "status": "rejected",
+            "reason": rejection_reason,
+            "routed_intents": intents,
+        }
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+
+    trace = {
+        **trace,
+        "status": "accepted",
+        "reason": "validated_verbatim_spans_and_deterministic_routes",
+        "routed_intents": intents,
+        "scope_revalidated": True,
+    }
+    multi_entities = {
+        **analysis.entities,
+        "issue_intents": intents,
+        "requested_information": intents,
+    }
+    multi_analysis = replace(
+        analysis,
+        intent="MULTI_ISSUE",
+        entities=multi_entities,
+        intent_source="llm_pre_rag_decomposition+deterministic_routes",
+        intent_confidence=None,
+    )
+    categories = tuple(
+        dict.fromkeys(category for subplan in subplans for category in subplan.categories)
+    )
+    multi_plan = QueryPlan(
+        intent="MULTI_ISSUE",
+        categories=categories,
+        retrieval_query=plan.retrieval_query,
+        metadata_filter=dict(plan.metadata_filter),
+        needs_clarification=False,
+        subplans=tuple(subplans),
+        entity_filters=dict(plan.entity_filters),
+        query_mode=plan.query_mode,
+        pre_rag_decomposition=trace,
+    )
+    return multi_analysis, multi_plan, llm
+
+
 def ask_chatbot(
     question: str,
     *,
     retriever: Any | None = None,
     llm: Any | None = None,
+    query_planner: Any | None = None,
     settings_obj: Settings = settings,
     conversation_state: ConversationState | Mapping[str, object] | None = None,
 ) -> dict[str, object]:
@@ -4064,6 +5396,14 @@ def ask_chatbot(
     if plan.needs_clarification:
         return _clarification_result(analysis, plan, state)
 
+    analysis, plan, llm = _try_pre_rag_decomposition(
+        analysis=analysis,
+        plan=plan,
+        llm=llm,
+        query_planner=query_planner,
+        settings_obj=settings_obj,
+    )
+
     active_retriever = retriever or DHVRetriever(settings_obj=settings_obj)
     if plan.subplans:
         try:
@@ -4155,6 +5495,11 @@ def ask_chatbot(
         intent=analysis.intent,
     )
     evidence_documents = list(evidence_selection.documents)
+    if (
+        analysis.intent == "HOI_HOC_BONG"
+        and analysis.entities.get("query_mode") in {"LIST", "LIST_AND_COUNT"}
+    ):
+        evidence_documents = _prioritize_scholarship_catalog_documents(evidence_documents)
     if analysis.intent in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}:
         evidence_documents = _source_ordered_documents(evidence_documents)
     normalized_enrollment_query = normalize_question(analysis.normalized_question)
@@ -4183,6 +5528,19 @@ def ask_chatbot(
     )
     if notification_evidence_reordered:
         evidence_documents = _prioritize_result_notification_documents(evidence_documents)
+    school_overview_evidence_prioritized = False
+    if _is_generic_school_overview_request(analysis):
+        evidence_documents = _prioritize_school_overview_documents(
+            evidence_documents,
+            target_year=settings_obj.target_year,
+        )
+        school_overview_evidence_prioritized = bool(
+            evidence_documents
+            and _is_verified_school_overview_intro_document(
+                evidence_documents[0],
+                target_year=settings_obj.target_year,
+            )
+        )
     evidence = build_evidence(evidence_documents, settings_obj=settings_obj)
     analysis = enrich_analysis_from_evidence(analysis, evidence)
     score_comparisons = deterministic_score_comparisons(analysis, evidence)
@@ -4223,6 +5581,7 @@ def ask_chatbot(
     trace["result_notification_evidence_prioritized"] = notification_evidence_reordered
     trace["enrollment_checklist_evidence_prioritized"] = enrollment_checklist_question
     trace["admission_date_evidence_prioritized"] = date_comparison_evidence_reordered
+    trace["school_overview_evidence_prioritized"] = school_overview_evidence_prioritized
     trace["retrieval_calls"] = 1
     trace["score_comparisons"] = [dict(comparison) for comparison in score_comparisons]
     trace["score_engine"] = score_evaluation
@@ -4246,18 +5605,31 @@ def ask_chatbot(
     if analysis.intent in {"HOI_DANG_KY_XET_TUYEN", "HOI_NGUONG_DAU_VAO"}:
         admission_rule_answer = (
             _evidence_subject_minimum_answer(analysis, evidence)
-            or _evidence_major_eligibility_answer(analysis, evidence)
             or _evidence_eligibility_answer(analysis, evidence)
+            or _evidence_major_eligibility_answer(analysis, evidence)
         )
     deadline_only_lookup = bool(
         score_query_type == "supplementary_threshold_lookup"
         and any(fact.get("method") == "deadline" for fact in lookup_facts)
+    )
+    normalized_query = normalize_question(analysis.normalized_question)
+    supplementary_route_question = (
+        analysis.intent in {"HOI_XET_TUYEN_BO_SUNG", "HOI_DANG_KY_XET_TUYEN"}
+        and any(marker in normalized_query for marker in (
+            "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung",
+        ))
+        and any(marker in normalized_query for marker in (
+            "online", "truc tuyen", "den truong nop", "nop tai", "nop ho so",
+            "nhan ho so", "thoi gian nhan ho so", "han nhan ho so", "khi nao nhan ho so",
+            "hinh thuc nop", "dang ky truc tiep",
+        ))
     )
     if (
         score_evaluation.get("status") == "insufficient-data"
         and not structured_lookup_answer
         and not deadline_only_lookup
         and not admission_rule_answer
+        and not supplementary_route_question
     ):
         answer_plan = plan_answer(analysis, evidence=evidence, status="no_data")
         trace["answer_plan"] = answer_plan.to_dict()
@@ -4311,6 +5683,7 @@ def ask_chatbot(
         }
         and not analysis.entities.get("student_scores")
         and structured_lookup_answer
+        and not supplementary_route_question
     ):
         selected_score_facts = lookup_facts
         direct_answer = structured_lookup_answer
@@ -4324,6 +5697,7 @@ def ask_chatbot(
                 evidence,
                 question=query,
                 analysis=analysis,
+                target_year=settings_obj.target_year,
             )
             trace["deterministic_validation"] = {
                 "status": validated.get("status"),
@@ -4377,12 +5751,29 @@ def ask_chatbot(
             "trace": trace,
         }, answer_plan)
 
-    website_answer = _official_links_answer(analysis, evidence)
+    website_answer = _official_links_answer(
+        analysis,
+        evidence,
+        verified_documents=evidence_documents,
+        target_year=settings_obj.target_year,
+    )
     if website_answer is not None:
+        evidence_boundary = website_answer.pop("evidence_boundary", None)
+        if evidence_boundary:
+            trace["evidence_boundary"] = evidence_boundary
+        else:
+            trace["deterministic_branch"] = "verified_website_directory"
         website_answer["state"] = next_state.to_dict()
         website_answer["conversation_state"] = next_state.to_dict()
-        answer_plan = plan_answer(analysis, evidence=evidence, deterministic=True)
+        website_status = str(website_answer.get("status") or "no_data")
+        answer_plan = plan_answer(
+            analysis,
+            evidence=evidence,
+            status=website_status,
+            deterministic=website_status == "ok",
+        )
         trace["answer_plan"] = answer_plan.to_dict()
+        trace["final_status"] = website_status
         website_answer["trace"] = trace
         return _attach_answer_plan(website_answer, answer_plan)
 
@@ -4431,6 +5822,62 @@ def ask_chatbot(
         }, answer_plan)
 
     if analysis.intent == "SCHOOL_INFO":
+        if _is_generic_school_overview_request(analysis):
+            overview_answer = _evidence_overview_answer(
+                analysis,
+                evidence,
+                target_year=settings_obj.target_year,
+            )
+            _, overview_urls = _overview_intro_evidence(
+                evidence,
+                target_year=settings_obj.target_year,
+            )
+            overview_sources = _overview_sources(evidence, overview_urls)
+            validated_overview = (
+                validate_model_answer(
+                    overview_answer,
+                    evidence,
+                    question=query,
+                    analysis=analysis,
+                    target_year=settings_obj.target_year,
+                )
+                if overview_answer and overview_sources
+                else None
+            )
+            trace["validator"] = {
+                "status": validated_overview.get("status") if validated_overview else "no_data",
+                "reason": (
+                    validated_overview.get("_validation_reason")
+                    if validated_overview
+                    else "overview_intro_evidence_unavailable"
+                ),
+            }
+            if validated_overview and validated_overview.get("status") == "ok":
+                answer_plan = plan_answer(
+                    analysis,
+                    evidence=evidence,
+                    deterministic=True,
+                )
+                trace["deterministic_branch"] = "verified_school_overview"
+                trace["answer_plan"] = answer_plan.to_dict()
+                validated_overview["sources"] = overview_sources
+                validated_overview["state"] = next_state.to_dict()
+                validated_overview["conversation_state"] = next_state.to_dict()
+                validated_overview["trace"] = trace
+                return _attach_answer_plan(validated_overview, answer_plan)
+
+            trace["evidence_boundary"] = "school_overview_missing_matching_evidence"
+            answer_plan = plan_answer(analysis, evidence=evidence, status="no_data")
+            trace["answer_plan"] = answer_plan.to_dict()
+            return _attach_answer_plan({
+                "answer": FALLBACK_ANSWER,
+                "sources": [],
+                "status": "no_data",
+                "state": next_state.to_dict(),
+                "conversation_state": next_state.to_dict(),
+                "trace": trace,
+            }, answer_plan)
+
         school_info_answer = _evidence_school_info_answer(analysis, evidence)
         if school_info_answer:
             validated_school_info = validate_model_answer(
@@ -4438,6 +5885,7 @@ def ask_chatbot(
                 evidence,
                 question=query,
                 analysis=analysis,
+                target_year=settings_obj.target_year,
             )
             trace["validator"] = {
                 "status": validated_school_info.get("status"),
@@ -4454,7 +5902,11 @@ def ask_chatbot(
         # Query-specific verified facts must be considered before a generic
         # overview/directory response, otherwise a broad summary can mask the
         # exact fact the user asked for (for example a named fund's amount).
-        overview_answer = _evidence_overview_answer(analysis, evidence) or _evidence_directory_answer(analysis, evidence)
+        overview_answer = _evidence_overview_answer(
+            analysis,
+            evidence,
+            target_year=settings_obj.target_year,
+        ) or _evidence_directory_answer(analysis, evidence)
         if overview_answer:
             # School overview is a bounded summary owned by selected evidence;
             # it should not become a model-dependent dump of addresses,
@@ -4475,17 +5927,6 @@ def ask_chatbot(
             }, answer_plan)
 
     direct_evidence_answer = None
-    normalized_query = normalize_question(analysis.normalized_question)
-    supplementary_route_question = (
-        analysis.intent in {"HOI_XET_TUYEN_BO_SUNG", "HOI_DANG_KY_XET_TUYEN"}
-        and any(marker in normalized_query for marker in (
-            "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung",
-        ))
-        and any(marker in normalized_query for marker in (
-            "online", "truc tuyen", "den truong nop", "nop tai", "nop ho so",
-            "hinh thuc nop", "dang ky truc tiep",
-        ))
-    )
     applicant_support_question = (
         analysis.intent == "HOI_DANG_KY_XET_TUYEN"
         and "khuyet tat" in normalized_query
@@ -4517,7 +5958,10 @@ def ask_chatbot(
             or _evidence_tuition_answer(evidence)
         )
     elif analysis.intent == "HOI_HOC_BONG":
-        direct_evidence_answer = _evidence_scholarship_answer(analysis, evidence)
+        direct_evidence_answer = (
+            _evidence_scholarship_catalog_answer(analysis, evidence)
+            or _evidence_scholarship_answer(analysis, evidence)
+        )
     elif analysis.intent == "HOI_XET_TUYEN_BO_SUNG":
         direct_evidence_answer = _evidence_supplementary_majors_answer(analysis, evidence)
     elif analysis.intent == "HOI_CACH_TINH_DIEM":
@@ -4528,15 +5972,22 @@ def ask_chatbot(
     elif analysis.intent == "HOI_CO_SO_LIEN_HE":
         direct_evidence_answer = _evidence_school_code_answer(analysis, evidence)
     elif analysis.intent == "HOI_DANG_KY_XET_TUYEN":
-        direct_evidence_answer = admission_rule_answer
+        direct_evidence_answer = (
+            _evidence_vocational_same_group_eligibility_answer(analysis, evidence)
+            or _evidence_general_registration_answer(analysis, evidence)
+            or admission_rule_answer
+        )
     elif analysis.intent == "HOI_NGUONG_DAU_VAO":
         direct_evidence_answer = (
-            _evidence_subject_minimum_answer(analysis, evidence)
+            _evidence_vocational_same_group_eligibility_answer(analysis, evidence)
+            or _evidence_subject_minimum_answer(analysis, evidence)
             or _evidence_major_eligibility_answer(analysis, evidence)
         )
     elif analysis.intent == "HOI_PHUONG_THUC_XET_TUYEN":
         direct_evidence_answer = (
-            _evidence_admission_combination_answer(analysis, evidence)
+            _evidence_vocational_same_group_eligibility_answer(analysis, evidence)
+            or _evidence_method_calculation_answer(analysis, evidence)
+            or _evidence_admission_combination_answer(analysis, evidence)
             or _evidence_admission_method_presence_answer(analysis, evidence)
         )
     elif analysis.intent == "HOI_CHUONG_TRINH":
@@ -4548,6 +5999,7 @@ def ask_chatbot(
             evidence,
             question=query,
             analysis=analysis,
+            target_year=settings_obj.target_year,
         )
         trace["evidence_direct_answer"] = {
             "attempted": True,
@@ -4567,6 +6019,10 @@ def ask_chatbot(
         applicant_support_question
         or result_notification_question
         or supplementary_route_question
+        or (
+            bool(analysis.entities.get("admission_condition_request"))
+            and admission_rule_answer is None
+        )
         or (
             _is_subject_minimum_request(analysis.normalized_question)
             and _evidence_subject_minimum_answer(analysis, evidence) is None
@@ -4682,6 +6138,7 @@ def ask_chatbot(
                 evidence,
                 question=query,
                 analysis=analysis,
+                target_year=settings_obj.target_year,
             )
         else:
             active_llm = llm or LocalLLM(settings_obj=settings_obj)
@@ -4694,6 +6151,7 @@ def ask_chatbot(
                 score_facts=select_relevant_score_facts(analysis, evidence.score_facts),
                 answer_plan=answer_plan,
                 score_comparisons=score_comparisons,
+                target_year=settings_obj.target_year,
             )
         validation_reason = result.pop("_validation_reason", None)
         if result.get("status") == "ok":
@@ -4707,7 +6165,11 @@ def ask_chatbot(
             elif answer_plan.mode == "OVERVIEW":
                 # A school overview should be a compact summary, not a dump
                 # of every retrieved contact/address line.
-                structured_answer = _evidence_overview_answer(analysis, evidence)
+                structured_answer = _evidence_overview_answer(
+                    analysis,
+                    evidence,
+                    target_year=settings_obj.target_year,
+                )
             elif answer_plan.mode == "COMPARISON":
                 # The model may satisfy the grounding check while still
                 # collapsing a side-by-side request into prose. Keep
@@ -4728,6 +6190,7 @@ def ask_chatbot(
                     evidence,
                     question=query,
                     analysis=analysis,
+                    target_year=settings_obj.target_year,
                 )
                 if structured_result.get("status") == "ok":
                     result = structured_result
@@ -4743,6 +6206,7 @@ def ask_chatbot(
                     evidence,
                     question=query,
                     analysis=analysis,
+                    target_year=settings_obj.target_year,
                 )
                 if fallback_result.get("status") == "ok":
                     result = fallback_result
@@ -4775,6 +6239,7 @@ def ask_chatbot(
                     evidence,
                     question=query,
                     analysis=analysis,
+                    target_year=settings_obj.target_year,
                 )
                 if fallback_result.get("status") == "ok":
                     result = fallback_result
@@ -4792,6 +6257,7 @@ def ask_chatbot(
                     evidence,
                     question=query,
                     analysis=analysis,
+                    target_year=settings_obj.target_year,
                 )
                 if fallback_result.get("status") == "ok":
                     result = fallback_result

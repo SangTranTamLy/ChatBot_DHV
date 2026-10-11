@@ -25,7 +25,7 @@ PRODUCTION_PDF = (
     / "data"
     / "raw"
     / "diem_trung_tuyen"
-    / "DIEM_TRUNG_TUYEN_VA_NHAP_HOC_DHV_2026.pdf"
+    / "V1_DIEM_TRUNG_TUYEN_DHV_2026.pdf"
 )
 
 

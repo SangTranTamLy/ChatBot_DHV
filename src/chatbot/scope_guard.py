@@ -341,6 +341,28 @@ _EXTERNAL_ALIAS_DISPLAY = {
     "dai hoc sai gon": "Đại học Sài Gòn",
 }
 
+_DHV_SCOPE_ALIASES = (
+    "dhv",
+    "dai hoc hung vuong tp ho chi minh",
+    "dai hoc hung vuong tphcm",
+    "dai hoc hung vuong tp hcm",
+    "dai hoc hung vuong thanh pho ho chi minh",
+    "hung vuong tp ho chi minh",
+    "hung vuong tphcm",
+    "hung vuong tp hcm",
+    "hung vuong thanh pho ho chi minh",
+)
+
+_DHV_RELATIONSHIP_TO_MARKERS = (
+    "hop tac voi",
+    "giao luu voi",
+    "ket noi voi",
+    "lien ket voi",
+    "phoi hop voi",
+    "ky ket voi",
+    "trao doi voi",
+)
+
 
 def _school_mentions(normalized: str) -> tuple[list[str], bool, bool]:
     """Trích xuất tên trường theo một registry nhỏ và mẫu tên rõ ràng."""
@@ -348,17 +370,7 @@ def _school_mentions(normalized: str) -> tuple[list[str], bool, bool]:
     mentions: list[str] = []
     explicit_dhv = any(
         _contains_scope_marker(normalized, marker)
-        for marker in (
-            "dhv",
-            "dai hoc hung vuong tp ho chi minh",
-            "dai hoc hung vuong tphcm",
-            "dai hoc hung vuong tp hcm",
-            "dai hoc hung vuong thanh pho ho chi minh",
-            "hung vuong tp ho chi minh",
-            "hung vuong tphcm",
-            "hung vuong tp hcm",
-            "hung vuong thanh pho ho chi minh",
-        )
+        for marker in _DHV_SCOPE_ALIASES
     )
     bare_hung_vuong = _contains_scope_marker(normalized, "hung vuong")
     ambiguous_hung_vuong = bare_hung_vuong and not explicit_dhv
@@ -407,6 +419,47 @@ def _school_mentions(normalized: str) -> tuple[list[str], bool, bool]:
     return mentions, explicit_dhv, ambiguous_hung_vuong
 
 
+def _external_school_is_dhv_relationship_object(normalized: str) -> bool:
+    """Do not classify a DHV relationship question as a two-school comparison.
+
+    For example, in ``DHV hợp tác với FPT``, FPT is the object of a question
+    about DHV. A coordinated subject such as ``DHV và FPT có bao nhiêu...``
+    remains mixed and must stop before DHV retrieval.
+    """
+
+    dhv_positions = [
+        match.start()
+        for alias in _DHV_SCOPE_ALIASES
+        for match in re.finditer(rf"(?<!\w){re.escape(alias)}(?!\w)", normalized)
+    ]
+    if not dhv_positions:
+        return False
+
+    generic_comparison = re.search(
+        r"\bnhu\b.{0,36}\b(?:cac\s+)?truong\s+khac\b",
+        normalized,
+    )
+    if generic_comparison and any(
+        position < generic_comparison.start()
+        for position in dhv_positions
+    ):
+        return True
+
+    external_aliases = tuple(_EXTERNAL_ALIAS_DISPLAY) + tuple(FOREIGN_INSTITUTION_KEYWORDS)
+    for relation in _DHV_RELATIONSHIP_TO_MARKERS:
+        for match in re.finditer(rf"(?<!\w){re.escape(relation)}(?!\w)", normalized):
+            if not any(position < match.start() for position in dhv_positions):
+                continue
+            suffix = normalized[match.end():]
+            if (
+                any(_contains_scope_marker(suffix, alias) for alias in external_aliases)
+                or any(_contains_scope_marker(suffix, marker) for marker in _OTHER_SCHOOL_MARKERS)
+                or _has_unknown_named_institution(suffix)
+            ):
+                return True
+    return False
+
+
 def detect_target_school(question: str) -> dict[str, object]:
     """Xác định trường đích độc lập với intent nghiệp vụ.
 
@@ -432,7 +485,12 @@ def detect_target_school(question: str) -> dict[str, object]:
         and has_external
         and any(_contains_scope_marker(normalized, marker) for marker in comparison_markers)
     )
-    if explicit_comparison:
+    relationship_object = (
+        explicit_dhv
+        and has_external
+        and _external_school_is_dhv_relationship_object(normalized)
+    )
+    if explicit_dhv and has_external and (explicit_comparison or not relationship_object):
         target = TARGET_SCHOOL_MIXED
         reason = SCOPE_REASON_MIXED_SCHOOL
     elif explicit_dhv:

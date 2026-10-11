@@ -20,7 +20,7 @@ from .structured_json import (
     build_structured_document,
     write_structured_json,
 )
-from .pdf_layout import extract_pdf_pages as _extract_pdf_pages_layout
+from .pdf_layout import _row_data, extract_pdf_pages as _extract_pdf_pages_layout
 
 
 LOGGER = logging.getLogger(__name__)
@@ -264,6 +264,158 @@ def _data_role_from_path(raw_path: Path, category: str) -> str:
     return "catalog"
 
 
+def _is_generic_table_headers(headers: object) -> bool:
+    if not isinstance(headers, list) or not headers:
+        return True
+    return all(
+        re.fullmatch(r"column_\d+", str(header).strip(), re.IGNORECASE)
+        for header in headers
+    )
+
+
+def _inherit_continued_table_headers(pages: list[dict[str, object]]) -> None:
+    """Carry explicit headers onto a headerless table continuing next page.
+
+    Inheritance requires page-boundary geometry, matching horizontal table
+    footprint, no independent text before the new table, one table on each
+    page, and matching column count. The inferred relationship is disclosed
+    in table metadata and a warning so it can be checked against the source.
+    """
+
+    previous_page_number: int | None = None
+    previous_headers: list[str] | None = None
+    previous_header_page: int | None = None
+    previous_table_bbox: list[float] | None = None
+    previous_page_bbox: list[float] | None = None
+
+    def bbox(value: object) -> list[float] | None:
+        if not isinstance(value, (list, tuple)) or len(value) != 4:
+            return None
+        try:
+            return [float(coordinate) for coordinate in value]
+        except (TypeError, ValueError):
+            return None
+
+    def has_independent_content_before_table(page: dict[str, object], table_top: float) -> bool:
+        blocks = page.get("native_blocks")
+        if not isinstance(blocks, list) or not blocks:
+            return True
+        for block in blocks:
+            if not isinstance(block, dict) or not str(block.get("text") or "").strip():
+                continue
+            block_box = bbox(block.get("bbox"))
+            if block_box is None:
+                return True
+            if str(block.get("type") or "").casefold() == "heading" and block_box[1] <= table_top + 80:
+                return True
+            if block_box[3] <= table_top + 1:
+                return True
+        return False
+
+    def boundary_geometry_matches(
+        previous_table: list[float] | None,
+        previous_page: list[float] | None,
+        current_table: list[float] | None,
+        current_page: list[float] | None,
+    ) -> bool:
+        if not all((previous_table, previous_page, current_table, current_page)):
+            return False
+        assert previous_table is not None and previous_page is not None
+        assert current_table is not None and current_page is not None
+        previous_height = previous_page[3] - previous_page[1]
+        current_height = current_page[3] - current_page[1]
+        previous_width = previous_table[2] - previous_table[0]
+        current_width = current_table[2] - current_table[0]
+        if min(previous_height, current_height, previous_width, current_width) <= 0:
+            return False
+        overlap = max(0.0, min(previous_table[2], current_table[2]) - max(previous_table[0], current_table[0]))
+        overlap_ratio = overlap / min(previous_width, current_width)
+        previous_reaches_page_end = previous_table[3] >= previous_page[1] + previous_height * 0.78
+        current_starts_at_page_top = current_table[1] <= current_page[1] + current_height * 0.14
+        return previous_reaches_page_end and current_starts_at_page_top and overlap_ratio >= 0.80
+
+    for page in pages:
+        page_number = int(page.get("page_number", page.get("page", 0)) or 0)
+        tables = page.get("tables")
+        if not isinstance(tables, list) or len(tables) != 1 or not isinstance(tables[0], dict):
+            previous_page_number = page_number
+            previous_headers = None
+            previous_header_page = None
+            previous_table_bbox = None
+            previous_page_bbox = None
+            continue
+        table = tables[0]
+        headers = table.get("headers")
+        if not _is_generic_table_headers(headers):
+            previous_page_number = page_number
+            previous_headers = [str(header) for header in headers]
+            previous_header_page = page_number
+            previous_table_bbox = bbox(table.get("bbox"))
+            previous_page_bbox = bbox(page.get("page_bbox"))
+            continue
+
+        current_table_bbox = bbox(table.get("bbox"))
+        current_page_bbox = bbox(page.get("page_bbox"))
+        column_count = int(table.get("column_count") or len(headers or []))
+        geometry_matches = boundary_geometry_matches(
+            previous_table_bbox,
+            previous_page_bbox,
+            current_table_bbox,
+            current_page_bbox,
+        )
+        has_leading_content = current_table_bbox is None or has_independent_content_before_table(
+            page,
+            current_table_bbox[1],
+        )
+        can_inherit = (
+            previous_page_number is not None
+            and page_number == previous_page_number + 1
+            and previous_headers is not None
+            and previous_header_page is not None
+            and len(previous_headers) == column_count
+            and geometry_matches
+            and not has_leading_content
+        )
+        if not can_inherit:
+            previous_page_number = page_number
+            previous_headers = None
+            previous_header_page = None
+            previous_table_bbox = None
+            previous_page_bbox = None
+            continue
+
+        inherited_headers = list(previous_headers)
+        table["headers"] = inherited_headers
+        table["header_inherited"] = True
+        table["header_source_page"] = previous_header_page
+        for row in table.get("rows", []) or []:
+            if not isinstance(row, dict):
+                continue
+            values = list(row.get("values") or [])
+            cells = row.get("cells") or []
+            for index, cell in enumerate(cells):
+                if isinstance(cell, dict) and index < len(inherited_headers):
+                    cell["header"] = inherited_headers[index]
+            row["data"] = _row_data(inherited_headers, values)
+        for element in page.get("elements", []) or []:
+            if isinstance(element, dict) and element.get("table_id") == table.get("table_id"):
+                element["text"] = " | ".join(inherited_headers)
+        warnings = page.setdefault("warnings", [])
+        if isinstance(warnings, list):
+            warnings.append(
+                {
+                    "type": "TABLE_HEADER_INHERITED",
+                    "page": page_number,
+                    "message": f"Header names inherited from the matching continued table on page {previous_header_page}; verify the page boundary.",
+                }
+            )
+        previous_page_number = page_number
+        previous_headers = inherited_headers
+        previous_header_page = int(table.get("header_source_page") or page_number)
+        previous_table_bbox = current_table_bbox
+        previous_page_bbox = current_page_bbox
+
+
 def convert_pdf_to_structured_json(
     raw_path: Path,
     *,
@@ -285,6 +437,13 @@ def convert_pdf_to_structured_json(
         raise ValueError("generated Markdown output was removed; use Structured JSON")
 
     pages = _extract_pdf_pages(raw_path)
+    source_page_count = len(PdfReader(str(raw_path)).pages)
+    if len(pages) != source_page_count:
+        raise ValueError(
+            f"extracted page count mismatch for {raw_path.name}: "
+            f"PDF has {source_page_count} pages, extractor returned {len(pages)}"
+        )
+    _inherit_continued_table_headers(pages)
     if manifest_entry is None:
         from .raw_manifest import find_manifest_entry, load_raw_manifest
 
@@ -310,6 +469,7 @@ def convert_pdf_to_structured_json(
         raw_root=raw_root,
         pages=pages,
         manifest_entry=manifest_entry,
+        source_page_count=source_page_count,
     )
     category = str(structured["category"])
     json_path = output_root / category / f"{raw_path.stem}.json"

@@ -13,7 +13,7 @@
   "documents": [
     {
       "document_id": "diem-trung-tuyen-va-nhap-hoc-dhv-2026",
-      "raw_file": "data/raw/diem_trung_tuyen/DIEM_TRUNG_TUYEN_VA_NHAP_HOC_DHV_2026.pdf",
+      "raw_file": "data/raw/diem_trung_tuyen/V1_DIEM_TRUNG_TUYEN_DHV_2026.pdf",
       "title": "Điểm trúng tuyển và nhập học DHV 2026",
       "category": "diem_trung_tuyen",
       "year": 2026,
@@ -30,7 +30,7 @@
     },
     {
       "document_id": "ho-so-nhap-hoc-day-du-dhv-2026",
-      "raw_file": "data/raw/ho_so/HO_SO_NHAP_HOC_DAY_DU_DHV_2026.pdf",
+      "raw_file": "data/raw/ho_so/V1_HO_SO_VA_THU_TUC_NHAP_HOC_DHV_2026.pdf",
       "title": "Hồ sơ nhập học DHV 2026",
       "category": "ho_so",
       "year": 2026,
@@ -47,7 +47,7 @@
     },
     {
       "document_id": "hoc-phi-dhv-2024",
-      "raw_file": "data/raw/hoc_phi/Hoc_Phi_DHV_2024.pdf",
+      "raw_file": "data/raw/hoc_phi/V1_HOC_PHI_DHV_2024.pdf",
       "title": "Cam kết về học phí DHV 2024",
       "category": "hoc_phi",
       "year": 2024,
@@ -62,7 +62,7 @@
     },
     {
       "document_id": "phuong-thuc-xet-tuyen-va-hoc-bong-dhv-2026",
-      "raw_file": "data/raw/phuong_thuc_xet_tuyen/PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf",
+      "raw_file": "data/raw/phuong_thuc_xet_tuyen/V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf",
       "title": "Phương thức xét tuyển và học bổng DHV 2026",
       "category": "phuong_thuc_xet_tuyen",
       "year": 2026,
@@ -79,7 +79,7 @@
     },
     {
       "document_id": "thong-tin-truong-2026",
-      "raw_file": "data/raw/thong_tin_truong/Thong_Tin_Truong.pdf",
+      "raw_file": "data/raw/thong_tin_truong/V1_THONG_TIN_TRUONG_DHV.pdf",
       "title": "Tổng quan về trường DHV",
       "category": "thong_tin_truong",
       "year": 2026,
@@ -96,7 +96,7 @@
     },
     {
       "document_id": "tong-quan-tuyen-sinh-dhv-2026",
-      "raw_file": "data/raw/thong_tin_truong/TONG_QUAN_TUYEN_SINH_DHV_2026.pdf",
+      "raw_file": "data/raw/phuong_thuc_xet_tuyen/V1_TONG_QUAN_TUYEN_SINH_DHV_2026.pdf",
       "title": "Tổng quan tuyển sinh DHV 2026",
       "category": "thong_tin_truong",
       "year": 2026,
@@ -113,7 +113,7 @@
     },
     {
       "document_id": "xet-tuyen-bo-sung-dhv-2026",
-      "raw_file": "data/raw/xet_tuyen_bo_sung/Ho_Xet_Tuyen_Bo_Sung_Dai_Hoc_Chinh_Quy_2026.pdf",
+      "raw_file": "data/raw/xet_tuyen_bo_sung/V1_XET_TUYEN_BO_SUNG_DHV_2026.pdf",
       "title": "Xét tuyển bổ sung đại học chính quy DHV 2026",
       "category": "xet_tuyen_bo_sung",
       "year": 2026,

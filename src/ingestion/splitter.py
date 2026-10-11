@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 from functools import lru_cache
 from typing import Iterable
@@ -14,6 +15,7 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharac
 DEFAULT_CHUNK_SIZE = 512
 DEFAULT_CHUNK_OVERLAP = 50
 DEFAULT_TOKENIZER_MODEL = os.getenv("CHUNK_TOKENIZER_MODEL", "BAAI/bge-m3")
+LOGGER = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=4)
@@ -29,12 +31,33 @@ def _load_tokenizer(model_name: str):
         ) from exc
 
     try:
-        return AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-    except Exception as exc:  # pragma: no cover - model cache failure
-        raise RuntimeError(
-            f"Không tìm thấy tokenizer cục bộ {model_name!r}. "
-            "Tải/cache tokenizer trước hoặc đặt CHUNK_TOKENIZER_MODEL tới model đã có sẵn."
-        ) from exc
+        return AutoTokenizer.from_pretrained(
+            model_name,
+            local_files_only=True,
+            use_fast=True,
+        )
+    except Exception as fast_exc:  # pragma: no cover - platform/cache dependent
+        # Some Windows environments cannot deserialize the large BGE-M3
+        # tokenizer.json within the available memory. The corresponding slow
+        # tokenizer uses the same local SentencePiece vocabulary and preserves
+        # the token-based chunking contract without downloading/changing models.
+        LOGGER.warning(
+            "fast tokenizer unavailable for %s (%s); trying its local slow variant",
+            model_name,
+            type(fast_exc).__name__,
+        )
+        try:
+            return AutoTokenizer.from_pretrained(
+                model_name,
+                local_files_only=True,
+                use_fast=False,
+            )
+        except Exception as slow_exc:  # pragma: no cover - model cache failure
+            raise RuntimeError(
+                f"Không tải được tokenizer cục bộ {model_name!r} "
+                "ở cả chế độ fast và slow. Tải/cache tokenizer trước hoặc "
+                "đặt CHUNK_TOKENIZER_MODEL tới model đã có sẵn."
+            ) from slow_exc
 
 
 def _token_count(tokenizer: object, text: str) -> int:

@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import gc
 from pathlib import Path
+from unittest.mock import call, patch
 
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
@@ -15,6 +16,7 @@ from langchain_core.documents import Document
 from src.ingestion.build_vector_db import build_vector_db
 from src.ingestion.chroma_lifecycle import close_chroma_store
 from src.ingestion.loader import load_verified_documents
+from src.ingestion import splitter
 from src.ingestion.splitter import split_documents
 
 
@@ -67,6 +69,7 @@ def _write_json(
             "verified": status == "verified",
             "status": status,
             "verification_status": status,
+            "source_sha256": "a" * 64,
         },
         "extraction": {"method": "test_fixture", "page_count": 1},
         "pages": [{"page": 1, "text": f"Thông tin {category} DHV {year}."}],
@@ -85,6 +88,36 @@ def _write_json(
 
 
 class IngestionTests(unittest.TestCase):
+    def test_tokenizer_loader_falls_back_to_local_slow_variant(self) -> None:
+        fallback_tokenizer = object()
+        splitter._load_tokenizer.cache_clear()
+        try:
+            with patch(
+                "transformers.AutoTokenizer.from_pretrained",
+                side_effect=[MemoryError("fast tokenizer memory limit"), fallback_tokenizer],
+            ) as from_pretrained:
+                self.assertIs(
+                    splitter._load_tokenizer("test-local-tokenizer"),
+                    fallback_tokenizer,
+                )
+            self.assertEqual(
+                from_pretrained.call_args_list,
+                [
+                    call(
+                        "test-local-tokenizer",
+                        local_files_only=True,
+                        use_fast=True,
+                    ),
+                    call(
+                        "test-local-tokenizer",
+                        local_files_only=True,
+                        use_fast=False,
+                    ),
+                ],
+            )
+        finally:
+            splitter._load_tokenizer.cache_clear()
+
     def test_loader_preserves_metadata_and_filters_unverified_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -122,6 +155,7 @@ class IngestionTests(unittest.TestCase):
                 result.documents[0].metadata["source_url"],
                 "https://dhv.edu.vn/test-source",
             )
+            self.assertEqual(result.documents[0].metadata["source_sha256"], "a" * 64)
 
     def test_splitter_keeps_heading_sections_separate_and_ids_unique(self) -> None:
         document = Document(

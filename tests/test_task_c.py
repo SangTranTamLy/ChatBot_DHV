@@ -9,7 +9,7 @@ from pathlib import Path
 
 from langchain_core.documents import Document
 
-from src.chatbot.evidence import build_evidence
+from src.chatbot.evidence import build_evidence, select_evidence_documents
 from src.chatbot.rag_chain import ask_chatbot
 from src.chatbot.query_analysis import analyze_question, route_question
 from src.chatbot.scope_guard import is_in_scope
@@ -169,10 +169,15 @@ class TaskCTests(unittest.TestCase):
                 plan = route_question(analysis, target_year=2026)
                 self.assertEqual(analysis.intent, expected_intent)
                 self.assertEqual(plan.intent, expected_intent)
-                self.assertEqual(plan.categories, (expected_category,))
+                expected_categories = (
+                    ("dang_ky_xet_tuyen", "phuong_thuc_xet_tuyen")
+                    if expected_intent == "HOI_DANG_KY_XET_TUYEN"
+                    else (expected_category,)
+                )
+                self.assertEqual(plan.categories, expected_categories)
                 self.assertEqual(
                     plan.metadata_filter,
-                    {"year": 2026, "categories": [expected_category]},
+                    {"year": 2026, "categories": list(expected_categories)},
                 )
                 self.assertEqual(topic_category(question), expected_category)
                 self.assertTrue(is_in_scope(question))
@@ -199,7 +204,7 @@ class TaskCTests(unittest.TestCase):
             ),
             (
                 TOPIC_CASES[4][0],
-                "dang_ky_xet_tuyen",
+                ("dang_ky_xet_tuyen", "phuong_thuc_xet_tuyen"),
                 "Form có Ngành đăng ký NV1, NV2, NV3 và Phương thức xét tuyển. https://fake.invalid/form",
             ),
             (
@@ -208,17 +213,73 @@ class TaskCTests(unittest.TestCase):
                 "Trụ sở chính: 194 Lê Đức Thọ. Tổng đài tư vấn tuyển sinh: 0287 1000 888.",
             ),
         )
-        for question, category, answer in cases:
-            with self.subTest(category=category):
+        for question, category_value, answer in cases:
+            categories = (
+                category_value
+                if isinstance(category_value, tuple)
+                else (category_value,)
+            )
+            category = categories[0]
+            with self.subTest(category=categories):
                 retriever = CategoryRecordingRetriever(
                     [_category_document(category, answer.replace(" https://fake.invalid/form", ""))]
                 )
                 llm = RecordingLLM(answer)
                 result = ask_chatbot(question, retriever=retriever, llm=llm)
                 self.assertEqual(result["status"], "ok")
-                self.assertEqual(retriever.categories, (category,))
+                self.assertEqual(retriever.categories, categories)
                 self.assertEqual(result["sources"], [{"title": f"{category} DHV 2026", "url": SOURCE_URL}])
                 self.assertNotIn("fake.invalid", result["answer"])
+
+    def test_registration_intent_drops_unrelated_chunks_from_shared_method_category(self) -> None:
+        registration = _category_document(
+            "phuong_thuc_xet_tuyen",
+            "Nguyên tắc chung: Thí sinh chỉ cần đăng ký vào DHV và ngành học mong muốn. "
+            "Thời gian đăng ký xét tuyển đến hết ngày 13/08/2026.",
+        )
+        registration.metadata["chunk_id"] = "registration-rule"
+        scholarship = _category_document(
+            "phuong_thuc_xet_tuyen",
+            "Chính sách học bổng: Thí sinh đăng ký học bổng theo điểm học tập và được "
+            "hỗ trợ học phí học kỳ I.",
+        )
+        scholarship.metadata["chunk_id"] = "scholarship-policy"
+
+        selection = select_evidence_documents(
+            [scholarship, registration],
+            categories=("phuong_thuc_xet_tuyen",),
+            target_year=2026,
+            intent="HOI_DANG_KY_XET_TUYEN",
+        )
+
+        self.assertEqual(
+            [document.metadata["chunk_id"] for document in selection.documents],
+            ["registration-rule"],
+        )
+        self.assertEqual(
+            [item["filter_reason"] for item in selection.filtered],
+            ["intent_content_mismatch"],
+        )
+
+    def test_general_registration_rule_is_extracted_from_verified_evidence(self) -> None:
+        document = _category_document(
+            "phuong_thuc_xet_tuyen",
+            "Nguyên tắc chung: Thí sinh chỉ cần đăng ký vào DHV và ngành học mong muốn; "
+            "hệ thống tuyển sinh của Nhà trường sẽ tự động chọn phương thức có điểm cao "
+            "nhất để xét trúng tuyển.\nThời gian đăng ký xét tuyển: Đến hết ngày 13/08/2026",
+        )
+        llm = RecordingLLM("Không được dùng câu trả lời này.")
+        result = ask_chatbot(
+            "Cách đăng ký tuyển sinh DHV năm 2026 như thế nào?",
+            retriever=CategoryRecordingRetriever([document]),
+            llm=llm,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("đăng ký vào DHV và ngành học mong muốn", result["answer"])
+        self.assertIn("13/08/2026", result["answer"])
+        self.assertNotIn("các bước", result["answer"].casefold())
+        self.assertFalse(llm.called)
 
     def test_contact_validator_rejects_unverified_phone_and_retries_from_evidence(self) -> None:
         category = "co_so_lien_he"

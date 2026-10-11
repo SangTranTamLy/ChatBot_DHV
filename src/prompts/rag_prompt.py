@@ -75,11 +75,21 @@ def build_rag_prompt(
 
 CHỈ DÙNG CONTEXT DƯỚI ĐÂY để trả lời câu hỏi. Không sử dụng kiến thức bên ngoài
 CONTEXT, không suy đoán, không tự điền thông tin còn thiếu và không biến một
-mốc lịch chung thành hạn hồ sơ riêng. Nếu CONTEXT không đủ để trả lời, hãy
-trả lời đúng câu: "Dạ, hiện tại mình chưa có thông tin chính xác về vấn đề này. Bạn vui lòng liên hệ trực tiếp qua Fanpage hoặc Hotline của Trường Đại học Hùng Vương TP.HCM để được hỗ trợ chi tiết nhé!"
+mốc lịch chung thành hạn hồ sơ riêng. Nếu CONTEXT không đủ, hãy nói rõ phần
+thông tin chưa được xác minh; chỉ nêu Fanpage, hotline hoặc kênh liên hệ nếu
+chính CONTEXT cung cấp thông tin đó. Nếu không có, không tự tạo số điện thoại
+hoặc liên kết và chỉ hướng dẫn người dùng kiểm tra kênh chính thức của trường.
 
 Quy tắc:
 - Trả lời bằng tiếng Việt, ngắn gọn và nêu rõ năm nếu có trong CONTEXT.
+- Trước khi trả lời, rà soát câu hỏi để không bỏ sót ý độc lập nào; giữ thứ tự
+  hỏi và trình bày từng ý riêng khi cần. Chỉ trả lời ý được CONTEXT của lượt
+  truy xuất hiện tại hỗ trợ; không dùng evidence của một ý để suy ra ý khác.
+  Nếu có nhiều ý nhưng CONTEXT chỉ hỗ trợ một phần, trả lời phần có căn cứ và
+  nói rõ phần còn thiếu thông tin đã xác minh; tuyệt đối không tự lấp chỗ trống.
+- Mỗi mục trả lời chỉ được dùng dữ kiện liên quan trực tiếp tới intent của mục
+  đó. Không thêm thông tin quảng bá, gợi ý liên hệ, hotline, fanpage hoặc liên
+  kết nếu CONTEXT không nêu rõ; nguồn và liên kết chính thức do backend gắn.
 - Phân biệt học phí, học bổng, hồ sơ xét tuyển, hồ sơ nhập học, lịch chung và
   tuyển sinh bổ sung.
 - Phân biệt riêng ngưỡng đảm bảo chất lượng đầu vào (điểm sàn), điểm trúng
@@ -98,6 +108,10 @@ Quy tắc:
 - Chỉ nêu con số, điều kiện, giấy tờ hoặc thời hạn có trong CONTEXT.
 - Với câu hỏi về phương thức xét tuyển hoặc cách tính điểm, chỉ nêu phương thức,
   công thức và tổ hợp khi CONTEXT ghi rõ; không tự suy ra tổ hợp hay quy đổi.
+- Khi được yêu cầu liệt kê chi tiết, giải thích từng phương thức/điều kiện chỉ
+  từ CONTEXT; không ghép các mảnh thuộc những chính sách khác nhau.
+- Với học bổng, tách quỹ tổng của trường khỏi mức cá nhân và luôn gắn tỷ lệ/số
+  tiền với đúng điều kiện được nêu; không trình bày quỹ tổng như tiền mỗi sinh viên.
 - Với câu hỏi về đăng ký xét tuyển, chỉ nêu các trường thông tin, cổng và yêu cầu
   được ghi trong CONTEXT; không tự tạo thời hạn, đường dẫn hoặc yêu cầu giấy tờ.
 - Với câu hỏi về cơ sở/liên hệ, chỉ nêu địa chỉ, số điện thoại hoặc email xuất hiện
@@ -155,7 +169,8 @@ Quy tắc:
 - Nếu intent là hỏi ngưỡng đầu vào và STRUCTURED_SCORE_FACTS có đủ dữ liệu, hãy trình bày
   từng dòng theo đúng method và raw_value trong dữ liệu; không bỏ một method và không hoán đổi
   giá trị giữa các method.
-- Không tạo, đoán hoặc chép URL. Nguồn sẽ được hệ thống gắn từ metadata backend.
+- Không tạo, đoán hoặc chép URL/markdown link, kể cả link rỗng hoặc dạng (#).
+  Nguồn sẽ được hệ thống gắn từ metadata backend.
 - Chỉ trả về phần câu trả lời, không thêm mục "Nguồn" hoặc danh sách liên kết.
 
 <INTENT>

@@ -7,7 +7,15 @@ import unicodedata
 from typing import Any, Mapping
 from urllib.parse import urlparse
 
+from src.config.settings import settings
+
 from .evidence import EvidenceBundle
+from .query_semantics import (
+    excludes_optional_english_test,
+    is_semester_fee_total_question,
+    mentions_optional_english_test,
+    should_include_optional_english_fee,
+)
 from .year_semantics import extract_requested_year
 
 
@@ -49,7 +57,7 @@ ERROR_ANSWER = "Xin lỗi, tôi chưa thể xử lý câu hỏi này lúc này. 
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)>]+", re.IGNORECASE)
 _MARKDOWN_LINK_RE = re.compile(
-    r"\[([^\]]+)\]\(\s*(?:https?://|www\.)[^)]+\)", re.IGNORECASE
+    r"\[([^\]]+)\]\(\s*.*?\)(?=[.,!?;:\s]|$)", re.IGNORECASE
 )
 _TOKEN_RE = re.compile(r"\d[\d.,]*|[A-Za-zÀ-ỹĐđ]+", re.UNICODE)
 _LABELED_AMOUNT_RE = re.compile(
@@ -85,8 +93,9 @@ _ENTITY_CLAIM_RE = re.compile(
     re.IGNORECASE,
 )
 _ORGANIZATION_RE = re.compile(
-    r"\b(?:trường\s+đại học|đại học)\s+[^,.;:\n]{2,90}",
-    re.IGNORECASE,
+    # Run against _fold_text() output so institution names are recognized in
+    # both Vietnamese and unaccented model drafts (e.g. "Dai hoc FPT").
+    r"\b(?:truong\s+dai hoc|dai hoc)\s+[^,.;:\n]{2,90}",
 )
 _TRUSTED_SCHOOL_NAMES = frozenset(
     {
@@ -118,6 +127,7 @@ def validate_model_answer(
     *,
     question: str = "",
     analysis: Mapping[str, object] | Any | None = None,
+    target_year: int | None = None,
 ) -> dict[str, object]:
     """Chỉ chấp nhận câu trả lời có cơ sở với ánh xạ điểm số có cấu trúc chính xác.
 
@@ -134,7 +144,8 @@ def validate_model_answer(
         return _failed(scope_failure)
     if not evidence.is_usable:
         return _failed("evidence_empty")
-    evidence_failure = _evidence_contract_failure(evidence)
+    expected_year = settings.target_year if target_year is None else int(target_year)
+    evidence_failure = _evidence_contract_failure(evidence, target_year=expected_year)
     if evidence_failure:
         return _failed(evidence_failure)
     answer = sanitize_answer(raw_answer)
@@ -143,11 +154,16 @@ def validate_model_answer(
     contract_failure = _answer_contract_failure(answer, evidence, question, analysis)
     if contract_failure:
         return _failed(contract_failure)
-    fee_total_failure = _optional_fee_total_failure(answer, evidence, question)
+    contact_channel_failure = _unsupported_contact_channel_claim(answer, evidence)
+    if contact_channel_failure:
+        return _failed(contact_channel_failure)
+    fee_total_failure = _optional_fee_total_failure(
+        answer, evidence, question, target_year=expected_year
+    )
     if fee_total_failure:
         return _failed(fee_total_failure)
     if not _is_supported_by_evidence(answer, evidence) and not _supports_optional_fee_sum(
-        answer, evidence, question
+        answer, evidence, question, target_year=expected_year
     ):
         return _failed("ungrounded")
     relation_failure = _program_relation_failure(answer, evidence, analysis)
@@ -232,7 +248,11 @@ def _official_dhv_url(value: object) -> bool:
     )
 
 
-def _evidence_contract_failure(evidence: EvidenceBundle) -> str:
+def _evidence_contract_failure(
+    evidence: EvidenceBundle,
+    *,
+    target_year: int = settings.target_year,
+) -> str:
     """Kiểm tra metadata ở ngay boundary validator, kể cả khi bundle được tạo thủ công."""
 
     for chunk in evidence.chunks:
@@ -240,7 +260,7 @@ def _evidence_contract_failure(evidence: EvidenceBundle) -> str:
         if metadata.get("status") != "verified":
             return "evidence_status_not_verified"
         try:
-            if int(metadata.get("year")) != 2026:
+            if int(metadata.get("year")) != target_year:
                 return "evidence_year_mismatch"
         except (TypeError, ValueError):
             return "evidence_year_mismatch"
@@ -323,8 +343,12 @@ def _answer_contract_failure(
 
 def _target_institution_failure(answer: str, evidence: EvidenceBundle) -> str:
     evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
-    for match in _ORGANIZATION_RE.finditer(answer):
-        organization = _fold_text(match.group(0))
+    folded_answer = _fold_text(answer)
+    for match in _ORGANIZATION_RE.finditer(folded_answer):
+        organization = match.group(0)
+        # Institution support is checked as a complete normalized name, not
+        # as token overlap; the fact that evidence mentions "university" or
+        # "cooperation" cannot support a claim about a specific partner.
         if organization in _TRUSTED_SCHOOL_NAMES or organization in evidence_text:
             continue
         return "institution_mismatch"
@@ -340,6 +364,19 @@ def _claims_official_status(answer: str) -> bool:
             r"\b(?:chatbot|tro ly)(?: nay)?\b[^.!?\n]{0,30}\bchinh thuc\b",
         )
     )
+
+
+def _unsupported_contact_channel_claim(answer: str, evidence: EvidenceBundle) -> str:
+    """Do not let generation invent an official contact channel or profile."""
+
+    folded_answer = _fold_text(answer)
+    folded_evidence = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
+    for marker in ("fanpage", "hotline", "facebook", "zalo", "tiktok", "youtube"):
+        if re.search(rf"\b{re.escape(marker)}\b", folded_answer) and not re.search(
+            rf"\b{re.escape(marker)}\b", folded_evidence
+        ):
+            return "unsupported_contact_channel"
+    return ""
 
 
 def _requested_year(question: str, entities: Mapping[str, object]) -> int | None:
@@ -365,33 +402,56 @@ def _supports_optional_fee_sum(
     answer: str,
     evidence: EvidenceBundle,
     question: str,
+    *,
+    target_year: int | None = None,
 ) -> bool:
     """Allow only the exact arithmetic explicitly requested from the sourced fee row."""
 
-    expected_total = _optional_fee_total_from_evidence(evidence, question)
+    expected_total = _optional_fee_total_from_evidence(
+        evidence, question, target_year=target_year
+    )
     if expected_total is None:
         return False
-    if "tong chi phi" not in _fold_text(answer) and "tong cong" not in _fold_text(answer):
+    folded_answer = _fold_text(answer)
+    if not any(marker in folded_answer for marker in ("tong chi phi", "tong cong", "tong cac khoan")):
         return False
     formatted = f"{expected_total:,}".replace(",", ".")
     return formatted in answer
 
 
-def _optional_fee_total_from_evidence(evidence: EvidenceBundle, question: str) -> int | None:
-    folded_question = _fold_text(question)
-    if not (
-        "kiem tra nang luc tieng anh" in folded_question
-        and any(marker in folded_question for marker in ("tong chi phi", "so tien", "bao nhieu"))
-    ):
+def _optional_fee_total_from_evidence(
+    evidence: EvidenceBundle,
+    question: str,
+    *,
+    target_year: int | None = None,
+) -> int | None:
+    if not is_semester_fee_total_question(question):
         return None
+    expected_year = settings.target_year if target_year is None else int(target_year)
     for chunk in evidence.chunks:
         metadata = chunk.metadata or {}
-        if metadata.get("record_type") != "page_text" or metadata.get("category") != "ho_so":
+        if (
+            metadata.get("record_type") != "page_text"
+            or metadata.get("category") != "ho_so"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
+        ):
             continue
         try:
             if int(metadata.get("page", 0)) != 4:
                 continue
+            if int(metadata.get("year", 0)) != expected_year:
+                continue
         except (TypeError, ValueError):
+            continue
+        source_url = str(metadata.get("source_url") or "").strip()
+        parsed_source = urlparse(source_url)
+        source_host = (parsed_source.hostname or "").lower().rstrip(".")
+        if (
+            parsed_source.scheme.lower() != "https"
+            or not source_host
+            or not (source_host == "dhv.edu.vn" or source_host.endswith(".dhv.edu.vn"))
+        ):
             continue
         text = re.sub(r"\s+", " ", chunk.text or "")
         match = re.search(
@@ -405,7 +465,14 @@ def _optional_fee_total_from_evidence(evidence: EvidenceBundle, question: str) -
             continue
         amounts = [int(value.replace(".", "")) for value in match.groups()]
         if all(amount > 0 for amount in amounts):
-            return sum(amounts)
+            if mentions_optional_english_test(question) and not mentions_optional_english_test(text):
+                continue
+            if excludes_optional_english_test(question) and not any(
+                marker in _fold_text(text)
+                for marker in ("neu co", "neu ap dung", "tuy truong hop", "chi ap dung")
+            ):
+                continue
+            return sum(amounts) if should_include_optional_english_fee(question) else amounts[0]
     return None
 
 
@@ -413,19 +480,18 @@ def _optional_fee_total_failure(
     answer: str,
     evidence: EvidenceBundle,
     question: str,
+    *,
+    target_year: int | None = None,
 ) -> str:
-    expected_total = _optional_fee_total_from_evidence(evidence, question)
+    expected_total = _optional_fee_total_from_evidence(
+        evidence, question, target_year=target_year
+    )
     if expected_total is None:
-        folded_question = _fold_text(question)
-        is_optional_total_question = (
-            "kiem tra nang luc tieng anh" in folded_question
-            and any(marker in folded_question for marker in ("tong chi phi", "so tien", "bao nhieu"))
-        )
-        if is_optional_total_question and re.search(r"\d{1,3}(?:\.\d{3})+", answer):
+        if is_semester_fee_total_question(question) and re.search(r"\d{1,3}(?:\.\d{3})+", answer):
             return "optional_fee_total_unverified"
         return ""
     folded_answer = _fold_text(answer)
-    if "tong chi phi" not in folded_answer and "tong cong" not in folded_answer:
+    if not any(marker in folded_answer for marker in ("tong chi phi", "tong cong", "tong cac khoan")):
         return "optional_fee_total_missing"
     formatted = f"{expected_total:,}".replace(",", ".")
     return "" if formatted in answer else "optional_fee_total_mismatch"
@@ -515,8 +581,8 @@ def _has_unsupported_named_entity(
         if residual.strip():
             return True
 
-    for match in _ORGANIZATION_RE.finditer(answer):
-        organization = _fold_text(match.group(0))
+    for match in _ORGANIZATION_RE.finditer(_fold_text(answer)):
+        organization = match.group(0)
         if organization in _TRUSTED_SCHOOL_NAMES:
             continue
         if organization not in evidence_text:
@@ -803,6 +869,21 @@ def _score_mapping_failure(
         getattr(analysis, "intent", "") or ""
     )
     if intent == "TU_VAN_CHON_NGANH" and entities.get("student_scores"):
+        return ""
+    if (
+        score_type == "supplementary_threshold"
+        and intent == "HOI_XET_TUYEN_BO_SUNG"
+        and not any(
+            marker in normalized_question
+            for marker in (
+                "diem", "nguong", "muc diem", "diem nhan ho so", "bao nhieu diem",
+            )
+        )
+    ):
+        # A question about the supplementary round's deadline or submission
+        # route can retrieve threshold records from the same PDF. Do not force
+        # those unasked numbers into the answer; validate their date/source
+        # requirements separately below.
         return ""
     if (
         score_type == "supplementary_threshold"

@@ -123,6 +123,12 @@ PRIVACY_REMINDER = (
     "vào khung chat."
 )
 GENERIC_ERROR_ANSWER = "Xin lỗi, tôi chưa thể xử lý câu hỏi này lúc này. Bạn vui lòng thử lại sau."
+STARTER_QUESTIONS = {
+    "Chỉ tiêu tuyển sinh": "Chỉ tiêu tuyển sinh DHV năm 2026 là bao nhiêu?",
+    "Học phí": "Học phí DHV năm 2026 là bao nhiêu?",
+    "Điểm chuẩn 2026": "Điểm trúng tuyển DHV năm 2026 theo các phương thức là bao nhiêu?",
+    "Cách thức nộp hồ sơ": "Đăng ký xét tuyển DHV năm 2026 như thế nào?",
+}
 
 KNOWN_STATUSES = frozenset(
     {"ok", "clarification", "no_data", "out_of_scope", "ollama_offline", "vector_db_error", "error"}
@@ -355,11 +361,25 @@ typed_question = st.chat_input(
     "Nhập câu hỏi về tuyển sinh DHV...",
     key="chat_input",
 )
+has_typed_question = isinstance(typed_question, str) and bool(typed_question.strip())
+
+selected_starter = None
+if not st.session_state.messages and not has_typed_question:
+    selected_starter = st.pills(
+        "Bạn có thể hỏi",
+        options=list(STARTER_QUESTIONS),
+        selection_mode="single",
+        key="starter_question",
+        label_visibility="collapsed",
+        wrap=True,
+    )
+    if not selected_starter:
+        _render_welcome()
 
 _render_chat_history()
 
-if isinstance(typed_question, str) and typed_question.strip():
+if has_typed_question:
     _record_and_render_exchange(typed_question.strip())
-elif not st.session_state.messages:
-    _render_welcome()
-
+elif selected_starter in STARTER_QUESTIONS:
+    _record_and_render_exchange(STARTER_QUESTIONS[selected_starter])
+    st.rerun()

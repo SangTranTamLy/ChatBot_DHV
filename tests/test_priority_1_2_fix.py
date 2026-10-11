@@ -7,7 +7,7 @@ import unittest
 from langchain_core.documents import Document
 
 from src.chatbot.evidence import build_evidence
-from src.chatbot.output_validator import validate_model_answer
+from src.chatbot.output_validator import sanitize_answer, validate_model_answer
 from src.chatbot.query_analysis import (
     ConversationState,
     analyze_question,
@@ -38,6 +38,36 @@ class _NeverCalledLLM:
 
 
 class ExternalSchoolBoundaryTests(unittest.TestCase):
+    def test_validator_strips_unsafe_link_targets_and_rejects_unsupported_channels(self) -> None:
+        self.assertEqual(
+            sanitize_answer("Xem [Fanpage](#) hoặc [trang lạ](javascript:alert(1))."),
+            "Xem Fanpage hoặc trang lạ.",
+        )
+        evidence = build_evidence(
+            [
+                Document(
+                    page_content="Học bổng DHV 2026 lên đến 75 tỷ đồng.",
+                    metadata={
+                        "title": "Học bổng DHV",
+                        "category": "hoc_bong",
+                        "year": 2026,
+                        "school_code": "DHV",
+                        "source_url": SOURCE_URL,
+                        "status": "verified",
+                        "chunk_id": "priority-1-2-scholarship-channel",
+                    },
+                )
+            ]
+        )
+        result = validate_model_answer(
+            "Học bổng DHV lên đến 75 tỷ đồng. Xem Fanpage [tại đây](#).",
+            evidence,
+            question="DHV có học bổng nào?",
+            analysis={"intent": "HOI_HOC_BONG", "entities": {"target_school": "DHV"}},
+        )
+        self.assertEqual(result["status"], "no_data")
+        self.assertEqual(result["_validation_reason"], "unsupported_contact_channel")
+
     def test_generic_external_school_matrix_never_retrieves(self) -> None:
         questions = (
             "Điểm chuẩn trường đại học khác?",
@@ -188,6 +218,28 @@ class ExternalSchoolBoundaryTests(unittest.TestCase):
         self.assertEqual(result["trace"]["retrieved_chunks"], 0)
         self.assertEqual(result["trace"]["evidence_count"], 0)
 
+    def test_coequal_dhv_and_external_school_fact_query_is_mixed(self) -> None:
+        question = "DHV và Đại học FPT có bao nhiêu website?"
+        retriever = _RecordingRetriever()
+        analysis = analyze_question(question)
+
+        self.assertEqual(analysis.entities["target_school"], "MIXED")
+        result = ask_chatbot(question, retriever=retriever, llm=_NeverCalledLLM())
+        self.assertEqual(result["status"], "out_of_scope")
+        self.assertEqual(result["scope_reason"], "mixed_school")
+        self.assertEqual(retriever.calls, 0)
+        self.assertEqual(result["trace"]["retrieval_calls"], 0)
+        self.assertEqual(result["trace"]["evidence_count"], 0)
+
+    def test_external_institution_as_dhv_relationship_object_stays_dhv(self) -> None:
+        for question in (
+            "DHV có hợp tác với Đại học FPT không?",
+            "DHV có kết nối và giao lưu với các trường khác không?",
+        ):
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                self.assertEqual(analysis.entities["target_school"], "DHV")
+
     def test_default_dhv_and_unspecified_queries_still_retrieve(self) -> None:
         for question, expected_target in (
             ("Điểm chuẩn DHV CNTT?", "DHV"),
@@ -259,6 +311,83 @@ class ExternalSchoolBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "no_data")
         self.assertEqual(result["_validation_reason"], "school_scope_boundary")
+
+    def test_validator_rejects_unverified_external_partner_with_or_without_accents(self) -> None:
+        evidence = build_evidence(
+            [
+                Document(
+                    page_content=(
+                        "DHV có hợp tác với các trường đại học quốc tế theo các thỏa thuận chung."
+                    ),
+                    metadata={
+                        "title": "Thông tin hợp tác DHV",
+                        "category": "thong_tin_truong",
+                        "year": 2026,
+                        "school_code": "DHV",
+                        "source_url": SOURCE_URL,
+                        "status": "verified",
+                        "chunk_id": "priority-1-2-generic-partnership",
+                    },
+                )
+            ]
+        )
+
+        for answer in (
+            "DHV hợp tác với Đại học FPT.",
+            "DHV hop tac voi Dai hoc FPT.",
+        ):
+            with self.subTest(answer=answer):
+                result = validate_model_answer(
+                    answer,
+                    evidence,
+                    question="DHV có hợp tác với Đại học FPT không?",
+                    analysis={
+                        "intent": "SCHOOL_INFO",
+                        "entities": {
+                            "target_school": "DHV",
+                            "scope_reason": "in_scope_dhv",
+                        },
+                    },
+                )
+                self.assertEqual(result["status"], "no_data")
+                self.assertEqual(result["_validation_reason"], "institution_mismatch")
+
+
+class ConfirmedHighSweepFailureTests(unittest.TestCase):
+    def test_vocational_same_group_question_uses_verified_method_five_without_llm(self) -> None:
+        question = "Thí sinh tốt nghiệp trung cấp cùng nhóm ngành có thể vào DHV không?"
+        source_text = (
+            "1.7. Xét tuyển đối với thí sinh tốt nghiệp trung cấp\n"
+            "Áp dụng cho thí sinh đã tốt nghiệp trung cấp nghề cùng nhóm ngành dự tuyển đại học "
+            "và đã hoàn thành chương trình văn hóa THPT theo quy định."
+        )
+        document = Document(
+            page_content=source_text,
+            metadata={
+                "title": "Phương thức xét tuyển DHV 2026",
+                "category": "phuong_thuc_xet_tuyen",
+                "record_type": "page_text",
+                "page": 5,
+                "year": 2026,
+                "school_code": "DHV",
+                "source_url": "https://tuyensinh.dhv.edu.vn/",
+                "status": "verified",
+                "chunk_id": "verified-method-5-vocational-condition",
+            },
+        )
+        analysis = analyze_question(question)
+        plan = route_question(analysis)
+        self.assertIn("trung cap nghe cung nhom nganh", plan.retrieval_query)
+        self.assertIn("phuong_thuc_xet_tuyen", plan.categories)
+
+        retriever = _RecordingRetriever([document])
+        result = ask_chatbot(question, retriever=retriever, llm=_NeverCalledLLM())
+
+        self.assertEqual(retriever.calls, 1)
+        self.assertEqual(result["status"], "ok", msg=str(result.get("trace")))
+        self.assertIn("đã hoàn thành chương trình văn hóa THPT", result["answer"])
+        self.assertNotIn("Đại học Sư phạm TP.HCM", result["answer"])
+        self.assertNotIn("H-SCA", result["answer"])
 
 
 class CoreferenceAndStateTests(unittest.TestCase):

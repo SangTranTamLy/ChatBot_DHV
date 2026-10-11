@@ -24,7 +24,7 @@ def _enrollment_document(record_id: str, text: str) -> Document:
             "year": 2026,
             "school_code": "DHV",
             "source_url": SOURCE_URL,
-            "source_file": "data/raw/ho_so/HO_SO_NHAP_HOC_DAY_DU_DHV_2026.pdf",
+            "source_file": "data/raw/ho_so/V1_HO_SO_VA_THU_TUC_NHAP_HOC_DHV_2026.pdf",
             "status": "verified",
             "record_type": "enrollment_document",
             "structured_record_id": record_id,
