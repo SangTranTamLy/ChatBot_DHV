@@ -44,6 +44,7 @@ chroma_backup_*/
 
 # Generated QA/evaluation result dumps
 .reports/
+/reports/
 reports/*.jsonl
 reports/*_results.json
 reports/*_results.csv
