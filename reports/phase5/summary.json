@@ -1,0 +1,37 @@
+{
+  "dataset_audit": {
+    "dataset": "user_canonical_500",
+    "total": 500,
+    "expected_total": 500,
+    "canonical_only": true,
+    "source_rows": 500,
+    "unique_ids": true,
+    "sequential_ids": true,
+    "duplicate_questions": [],
+    "missing_fields": [],
+    "lock_matches": true,
+    "valid": true
+  },
+  "runtime_corpus": {
+    "files_seen": 7,
+    "verified_documents": 5,
+    "skipped_unverified": 2,
+    "skipped_internal": 0,
+    "skipped_other_year": 0,
+    "metadata_errors": 0,
+    "chunks_indexed_for_evaluation": 247
+  },
+  "cases": 500,
+  "status_counts": {
+    "out_of_scope": 98,
+    "ok": 340,
+    "no_data": 57,
+    "clarification": 5
+  },
+  "answer_nonempty_rate": 1.0,
+  "reference_token_recall": 0.2667,
+  "reference_number_recall": 0.6206,
+  "evidence_selected_rate": 0.664,
+  "evaluation_status": "EVALUATED",
+  "reference_answer_policy": "reference_answer is copied from the workbook; no generated answer replaces it"
+}

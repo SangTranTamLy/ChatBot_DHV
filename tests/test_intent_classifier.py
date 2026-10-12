@@ -308,11 +308,13 @@ class ScopeRegressionTests(unittest.TestCase):
 
         result = ask_chatbot(question, retriever=retriever, llm=llm)
 
-        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["status"], "clarification")
         self.assertIn("Truyền thông đa phương tiện", result["answer"])
         self.assertIn("Ngôn ngữ Trung Quốc", result["answer"])
+        self.assertNotIn("mình nghiêng về", result["answer"].casefold())
+        self.assertIn("chưa nêu căn cứ để kết luận", result["answer"])
         self.assertTrue(retriever.called)
-        self.assertTrue(llm.called)
+        self.assertFalse(llm.called)
 
     def test_website_request_returns_verified_url_without_fabricating_one(self) -> None:
         retriever = WebsiteRetriever()

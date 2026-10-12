@@ -40,6 +40,9 @@ _SUPPLEMENTARY_DATE_FACT_RE = re.compile(
     re.IGNORECASE,
 )
 _INTENT_CONTENT_MARKERS = {
+    "HOI_HOC_BONG": (
+        "hoc bong",
+    ),
     "HOI_DANG_KY_XET_TUYEN": (
         "dang ky xet tuyen",
         "dang ky nguyen vong",
@@ -286,6 +289,15 @@ def _intent_content_filter_reason(document: Document, intent: str | None) -> str
     if not markers:
         return None
     content = _fold_text(document.page_content)
+    if intent == "HOI_HOC_BONG" and all(
+        marker in content
+        for marker in ("ten nganh", "chuong trinh dao tao", "ma nganh")
+    ):
+        # A mixed method-PDF page can mention the scholarship fund in its
+        # introduction while the retrieved chunk is actually the unrelated
+        # major/program table. Never let that table become scholarship
+        # evidence merely because the source page also mentions scholarships.
+        return "unrelated_program_catalogue"
     if any(marker in content for marker in markers):
         return None
     return "intent_content_mismatch"

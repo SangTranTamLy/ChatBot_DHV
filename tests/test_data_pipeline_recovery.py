@@ -16,6 +16,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = PROJECT_ROOT / "data" / "raw"
 
 
+def _manifest_entry(document_id: str) -> dict[str, object]:
+    manifest = load_raw_manifest(RAW_ROOT / "manifest.json")
+    return next(
+        entry
+        for entry in manifest["documents"]
+        if entry.get("document_id") == document_id
+    )
+
+
+def _processed_path_for(entry: dict[str, object]) -> Path:
+    raw_file = Path(str(entry["raw_file"]))
+    relative_to_raw = raw_file.relative_to(Path("data") / "raw")
+    return PROJECT_ROOT / "data" / "processed" / relative_to_raw.with_suffix(".json")
+
+
 class _FakePage:
     def __init__(self, text: str) -> None:
         self.text = text
@@ -50,20 +65,12 @@ class DataPipelineRecoveryTests(unittest.TestCase):
         self.assertEqual(pages[0]["text"], "OCR text có đủ nội dung để lập chỉ mục.")
 
     def test_manifest_provenance_survives_pdf_without_url(self) -> None:
+        entry = _manifest_entry("hoc-phi-dhv-2024")
         document = build_structured_document(
-            raw_path=RAW_ROOT / "hoc_phi" / "Hoc_Phi_DHV_2024.pdf",
+            raw_path=PROJECT_ROOT / str(entry["raw_file"]),
             raw_root=RAW_ROOT,
             pages=[{"page": 1, "text": "Học phí 1.100.000 VNĐ một tín chỉ."}],
-            manifest_entry={
-                "document_id": "hoc-phi-2024-fixture",
-                "title": "Học phí DHV 2024",
-                "category": "hoc_phi",
-                "raw_file": "data/raw/hoc_phi/Hoc_Phi_DHV_2024.pdf",
-                "year": 2024,
-                "status": "missing_source_url",
-                "verification_status": "missing_source_url",
-                "verified": False,
-            },
+            manifest_entry=entry,
         )
 
         self.assertEqual(document["year"], 2024)
@@ -89,11 +96,8 @@ class DataPipelineRecoveryTests(unittest.TestCase):
             self.assertIn(token, value)
 
     def test_processed_corpus_keeps_2024_and_loader_source_is_not_verified(self) -> None:
-        processed = json.loads(
-            (PROJECT_ROOT / "data" / "processed" / "hoc_phi" / "Hoc_Phi_DHV_2024.json").read_text(
-                encoding="utf-8"
-            )
-        )
+        entry = _manifest_entry("hoc-phi-dhv-2024")
+        processed = json.loads(_processed_path_for(entry).read_text(encoding="utf-8"))
         self.assertEqual(processed["year"], 2024)
         self.assertEqual(processed["source"]["status"], "missing_source_url")
         self.assertFalse(processed["source"]["verified"])

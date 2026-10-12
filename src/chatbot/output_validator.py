@@ -175,6 +175,9 @@ def validate_model_answer(
     advisory_choice_failure = _advisory_choice_failure(answer, analysis)
     if advisory_choice_failure:
         return _failed(advisory_choice_failure)
+    advisory_fit_failure = _advisory_fit_failure(answer, evidence, analysis)
+    if advisory_fit_failure:
+        return _failed(advisory_fit_failure)
     if _has_unsupported_named_entity(answer, evidence, analysis):
         return _failed("ungrounded_entity")
     literal_failure = _unsupported_contact_or_date_literal(answer, evidence, analysis)
@@ -600,6 +603,9 @@ def _is_model_fallback(answer: str) -> bool:
             "khong biet",
             "khong co thong tin",
             "khong the tra loi",
+            "khong co trong bang chung",
+            "khong co trong du lieu",
+            "khong duoc de cap trong bang chung",
         )
     )
 
@@ -815,6 +821,91 @@ def _advisory_choice_failure(
     if any(marker in folded_answer for marker in selector_markers):
         return "advisory_choices_incomplete"
     return ""
+
+
+def _advisory_fit_failure(
+    answer: str,
+    evidence: EvidenceBundle,
+    analysis: Mapping[str, object] | Any | None,
+) -> str:
+    """Require source evidence for a personal-interest-to-program fit claim."""
+
+    entities = _analysis_entities(analysis)
+    intent = str(analysis.get("intent") or "") if isinstance(analysis, Mapping) else str(
+        getattr(analysis, "intent", "") or ""
+    )
+    interest = str(entities.get("interest") or "").strip()
+    if intent != "TU_VAN_CHON_NGANH" or not interest:
+        return ""
+
+    folded_answer = _fold_text(answer)
+    selector_patterns = (
+        r"\bnghieng ve\b",
+        r"\b(?:nen|hay) chon\b",
+        r"\b(?:nen|hay) hoc\b",
+        r"\bgoi y\b[^.!?\n]{0,50}\b(?:chon|hoc)\b",
+    )
+    if any(re.search(pattern, folded_answer) for pattern in selector_patterns):
+        makes_personal_choice = True
+    else:
+        makes_personal_choice = False
+
+    fit_claim = any(
+        re.search(pattern, folded_answer)
+        for pattern in (
+            r"\bphu hop(?: nhat)? voi (?:ban|em|so thich|nang luc|hoan canh)\b",
+            r"\bthich hop voi (?:ban|em|so thich|nang luc|hoan canh)\b",
+            r"\b(?:nganh|chuong trinh|lua chon)\b[^.!?\n]{0,80}\bphu hop(?: nhat)?\b",
+            r"\bvoi so thich\b[^.!?\n]{0,100}\b(?:phu hop|thich hop|nen chon|nen hoc|nghieng ve)\b",
+            r"\bvoi so thich\b[^.!?\n]{0,100}\b(?:la chuong trinh|thuoc nganh|la nganh)\b",
+        )
+    )
+    if not makes_personal_choice and not fit_claim:
+        return ""
+
+    # A clearly negative answer can state that the corpus does not establish
+    # suitability. It is not itself a recommendation claim.
+    negative_fit = re.search(
+        r"\b(?:khong|chua)\b[^.!?\n]{0,100}"
+        r"\b(?:can cu|co thong tin|the ket luan|xac dinh)\b"
+        r"[^.!?\n]{0,80}\b(?:phu hop|thich hop|nen chon|nen hoc)\b",
+        folded_answer,
+    )
+    if negative_fit and not makes_personal_choice:
+        return ""
+
+    folded_interest = _fold_text(interest)
+    target_names: set[str] = set()
+    for key in ("major_name", "program_name", "parent_major", "candidate_majors", "candidate_programs"):
+        target_names.update(_fold_text(name) for name in _candidate_strings(entities.get(key)))
+    for relation in evidence.entity_relations:
+        for key in ("program_name", "parent_major"):
+            value = _fold_text(str(relation.get(key) or ""))
+            if value:
+                target_names.add(value)
+    for fact in evidence.score_facts:
+        value = _fold_text(str(fact.get("major_name") or ""))
+        if value:
+            target_names.add(value)
+
+    source_fit_markers = (
+        "phu hop voi",
+        "thich hop voi",
+        "phu hop cho",
+        "dinh huong phu hop",
+    )
+    for chunk in evidence.chunks:
+        folded_chunk = _fold_text(chunk.text)
+        if folded_interest not in folded_chunk:
+            continue
+        named_target_supported = any(
+            name in folded_answer and name in folded_chunk
+            for name in target_names
+            if name
+        )
+        if named_target_supported and any(marker in folded_chunk for marker in source_fit_markers):
+            return ""
+    return "unsupported_advisory_fit"
 
 
 def _has_required_labeled_amount(answer: str, evidence: EvidenceBundle, question: str) -> bool:

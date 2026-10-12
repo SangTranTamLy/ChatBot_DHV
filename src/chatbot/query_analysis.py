@@ -222,6 +222,7 @@ _SUPPLEMENTARY_MARKERS = (
     "xet tuyen bo sung",
     "tuyen sinh bo sung",
     "xet bo sung",
+    "dot bo sung",
     "nhan ho so bo sung",
     "diem nhan ho so bo sung",
     "diem bo sung",
@@ -231,7 +232,10 @@ _SUPPLEMENTARY_MARKERS = (
 _METHOD_PATTERNS = (
     (
         "thpt",
-        re.compile(r"\b(?:thi\s+tot\s+nghiep(?!\s+xong\b)(?:\s+thpt)?|thi\s+thpt)\b"),
+        re.compile(
+            r"\b(?:thi\s+tot\s+nghiep(?!\s+xong\b)(?:\s+thpt)?|thi\s+thpt|"
+            r"phuong\s+thuc(?:\s+xet\s+tuyen)?(?:\s+ket\s+qua\s+ky\s+thi)?\s+tot\s+nghiep\s+thpt)\b"
+        ),
     ),
     ("hoc_ba", re.compile(r"\b(?:hoc\s+ba|hoc\s+tap\s+thpt)\b")),
     ("dgnl", re.compile(r"\b(?:dgnl|danh\s+gia\s+nang\s+luc)\b")),
@@ -272,6 +276,12 @@ _FORMULA_MARKERS = (
     "tinh diem the nao",
     "tinh diem ra sao",
     "tinh nhu the nao",
+    "xet diem nhu nao",
+    "diem nhu nao",
+    "diem tinh nhu nao",
+    "diem duoc tinh nhu nao",
+    "tinh the nao",
+    "tinh ra sao",
 )
 
 
@@ -909,9 +919,22 @@ def _is_admission_combination_structure_question(normalized: str) -> bool:
     has_highest_scores = "diem cao nhat" in normalized
     has_admissions_context = any(
         marker in normalized
-        for marker in ("dhv", "xet tuyen", "phuong thuc", "cach lay", "cach chon")
+        for marker in (
+            "dhv", "xet tuyen", "phuong thuc", "cach lay", "cach chon",
+            "thi tot nghiep", "thi thpt", "diem thi",
+        )
     )
-    return has_math_base and has_two_subjects and has_highest_scores and has_admissions_context
+    explicit_three_subject_question = bool(
+        re.search(r"\b(?:3|03|ba)\s+mon\b", normalized)
+        and any(
+            marker in normalized
+            for marker in ("chon", "gom", "lua chon", "cau truc", "thanh phan", "nhu the nao")
+        )
+    )
+    return has_admissions_context and (
+        has_math_base and has_two_subjects and has_highest_scores
+        or explicit_three_subject_question
+    )
 
 
 def _is_admissions_bonus_request(normalized: str) -> bool:
@@ -1180,7 +1203,21 @@ def _is_score_amount_request(normalized: str) -> bool:
     quantity = bool(re.search(r"\b(?:bao nhieu|may|lay)\b", normalized))
     if not quantity:
         return False
-    return "diem" in normalized or "hoc ba" in normalized
+    if "diem" in normalized or "hoc ba" in normalized:
+        return True
+    # Colloquial paraphrases sometimes omit the word "điểm":
+    # "kết quả ĐGNL tối thiểu ... là mấy?" still asks for a numeric floor.
+    has_named_method = any(
+        marker in normalized
+        for marker in (
+            "dgnl", "danh gia nang luc", "h-sca", "h sca", "thi thpt",
+            "thi tot nghiep", "hoc ba",
+        )
+    )
+    has_threshold_cue = any(
+        marker in normalized for marker in ("toi thieu", "nguong", "muc toi thieu", "muc san")
+    )
+    return has_named_method and has_threshold_cue
 
 
 def _is_subject_minimum_request(normalized: str) -> bool:
@@ -1441,7 +1478,7 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
         "DANH_SACH_NGANH": ("nganh dao tao", "danh sach nganh", "liet ke nganh"),
         "HOI_NGUONG_DAU_VAO": ("diem san", "nguong dau vao", "diem dau vao"),
         "HOI_DIEM_TRUNG_TUYEN": ("diem trung tuyen", "diem chuan"),
-        "HOI_XET_TUYEN_BO_SUNG": ("xet tuyen bo sung", "tuyen sinh bo sung"),
+        "HOI_XET_TUYEN_BO_SUNG": ("xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung"),
         "HOI_PHUONG_THUC_XET_TUYEN": (
             "phuong thuc", "cach thuc xet tuyen", "hinh thuc tuyen sinh",
             "hinh thuc xet tuyen", "phuong an tuyen sinh", "tuyen sinh nhu the nao",
@@ -1711,13 +1748,21 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "danh sach", "liet ke", "liet ra", "co nhung", "nhung loai",
         "nhung gi", "gom nhung", "gom gi", "toan bo", "tat ca"
     ))
+    scholarship_catalog_requested = bool(
+        re.search(r"\bhoc bong\s+(?:gi|nao)\b", normalized)
+        or re.search(r"\b(?:cac|nhung)\s+hoc bong\b", normalized)
+    )
     supplementary_list_requested = _has_supplementary_marker(normalized) and bool(
         re.search(
             r"\b(?:nhung|cac|liet ke|liet ra|danh sach)\b.{0,36}\bnganh\b|\bnganh\b.{0,36}\bnao\b",
             normalized,
         )
     )
-    list_requested = list_requested or supplementary_list_requested
+    list_requested = (
+        list_requested
+        or supplementary_list_requested
+        or scholarship_catalog_requested
+    )
     query_mode = "SINGLE_FACT"
     if count_requested and list_requested:
         query_mode = "LIST_AND_COUNT"
@@ -2204,6 +2249,14 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     # such as ``ngành`` or ``tuyển sinh``.
     if _is_hard_out_of_scope(normalized, entities):
         return "OUT_OF_SCOPE"
+    advisory = any(
+        term in normalized
+        for term in ("chon nganh", "chua biet chon", "phan van", "nen hoc nganh", "nen chon")
+    )
+    if advisory or (entities.get("interest") and entities.get("student_scores")):
+        # A score inside a counselling question is context for the advice,
+        # not a request to look up a standalone numeric threshold.
+        return "TU_VAN_CHON_NGANH"
     if _is_subject_minimum_request(normalized):
         # A requested minimum score for a subject is a threshold lookup, even
         # when the question also contains ``tổ hợp xét tuyển`` wording.
@@ -2214,6 +2267,16 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     } and entities.get("student_scores"):
         # Preserve a personal score-comparison route instead of converting it
         # into a generic admission-condition lookup.
+        return "HOI_NGUONG_DAU_VAO"
+    if (
+        entities.get("score_type") == APPLICATION_THRESHOLD
+        and entities.get("admission_method")
+        and not entities.get("student_scores")
+        and _is_score_amount_request(normalized)
+    ):
+        # A method-specific ``how many points`` question asks for the
+        # published threshold, not application instructions. Keep the method
+        # entity so the router searches its verified method/conditions page.
         return "HOI_NGUONG_DAU_VAO"
     if _is_admission_eligibility_question(normalized):
         entities["admission_condition_request"] = True
@@ -2252,9 +2315,6 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         # A score/tổ hợp phrase can be the eligibility condition for a
         # scholarship, not a separate request about admission methods.
         return "HOI_HOC_BONG"
-    advisory = any(term in normalized for term in ("chon nganh", "chua biet chon", "phan van", "nen hoc nganh", "nen chon"))
-    if advisory or (entities.get("interest") and entities.get("student_scores")):
-        return "TU_VAN_CHON_NGANH"
     if _is_applicant_support_question(normalized):
         return "HOI_DANG_KY_XET_TUYEN"
     if _is_admissions_bonus_request(normalized):
@@ -2293,6 +2353,7 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     ):
         return "HOI_NHAP_HOC"
     if _is_formula_request(normalized):
+        entities["requested_information"] = ["score_calculation"]
         return "HOI_CACH_TINH_DIEM"
     if entities.get("score_query_type") == PERSONAL_SCORE_COMPARISON:
         return "HOI_NGUONG_DAU_VAO"
@@ -2667,6 +2728,13 @@ def _clarification_needed(analysis: QueryAnalysis, state: ConversationState) -> 
         analysis.entities.get("score_query_type") == PERSONAL_SCORE_COMPARISON
         and not analysis.entities.get("admission_method")
         and analysis.intent != "TU_VAN_CHON_NGANH"
+        and not (
+            str(analysis.entities.get("major_name") or "").casefold()
+            in {"luật", "luật kinh tế"}
+            and "hoc luc" in normalized
+            and "lop 12" in normalized
+            and any(grade in normalized for grade in ("xuat sac", "gioi", "kha", "trung binh"))
+        )
     ):
         return True, "admission_method_for_personal_score"
     has_score_request = _is_score_amount_request(normalized)
@@ -2749,6 +2817,7 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
                     entities={
                         **entities,
                         "issue_intents": [],
+                        "multi_issue_subplan": True,
                         "requested_information": [sub_intent],
                     },
                 ),
@@ -2772,6 +2841,10 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             categories = ("phuong_thuc_xet_tuyen",)
         elif major in {"luật", "luật kinh tế"} and _is_major_eligibility_context(
             resolved.normalized_question, major
+        ) or (
+            major in {"luật", "luật kinh tế"}
+            and "hoc luc" in resolved.normalized_question
+            and "lop 12" in resolved.normalized_question
         ):
             categories = ("phuong_thuc_xet_tuyen",)
         elif entities.get("score_query_type") == ADMISSION_SCORE_LOOKUP:
@@ -2785,13 +2858,19 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     elif resolved.intent == "HOI_PHUONG_THUC_XET_TUYEN":
         categories = ("phuong_thuc_xet_tuyen",)
     elif resolved.intent == "HOI_CACH_TINH_DIEM":
-        categories = (
-            ("phuong_thuc_xet_tuyen", "cach_tinh_diem")
-            if _is_admissions_bonus_request(resolved.normalized_question)
-            else ("phuong_thuc_xet_tuyen",)
-            if _is_admission_subject_count_question(resolved.normalized_question)
-            else ("cach_tinh_diem",)
-        )
+        if (
+            entities.get("admission_method") == "thpt"
+            and _is_formula_request(resolved.normalized_question)
+        ):
+            # Published method formulae live in the verified method document,
+            # not in a standalone `cach_tinh_diem` category in the active corpus.
+            categories = ("phuong_thuc_xet_tuyen",)
+        elif _is_admissions_bonus_request(resolved.normalized_question):
+            categories = ("phuong_thuc_xet_tuyen", "cach_tinh_diem")
+        elif _is_admission_subject_count_question(resolved.normalized_question):
+            categories = ("phuong_thuc_xet_tuyen",)
+        else:
+            categories = ("cach_tinh_diem",)
     elif resolved.intent == "HOI_DANG_KY_XET_TUYEN":
         normalized = resolved.normalized_question
         if _is_admission_eligibility_question(normalized):
@@ -2804,7 +2883,9 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             marker in normalized for marker in ("thong bao", "bao ket qua", "nhan ket qua", "vao dau")
         ):
             categories = ("dang_ky_xet_tuyen", "ho_so", "diem_trung_tuyen")
-        elif any(marker in normalized for marker in ("xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung")):
+        elif any(marker in normalized for marker in (
+            "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung",
+        )):
             categories = ("xet_tuyen_bo_sung", "dang_ky_xet_tuyen")
         elif _is_applicant_support_question(normalized):
             categories = ("phuong_thuc_xet_tuyen", "ho_so", "diem_trung_tuyen", "hoc_bong")
@@ -2861,13 +2942,25 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             else ("hoc_phi",)
         )
     elif resolved.intent == "HOI_HOC_BONG":
-        # Scholarship facts are represented both as compact policy records
-        # (hoc_bong) and as complete page text in the source documents that
-        # contain those policies (admissions methods and enrollment guidance).
-        # Include those verified source categories so broad questions can be
-        # answered with the surrounding eligibility/condition text instead of
-        # isolated record fragments.
-        categories = ("hoc_bong", "phuong_thuc_xet_tuyen", "ho_so")
+        normalized = normalize_question(resolved.normalized_question)
+        asks_admission_scholarship_conditions = (
+            "hoc bong" in normalized
+            and any(
+                marker in normalized
+                for marker in ("dieu kien", "nhan hoc bong", "xet hoc bong", "xet the nao")
+            )
+            and not any(marker in normalized for marker in ("tong diem 3 mon", "cao nhat", "toi da"))
+        )
+        # The admission-scholarship policy is page text in the verified
+        # admissions-method document. Condition questions and isolated
+        # scholarship subplans search that source, while avoiding the broader
+        # enrollment-document category. Standalone broad questions retain all
+        # source categories needed for the complete scholarship catalogue.
+        categories = (
+            ("hoc_bong", "phuong_thuc_xet_tuyen")
+            if asks_admission_scholarship_conditions or entities.get("multi_issue_subplan")
+            else ("hoc_bong", "phuong_thuc_xet_tuyen", "ho_so")
+        )
     elif resolved.intent == "HOI_HO_SO":
         categories = ("ho_so",)
     elif resolved.intent == "HOI_LICH_TUYEN_SINH":
@@ -2941,6 +3034,20 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
         for key in (
             "major_name", "major_code", "program_name", "parent_major",
             "candidate_majors", "candidate_programs",
+        ):
+            entity_filters.pop(key, None)
+    if resolved.intent == "HOI_HOC_BONG":
+        # Scholarship policy questions can mention a major without being
+        # restricted to catalogue rows that repeat that major. Keep the name
+        # in retrieval_query for ranking, but let verified policy evidence
+        # (often stored as school-wide page text) pass the entity boundary.
+        for key in (
+            "major_name",
+            "major_code",
+            "program_name",
+            "parent_major",
+            "candidate_majors",
+            "candidate_programs",
         ):
             entity_filters.pop(key, None)
     return QueryPlan(

@@ -878,7 +878,9 @@ class IntentAndYearSweepTests(unittest.TestCase):
         result = ask_chatbot(question, retriever=retriever, llm=llm)
 
         self.assertEqual(retriever.call["categories"], ("hoc_bong", "phuong_thuc_xet_tuyen", "ho_so"))
-        self.assertEqual(retriever.call["top_k"], 64)
+        # The verified scholarship catalogue spans more than the default
+        # retrieval window; keep the bounded policy-page budget explicit.
+        self.assertEqual(retriever.call["top_k"], 96)
         self.assertIn("Quỹ học bổng Hào khí Hùng Vương", llm.prompt)
         self.assertEqual(result["status"], "ok")
         self.assertIn("75 tỷ đồng", str(result["answer"]))

@@ -121,12 +121,13 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertIn("Kỹ thuật máy tính", result["answer"])
         self.assertNotIn("điểm trúng tuyển", str(result["answer"]).casefold())
 
-    def test_recommendation_keeps_verified_program_parent_relation(self) -> None:
+    def test_recommendation_does_not_infer_personal_fit_from_parent_relation(self) -> None:
         result, _ = self._ask("tôi thích dựng video thì nên học ngành nào")
 
-        self.assertEqual(result["answer_plan"]["mode"], "RECOMMENDATION")
-        self.assertIn("Truyền thông đa phương tiện", result["answer"])
-        self.assertIn("chương trình thuộc ngành Công nghệ thông tin", result["answer"])
+        self.assertEqual(result["answer_plan"]["mode"], "CLARIFICATION")
+        self.assertEqual(result["status"], "clarification")
+        self.assertNotIn("mình nghiêng về", result["answer"].casefold())
+        self.assertIn("chưa nêu căn cứ để kết luận", result["answer"])
         self.assertNotIn("trường khác", str(result["answer"]).casefold())
 
     def test_unverified_combination_is_no_data_without_generation(self) -> None:

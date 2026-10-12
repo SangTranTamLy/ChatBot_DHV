@@ -9,8 +9,11 @@ from src.chatbot.query_analysis import analyze_question, route_question
 from src.chatbot.query_decomposer import should_attempt_decomposition
 from src.chatbot.output_validator import validate_model_answer
 from src.chatbot.rag_chain import (
+    _evidence_admission_combination_answer,
     _evidence_application_registration_answer,
     _evidence_eligibility_answer,
+    _evidence_law_grade_eligibility_answer,
+    _evidence_method_application_threshold_answer,
     _evidence_method_calculation_answer,
     _evidence_scholarship_catalog_answer,
     _method_details_from_evidence,
@@ -56,6 +59,72 @@ class AdmissionConditionRoutingTests(unittest.TestCase):
         self.assertEqual(analysis.intent, "HOI_PHUONG_THUC_XET_TUYEN")
         self.assertEqual(analysis.entities.get("issue_intents"), [])
         self.assertEqual(analysis.entities.get("query_mode"), "LIST")
+
+    def test_natural_three_subject_selection_question_requests_combination_details(self) -> None:
+        question = "Xét bằng điểm thi tốt nghiệp thì ba môn chọn như thế nào?"
+        analysis = analyze_question(question)
+        plan = route_question(analysis)
+        self.assertEqual(analysis.intent, "HOI_PHUONG_THUC_XET_TUYEN")
+        self.assertTrue(analysis.entities.get("admission_combination_detail"))
+        self.assertIn("phuong_thuc_xet_tuyen", plan.categories)
+
+    def test_thpt_score_calculation_paraphrases_use_method_formula_source(self) -> None:
+        questions = (
+            "Xét kết quả kỳ thi tốt nghiệp THPT thì xét điểm như nào?",
+            "Thi THPT được tính điểm ra sao?",
+            "Điểm của phương thức tốt nghiệp THPT tính thế nào?",
+        )
+        for question in questions:
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                plan = route_question(analysis)
+                self.assertEqual(analysis.intent, "HOI_CACH_TINH_DIEM")
+                self.assertEqual(analysis.entities.get("admission_method"), "thpt")
+                self.assertEqual(
+                    analysis.entities.get("requested_information"), ["score_calculation"]
+                )
+                self.assertEqual(plan.categories, ("phuong_thuc_xet_tuyen",))
+
+    def test_method_specific_dgnl_threshold_paraphrases_route_to_published_evidence(self) -> None:
+        for question in (
+            "ĐGNL cần bao nhiêu điểm để đăng ký?",
+            "Kết quả ĐGNL tối thiểu để đăng ký xét tuyển là mấy?",
+        ):
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                plan = route_question(analysis)
+                self.assertEqual(analysis.intent, "HOI_NGUONG_DAU_VAO")
+                self.assertEqual(analysis.entities.get("admission_method"), "dgnl")
+                self.assertEqual(
+                    analysis.entities.get("score_type"), "application_threshold"
+                )
+                self.assertEqual(
+                    plan.categories, ("nganh_dao_tao", "nguong_dau_vao")
+                )
+
+    def test_personal_scores_with_advice_request_keep_counselling_intent(self) -> None:
+        questions = (
+            "Tôi thi tốt nghiệp xong, Toán 8, Văn 7, ĐGNL 720, thích edit video nhưng chưa biết chọn ngành nào",
+            "Tôi 19 điểm thích edit video nên chọn ngành nào?",
+        )
+        for question in questions:
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                plan = route_question(analysis)
+                self.assertEqual(analysis.intent, "TU_VAN_CHON_NGANH")
+                self.assertEqual(analysis.entities.get("score_query_type"), "personal_score_comparison")
+                self.assertIn("nganh_dao_tao", plan.categories)
+
+    def test_supplementary_deadline_paraphrase_is_not_enrollment_schedule(self) -> None:
+        question = "Thời hạn nộp hồ sơ đợt bổ sung đến khi nào?"
+        analysis = analyze_question(question)
+        plan = route_question(analysis)
+        self.assertEqual(analysis.intent, "HOI_XET_TUYEN_BO_SUNG")
+        self.assertEqual(plan.categories, ("xet_tuyen_bo_sung",))
+
+    def test_adding_documents_is_not_misread_as_supplementary_admission(self) -> None:
+        analysis = analyze_question("Hồ sơ cần bổ sung giấy tờ nào?")
+        self.assertEqual(analysis.intent, "HOI_HO_SO")
 
     def test_colloquial_major_method_score_question_uses_published_cutoff(self) -> None:
         for question in (
@@ -209,6 +278,60 @@ class AdmissionConditionEvidenceAnswerTests(unittest.TestCase):
         self.assertNotIn("Khối công nghệ", details[5])
         self.assertIn("cùng nhóm ngành", details[5])
 
+    def test_three_subject_selection_answer_strips_bullets_and_returns_both_rules(self) -> None:
+        question = "Xét bằng điểm thi tốt nghiệp thì ba môn chọn như thế nào?"
+        analysis = analyze_question(question)
+        text = (
+            "• Toán + 02 môn có điểm cao nhất trong các môn: Ngữ văn, Ngoại ngữ, Vật lý, Hóa học.\n"
+            "• Ngữ văn + 02 môn có điểm cao nhất trong các môn: Toán, Ngoại ngữ, Vật lý, Hóa học.\n"
+            "Các tổ hợp xét tuyển được thiết kế linh hoạt."
+        )
+        metadata = {**self.evidence.chunks[0].metadata, "page": 4}
+        evidence = EvidenceBundle(
+            chunks=(EvidenceChunk(text=text, metadata=metadata),),
+            context=text,
+            sources=self.evidence.sources,
+        )
+        answer = _evidence_admission_combination_answer(analysis, evidence)
+        self.assertIn("Toán + 02 môn có điểm cao nhất", answer)
+        self.assertIn("Ngữ văn + 02 môn có điểm cao nhất", answer)
+
+    def test_dgnl_threshold_is_read_only_from_verified_method_section(self) -> None:
+        text = (
+            "c. Xét kết quả kỳ thi Đánh giá năng lực\n"
+            "Thí sinh dùng kết quả kỳ thi năm 2026 do ĐHQG-HCM tổ chức, từ 600 điểm trở lên.\n"
+            "d. Xét kết quả bài thi Đánh giá năng lực chuyên biệt (H-SCA)\n"
+            "Thí sinh dùng kết quả H-SCA năm 2026 kết hợp với kết quả học tập THPT."
+        )
+        metadata = {**self.evidence.chunks[0].metadata, "page": 4}
+        evidence = EvidenceBundle(
+            chunks=(EvidenceChunk(text=text, metadata=metadata),),
+            context=text,
+            sources=self.evidence.sources,
+            score_facts=(
+                {
+                    "score_type": "application_threshold", "method": "dgnl",
+                    "raw_value": "600", "category": "nguong_dau_vao",
+                    "status": "verified", "school_code": "DHV", "year": 2026,
+                },
+            ),
+        )
+        analysis = analyze_question("ĐGNL cần bao nhiêu điểm để đăng ký?")
+        answer = _evidence_method_application_threshold_answer(analysis, evidence)
+        self.assertIn("600 điểm trở lên", answer)
+
+    def test_personal_score_question_is_not_replaced_by_generic_method_floor(self) -> None:
+        analysis = analyze_question("Em được 720 ĐGNL có đậu không?")
+        self.assertIsNone(
+            _evidence_method_application_threshold_answer(analysis, self.evidence)
+        )
+
+    def test_hsca_threshold_question_never_borrows_dgnl_score(self) -> None:
+        analysis = analyze_question("H-SCA cần bao nhiêu điểm để đăng ký?")
+        evidence = self.evidence
+        answer = _evidence_method_application_threshold_answer(analysis, evidence)
+        self.assertIsNone(answer)
+
     def test_unverified_or_wrong_year_condition_chunk_is_not_used(self) -> None:
         chunk = self.evidence.chunks[0]
         for key, value in (("status", "unverified"), ("year", 2025), ("school_code", "OTHER")):
@@ -256,6 +379,43 @@ class AdmissionConditionEvidenceAnswerTests(unittest.TestCase):
         validated = validate_model_answer(answer, evidence, question=question, analysis=analysis, target_year=2026)
         self.assertEqual(validated.get("status"), "ok")
 
+    def test_supplementary_deadline_paraphrase_includes_date_from_page_text(self) -> None:
+        question = "Thời hạn nộp hồ sơ đợt bổ sung đến khi nào?"
+        analysis = analyze_question(question)
+        text = (
+            "Thí sinh có thể đăng ký trực tuyến tại cổng thông tin tuyển sinh www.tuyensinh.dhv.edu.vn "
+            "hoặc nộp hồ sơ trực tiếp tại một trong hai cơ sở của Nhà trường.\n"
+            "1. Cơ sở 1: 194 Lê Đức Thọ, TP.HCM.\n"
+            "2. Cơ sở 2: 37 Kinh Dương Vương, TP.HCM.\n"
+            "Thời gian nhận hồ sơ đến hết ngày 21/8/2026."
+        )
+        metadata = {
+            "record_type": "page_text", "category": "xet_tuyen_bo_sung", "year": 2026,
+            "school_code": "DHV", "status": "verified",
+            "source_url": "https://dhv.edu.vn/dhv-nhan-ho-so-xet-tuyen-bo-sung/",
+        }
+        evidence = EvidenceBundle(
+            chunks=(EvidenceChunk(text=text, metadata=metadata),), context=text,
+            sources=({"url": "https://dhv.edu.vn/dhv-nhan-ho-so-xet-tuyen-bo-sung/"},),
+        )
+        answer = _evidence_application_registration_answer(analysis, evidence)
+        self.assertIn("21/8/2026", answer)
+        self.assertEqual(
+            validate_model_answer(answer, evidence, question=question, analysis=analysis, target_year=2026).get("status"),
+            "ok",
+        )
+
+    def test_law_known_grade_answers_decisive_condition_without_method_clarification(self) -> None:
+        question = "Học lực lớp 12 Khá, 20 điểm thì đủ xét ngành Luật không?"
+        analysis = analyze_question(question)
+        plan = route_question(analysis)
+        self.assertFalse(plan.needs_clarification)
+        self.assertIn("phuong_thuc_xet_tuyen", plan.categories)
+        answer = _evidence_law_grade_eligibility_answer(analysis, self.evidence)
+        self.assertIn("chưa đáp ứng", answer)
+        self.assertIn("Giỏi trở lên", answer)
+        self.assertIn("18 điểm trở lên", answer)
+
     def test_scholarship_list_uses_unique_verified_section_headings(self) -> None:
         analysis = analyze_question("DHV có những học bổng nào?")
         self.assertEqual(analysis.intent, "HOI_HOC_BONG")
@@ -283,6 +443,43 @@ class AdmissionConditionEvidenceAnswerTests(unittest.TestCase):
         self.assertIn("Hào khí Hùng Vương", answer)
         self.assertIn("Học bổng Tài năng", answer)
         self.assertNotIn("UniBridge", answer)
+
+    def test_program_parent_relation_does_not_prove_personal_interest_fit(self) -> None:
+        question = "Tôi thích edit video nên chọn ngành nào?"
+        analysis = analyze_question(question)
+        text = "Truyền thông đa phương tiện là chương trình thuộc ngành Công nghệ thông tin."
+        metadata = {
+            "record_type": "page_text",
+            "category": "nganh_dao_tao",
+            "year": 2026,
+            "school_code": "DHV",
+            "status": "verified",
+            "source_url": "https://dhv.edu.vn/",
+        }
+        evidence = EvidenceBundle(
+            chunks=(EvidenceChunk(text=text, metadata=metadata),),
+            context=text,
+            sources=({"url": "https://dhv.edu.vn/"},),
+        )
+
+        unsupported_answers = (
+            "Với sở thích edit video, mình nghiêng về Truyền thông đa phương tiện hơn. "
+            "Đây là chương trình thuộc ngành Công nghệ thông tin.",
+            "Với sở thích edit video, Truyền thông đa phương tiện là chương trình "
+            "thuộc ngành Công nghệ thông tin.",
+        )
+        for answer in unsupported_answers:
+            with self.subTest(answer=answer):
+                result = validate_model_answer(
+                    answer,
+                    evidence,
+                    question=question,
+                    analysis=analysis,
+                    target_year=2026,
+                )
+
+                self.assertEqual(result["status"], "no_data")
+                self.assertEqual(result.get("_validation_reason"), "unsupported_advisory_fit")
 
 
 if __name__ == "__main__":

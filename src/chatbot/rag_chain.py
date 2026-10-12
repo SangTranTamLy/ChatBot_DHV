@@ -53,6 +53,7 @@ from .query_analysis import (
     _is_global_catalog_request,
     _is_admissions_context_followup,
     _is_admission_date_comparison,
+    _is_formula_request,
     _is_subject_minimum_request,
     should_inherit_context,
     normalize_entity_name,
@@ -299,6 +300,7 @@ _ADVISORY_SAFE_FALLBACK_REASONS = frozenset(
         "program_relation_missing",
         "program_relation_wrong",
         "advisory_choices_incomplete",
+        "unsupported_advisory_fit",
         "year_mismatch",
     }
 )
@@ -446,14 +448,21 @@ def _retrieve(
             # for a contact-style query. Expand only this bounded lookup.
             expanded_school_code_top_k = 8
         if (
-            getattr(plan, "intent", "") == "HOI_PHUONG_THUC_XET_TUYEN"
-            and (
-                entity_filters.get("admission_combination_detail")
-                or entity_filters.get("admission_method")
+            (
+                getattr(plan, "intent", "") == "HOI_PHUONG_THUC_XET_TUYEN"
+                and (
+                    entity_filters.get("admission_combination_detail")
+                    or entity_filters.get("admission_method")
+                )
+            )
+            or (
+                getattr(plan, "intent", "") == "HOI_CACH_TINH_DIEM"
+                and entity_filters.get("admission_method") == "thpt"
+                and _is_formula_request(normalized_query)
             )
         ):
-            # A method-specific yes/no follow-up needs the actual method row,
-            # not whichever scholarship paragraph happens to rank first.
+            # A method-specific follow-up or formula request needs the actual
+            # method/page-text rows, not whichever scholarship paragraph ranks first.
             expanded_combination_top_k = 16
         if (
             getattr(plan, "intent", "") == "TU_VAN_CHON_NGANH"
@@ -470,6 +479,14 @@ def _retrieve(
             # A list-reference follow-up may cover the complete catalogue,
             # not just the first few majors returned by the default top-k.
             expanded_score_top_k = max(expanded_score_top_k or 0, 64)
+        if (
+            getattr(plan, "intent", "") == "HOI_NGUONG_DAU_VAO"
+            and "phuong_thuc_xet_tuyen" in tuple(getattr(plan, "categories", ()) or ())
+            and entity_filters.get("admission_method") in {"dgnl", "h_sca", "thpt", "hoc_ba"}
+        ):
+            # The numeric floor is held in the method-description page rather
+            # than the generic major-threshold table.
+            expanded_score_top_k = max(expanded_score_top_k or 0, 32)
         expanded_scholarship_top_k = None
         if getattr(plan, "intent", "") == "HOI_HOC_BONG":
             # Scholarship facts are split across several verified PDFs and
@@ -520,7 +537,9 @@ def _retrieve(
         )
         is_eligibility = (
             getattr(plan, "intent", "") in {"HOI_DANG_KY_XET_TUYEN", "HOI_NGUONG_DAU_VAO"}
-            and any(marker in normalized_query for marker in ("dieu kien", "tot nghiep", "duoc dang ky"))
+            and any(marker in normalized_query for marker in (
+                "dieu kien", "tot nghiep", "duoc dang ky", "hoc luc", "lop 12",
+            ))
         )
         if is_result_notification:
             expanded_admission_detail_top_k = 128
@@ -683,8 +702,35 @@ def _ask_multi_issue(
     selected_evidence_counts: list[int] = []
     retrieval_call_count = 0
     active_llm: Any | None = None
+    effective_subplans: list[Any] = []
     for subplan in plan.subplans:
         subquery = subplan.retrieval_query
+        retrieval_subplan = subplan
+        if (
+            subplan.intent == "HOI_HOC_BONG"
+            and subplan.entity_filters
+        ):
+            # In a compound question, a mentioned major is not necessarily a
+            # restriction on a school-wide scholarship-policy lookup. Applying
+            # it as a document-level AND/OR filter drops the verified policy
+            # page (which usually does not repeat the major name) and can leave
+            # only a nearby major catalogue row. Keep the entity in the
+            # sub-analysis/prompt, but do not constrain scholarship retrieval
+            # by major/program identity.
+            scholarship_filters = {
+                key: value
+                for key, value in subplan.entity_filters.items()
+                if key not in {
+                    "major_name",
+                    "major_code",
+                    "program_name",
+                    "parent_major",
+                    "candidate_majors",
+                    "candidate_programs",
+                }
+            }
+            retrieval_subplan = replace(subplan, entity_filters=scholarship_filters)
+        effective_subplans.append(retrieval_subplan)
         sub_analysis = replace(
             analysis,
             question=subquery,
@@ -741,7 +787,7 @@ def _ask_multi_issue(
             selected_evidence_counts.append(0)
             continue
 
-        documents, audit = _retrieve(retriever, subquery, subplan)
+        documents, audit = _retrieve(retriever, subquery, retrieval_subplan)
         retrieval_call_count += 1
         retrieved_document_counts.append(len(documents))
         audits.append(audit.to_dict() if audit is not None else None)
@@ -767,6 +813,10 @@ def _ask_multi_issue(
         )
         selections.append(selection.to_dict())
         selected_documents = list(selection.documents)
+        if subplan.intent == "HOI_HOC_BONG":
+            selected_documents = _prioritize_scholarship_catalog_documents(
+                selected_documents
+            )
         overview_prioritized = False
         if overview_issue:
             selected_documents = _prioritize_school_overview_documents(
@@ -822,7 +872,10 @@ def _ask_multi_issue(
             )
         scholarship_result = None
         if subplan.intent == "HOI_HOC_BONG":
-            scholarship_answer = _evidence_scholarship_answer(sub_analysis, evidence)
+            scholarship_answer = (
+                _evidence_scholarship_catalog_answer(sub_analysis, evidence)
+                or _evidence_scholarship_answer(sub_analysis, evidence)
+            )
             if scholarship_answer:
                 scholarship_result = validate_model_answer(
                     scholarship_answer,
@@ -952,8 +1005,15 @@ def _ask_multi_issue(
             continue
         label = _MULTI_ISSUE_LABELS.get(str(result.get("intent") or ""), "Thông tin liên quan")
         answer_sections.append(f"### {label}\n{answer}")
-    statuses = {str(result.get("status") or "error") for result in sub_results}
+    subplan_statuses = [str(result.get("status") or "error") for result in sub_results]
+    statuses = set(subplan_statuses)
     status = "ok" if answer_sections and ("ok" in statuses or "clarification" in statuses) else "no_data"
+    partial_response = bool(answer_sections) and any(
+        subplan_status != "ok" for subplan_status in subplan_statuses
+    )
+    complete_response = bool(subplan_statuses) and all(
+        subplan_status == "ok" for subplan_status in subplan_statuses
+    )
     merged_evidence = merge_evidence_bundles(
         evidence_bundles,
         settings_obj=settings_obj,
@@ -968,8 +1028,12 @@ def _ask_multi_issue(
     trace["retrieved_docs_count"] = sum(retrieved_document_counts)
     trace["retrieved_chunks"] = sum(retrieved_document_counts)
     trace["evidence_count"] = sum(selected_evidence_counts)
+    trace["partial_response"] = partial_response
     trace["multi_issue"] = {
-        "subplans": [subplan.to_dict() for subplan in plan.subplans],
+        "complete": complete_response,
+        "partial": partial_response,
+        "subplan_statuses": subplan_statuses,
+        "subplans": [subplan.to_dict() for subplan in effective_subplans],
         "subqueries": [subplan.retrieval_query for subplan in plan.subplans],
         "retrieval_audits": audits,
         "evidence_selections": selections,
@@ -994,6 +1058,7 @@ def _ask_multi_issue(
         "answer": "\n\n".join(answer_sections) or FALLBACK_ANSWER,
         "sources": _dedupe_sources(sub_results),
         "status": status,
+        "partial": partial_response,
         "state": next_state.to_dict(),
         "conversation_state": next_state.to_dict(),
         "trace": trace,
@@ -1784,7 +1849,9 @@ def _evidence_application_registration_answer(analysis: QueryAnalysis, evidence:
     """Render verified online/in-person routes for a supplementary application."""
 
     normalized = normalize_question(analysis.normalized_question)
-    if not any(marker in normalized for marker in ("xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung")):
+    if not any(marker in normalized for marker in (
+        "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung",
+    )):
         return None
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
@@ -1820,7 +1887,9 @@ def _evidence_application_registration_answer(analysis: QueryAnalysis, evidence:
             flattened,
             re.IGNORECASE,
         )
-        if deadline and any(marker in normalized for marker in ("khi nao", "thoi gian", "den khi nao", "han nhan")):
+        if deadline and any(marker in normalized for marker in (
+            "khi nao", "thoi gian", "thoi han", "den khi nao", "den ngay nao", "den ngay", "han nhan",
+        )):
             answer += f"\nThời gian nhận hồ sơ đến hết ngày {deadline.group(1)}."
         return answer
     return None
@@ -1836,7 +1905,7 @@ def _evidence_general_registration_answer(analysis: QueryAnalysis, evidence: Any
         return None
     if any(marker in normalized for marker in (
         "o dau", "cong dang ky", "cong tuyen sinh", "website", "trang web",
-        "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung",
+        "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung",
         "du dieu kien", "dieu kien", "hoc luc", "cong diem", "khuyet tat",
     )):
         return None
@@ -2020,6 +2089,125 @@ def _prioritize_scholarship_catalog_documents(documents: list[Any]) -> list[Any]
         return 1, 99, position
 
     return [document for _, document in sorted(enumerate(documents), key=priority)]
+
+
+def _is_admission_scholarship_conditions_question(analysis: QueryAnalysis) -> bool:
+    normalized = normalize_question(analysis.normalized_question)
+    return (
+        analysis.intent == "HOI_HOC_BONG"
+        and "hoc bong" in normalized
+        and any(
+            marker in normalized
+            for marker in ("dieu kien", "nhan hoc bong", "xet hoc bong", "xet the nao")
+        )
+        and not any(marker in normalized for marker in ("tong diem 3 mon", "cao nhat", "toi da"))
+    )
+
+
+def _prioritize_admission_scholarship_conditions_documents(
+    documents: list[Any],
+) -> tuple[list[Any], bool]:
+    """Keep the complete, verified admission-scholarship section inside evidence limits."""
+
+    eligible: list[tuple[int, Any, Mapping[str, object]]] = []
+    for position, document in enumerate(documents):
+        metadata = getattr(document, "metadata", {}) or {}
+        if (
+            metadata.get("record_type") != "page_text"
+            or str(metadata.get("category") or "") != "phuong_thuc_xet_tuyen"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or not _is_official_dhv_source(metadata.get("source_url"))
+        ):
+            continue
+        eligible.append((position, document, metadata))
+
+    anchor = next(
+        (
+            (document, metadata)
+            for _, document, metadata in eligible
+            if "1 trong 4 phuong thuc xet hoc bong" in normalize_question(
+                str(getattr(document, "page_content", "") or "")
+            )
+        ),
+        None,
+    )
+    if anchor is None:
+        return documents, False
+
+    anchor_document, anchor_metadata = anchor
+    structured_id = str(
+        anchor_metadata.get("structured_document_id")
+        or anchor_metadata.get("document_id")
+        or ""
+    )
+    try:
+        anchor_page = int(anchor_metadata.get("page"))
+    except (TypeError, ValueError):
+        return documents, False
+    if not structured_id:
+        return documents, False
+
+    continuation = [
+        (position, document, metadata)
+        for position, document, metadata in eligible
+        if str(
+            metadata.get("structured_document_id") or metadata.get("document_id") or ""
+        ) == structured_id
+        and _metadata_page(metadata) >= anchor_page
+    ]
+    continuation.sort(
+        key=lambda item: (
+            _metadata_page(item[2]),
+            _metadata_chunk_index(item[2], item[0]),
+            item[0],
+        )
+    )
+    section_documents: list[Any] = []
+    section_ended = False
+    last_page = anchor_page
+    for _, document, metadata in continuation:
+        page = _metadata_page(metadata)
+        if page > last_page + 1:
+            break
+        last_page = max(last_page, page)
+        section_documents.append(document)
+        if re.search(
+            r"(?m)^\s*1\.5\.\s*Học bổng\b",
+            str(getattr(document, "page_content", "") or ""),
+            re.IGNORECASE,
+        ):
+            section_ended = True
+            break
+
+    if not section_ended or anchor_document not in section_documents:
+        return documents, False
+    section_ids = {id(document) for document in section_documents}
+    remaining = [document for document in documents if id(document) not in section_ids]
+    return [*section_documents, *remaining], True
+
+
+def _metadata_page(metadata: Mapping[str, object]) -> int:
+    try:
+        return int(metadata.get("page") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _metadata_chunk_index(metadata: Mapping[str, object], fallback: int) -> int:
+    try:
+        return int(metadata.get("chunk_index"))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _is_official_dhv_source(value: object) -> bool:
+    parsed = urlparse(str(value or "").strip())
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    return bool(
+        parsed.scheme.lower() == "https"
+        and (hostname == "dhv.edu.vn" or hostname.endswith(".dhv.edu.vn"))
+    )
 
 
 def _prioritize_admission_date_comparison_documents(
@@ -2465,6 +2653,156 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
             "Điểm thi riêng lẻ không thay thế điều kiện về học lực lớp 12; các yêu cầu trong tài liệu phải được đáp ứng đồng thời."
         )
     return "\n".join(answer_lines)
+
+
+def _evidence_law_grade_eligibility_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+) -> str | None:
+    """Resolve a stated below-Giỏi grade without asking for an unrelated score method."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    major = normalize_question(str(analysis.entities.get("major_name") or ""))
+    if major not in {"luat", "luat kinh te"} or not (
+        "hoc luc" in normalized and "lop 12" in normalized
+    ):
+        return None
+    stated_grade = next(
+        (
+            grade for grade in ("trung binh kha", "trung binh", "kha")
+            if re.search(rf"\b{re.escape(grade)}\b", normalized)
+        ),
+        None,
+    )
+    if stated_grade is None:
+        return None
+    conditions = _verified_admission_conditions_section(
+        evidence,
+        target_year=int(analysis.entities.get("year") or settings.target_year),
+    )
+    law_conditions = [
+        re.sub(r"^\d+\.\s*", "", block).strip()
+        for block in conditions
+        if re.match(r"^\d+\.\s+", block)
+    ]
+    grade_rule = next(
+        (condition for condition in law_conditions if "hoc luc lop 12" in normalize_question(condition)),
+        None,
+    )
+    if not grade_rule or "gioi tro len" not in normalize_question(grade_rule):
+        return None
+    grade_labels = {
+        "trung binh kha": "Trung bình khá",
+        "trung binh": "Trung bình",
+        "kha": "Khá",
+    }
+    score_rule = next(
+        (condition for condition in law_conditions if "tong diem" in normalize_question(condition)),
+        None,
+    )
+    lines = [
+        f"Với học lực lớp 12 loại {grade_labels[stated_grade]}, bạn chưa đáp ứng điều kiện riêng được công bố cho ngành {analysis.entities.get('major_name')}: {grade_rule}.",
+        "Điểm số không thay thế điều kiện học lực; các điều kiện của ngành này phải được đáp ứng đồng thời.",
+    ]
+    if score_rule:
+        lines.append(
+            f"Điều kiện điểm THPT trong cùng nguồn là: {score_rule}"
+        )
+    return "\n".join(lines)
+
+
+def _evidence_method_application_threshold_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+) -> str | None:
+    """Answer a named method's numeric floor only when its verified section states one."""
+
+    if not (
+        analysis.intent == "HOI_NGUONG_DAU_VAO"
+        and analysis.entities.get("score_type") == "application_threshold"
+        and not analysis.entities.get("student_scores")
+        and analysis.entities.get("score_query_type") != "personal_score_comparison"
+    ):
+        return None
+    method = normalize_question(str(analysis.entities.get("admission_method") or "").replace("_", " "))
+    if method not in {"dgnl", "h sca", "thpt", "hoc ba"}:
+        return None
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    method_heading = {
+        "dgnl": "xet ket qua ky thi danh gia nang luc",
+        "h sca": "xet ket qua bai thi danh gia nang luc chuyen biet",
+        "thpt": "xet ket qua ky thi tot nghiep thpt",
+        "hoc ba": "xet tuyen ket qua hoc tap thpt hoc ba",
+    }[method]
+    next_heading = {
+        "dgnl": "xet ket qua bai thi danh gia nang luc chuyen biet",
+        "h sca": "xet tuyen doi voi thi sinh tot nghiep trung cap",
+        "thpt": "xet tuyen ket qua hoc tap thpt hoc ba",
+        "hoc ba": "xet ket qua ky thi danh gia nang luc",
+    }[method]
+    if method == "dgnl":
+        verified_threshold_source = any(
+            str((chunk.metadata or {}).get("category") or "") == "nguong_dau_vao"
+            and str((chunk.metadata or {}).get("status") or "").casefold() == "verified"
+            and str((chunk.metadata or {}).get("school_code") or "").upper() == "DHV"
+            and str((chunk.metadata or {}).get("year") or "") == str(target_year)
+            and urlparse(str((chunk.metadata or {}).get("source_url") or "")).scheme.lower() == "https"
+            and (
+                (urlparse(str((chunk.metadata or {}).get("source_url") or "")).hostname or "").lower().rstrip(".")
+                == "dhv.edu.vn"
+                or (urlparse(str((chunk.metadata or {}).get("source_url") or "")).hostname or "").lower().rstrip(".").endswith(".dhv.edu.vn")
+            )
+            for chunk in getattr(evidence, "chunks", ()) or ()
+        )
+        verified_values = {
+            str(fact.get("raw_value") or fact.get("value") or "").strip()
+            for fact in getattr(evidence, "score_facts", ()) or ()
+            if isinstance(fact, Mapping)
+            and str(fact.get("score_type") or "") == "application_threshold"
+            and normalize_question(str(fact.get("method") or "")) == "dgnl"
+            and str(fact.get("category") or "") == "nguong_dau_vao"
+            and str(fact.get("status") or fact.get("source_status") or "").casefold() == "verified"
+            and str(fact.get("year") or "") == str(target_year)
+        }
+        if verified_threshold_source and len(verified_values) == 1 and re.fullmatch(
+            r"\d+(?:[.,]\d+)?", next(iter(verified_values))
+        ):
+            value = next(iter(verified_values)).replace(".", ",")
+            return (
+                f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {value} điểm trở lên."
+            )
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        parsed = urlparse(str(metadata.get("source_url") or "").strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        try:
+            year = int(metadata.get("year"))
+        except (TypeError, ValueError):
+            continue
+        if not (
+            metadata.get("record_type") == "page_text"
+            and str(metadata.get("category") or "") == "phuong_thuc_xet_tuyen"
+            and str(metadata.get("school_code") or "").upper() == "DHV"
+            and str(metadata.get("status") or "").casefold() == "verified"
+            and year == target_year
+            and parsed.scheme.lower() == "https"
+            and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+        ):
+            continue
+        text = str(getattr(chunk, "text", "") or "")
+        folded = normalize_question(text)
+        start = folded.find(method_heading)
+        if start < 0:
+            continue
+        end = folded.find(next_heading, start + len(method_heading))
+        section = folded[start:] if end < 0 else folded[start:end]
+        if method == "dgnl":
+            match = re.search(r"(?:tu|dat|toi thieu)\s+(\d{3,4})\s+diem(?:\s+tro len)?", section)
+            if match:
+                return (
+                    f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {match.group(1)} điểm trở lên."
+                )
+    return None
 
 
 def _evidence_subject_minimum_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -3024,11 +3362,12 @@ def _evidence_admission_combination_answer(analysis: QueryAnalysis, evidence: An
         current = ""
         for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
             line = re.sub(r"\s+", " ", raw_line).strip()
-            folded = normalize_question(line)
+            bullet_text = line.lstrip("•*-– ").strip()
+            folded = normalize_question(bullet_text)
             if re.match(r"^(?:toan|ngu van)\s*\+\s*0?2 mon co diem cao nhat", folded):
                 if current:
                     official_structures.append(current)
-                current = line
+                current = bullet_text
             elif current and line:
                 if re.match(
                     r"^(?:cac to hop|viec dang ky|thoi gian dang ky|nguyen tac chung|phuong thuc|1\.\d+\.)",
@@ -3163,18 +3502,22 @@ def _evidence_method_calculation_answer(
     analysis: QueryAnalysis,
     evidence: Any,
 ) -> str | None:
-    """Return the published transcript-score formula for paraphrased how-is-it-calculated questions."""
+    """Return the published method formula for paraphrased calculation questions."""
 
     normalized = normalize_question(analysis.normalized_question)
+    method = str(analysis.entities.get("admission_method") or "")
     if (
-        analysis.intent != "HOI_PHUONG_THUC_XET_TUYEN"
-        or analysis.entities.get("admission_method") != "hoc_ba"
+        analysis.intent not in {"HOI_PHUONG_THUC_XET_TUYEN", "HOI_CACH_TINH_DIEM"}
+        or method not in {"thpt", "hoc_ba"}
         or not any(
             marker in normalized
             for marker in (
                 "tinh diem",
                 "diem duoc tinh",
                 "tinh the nao",
+                "diem nhu nao",
+                "xet diem nhu nao",
+                "diem tinh nhu nao",
                 "ca ba nam",
                 "ba nam",
                 "binh quan",
@@ -3186,8 +3529,10 @@ def _evidence_method_calculation_answer(
     detail = _method_details_from_evidence(
         evidence,
         target_year=int(analysis.entities.get("year") or settings.target_year),
-    ).get(2)
+    ).get(1 if method == "thpt" else 2)
     if not detail:
+        if method == "thpt":
+            return None
         # Retrieval for one named method may return the exact page-4 method
         # subsection but omit the section heading on page 3. Extract only the
         # explicitly labelled học-bạ method from verified DHV page text; do
@@ -3241,7 +3586,30 @@ def _evidence_method_calculation_answer(
                 break
     if not detail:
         return None
-    return f"Theo phương thức xét tuyển học bạ DHV {analysis.entities.get('year') or settings.target_year}: {detail}"
+    method_label = (
+        "kết quả kỳ thi tốt nghiệp THPT"
+        if method == "thpt"
+        else "xét tuyển học bạ"
+    )
+    if method == "hoc_ba":
+        detail_lines = [line.strip() for line in detail.splitlines() if line.strip()]
+        formula_items = [
+            line.lstrip("-• ").strip()
+            for line in detail_lines
+            if line.lstrip().startswith(("-", "•"))
+        ]
+        if len(formula_items) == 2:
+            context_lines = [
+                line for line in detail_lines
+                if not line.lstrip().startswith(("-", "•"))
+            ]
+            detail = "\n".join(
+                [*context_lines, f"- Cách 1: {formula_items[0]}", f"- Cách 2: {formula_items[1]}"]
+            )
+    return (
+        f"Theo phương thức {method_label} DHV "
+        f"{analysis.entities.get('year') or settings.target_year}: {detail}"
+    )
 
 
 def _evidence_vocational_same_group_eligibility_answer(
@@ -3465,6 +3833,13 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     if not lines:
         return None
     normalized_question = normalize_question(analysis.normalized_question)
+    if _is_admission_scholarship_conditions_question(analysis):
+        conditions_answer = _evidence_admission_scholarship_conditions_answer(
+            analysis,
+            evidence,
+        )
+        if conditions_answer:
+            return conditions_answer
     if "tong diem 3 mon" in normalized_question or (
         "to hop" in normalized_question
         and "hoc bong" in normalized_question
@@ -3563,6 +3938,145 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     return "Mình tóm tắt các chính sách và điều kiện học bổng đang có trong dữ liệu DHV 2026:\n" + "\n".join(
         f"- {line}" for line in selected_lines
     )
+
+
+def _evidence_admission_scholarship_conditions_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+) -> str | None:
+    """Render the complete 1.4 admission-scholarship policy from verified page text."""
+
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    eligible_chunks: list[Any] = []
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if (
+            metadata.get("record_type") != "page_text"
+            or str(metadata.get("category") or "") != "phuong_thuc_xet_tuyen"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or not _is_official_dhv_source(metadata.get("source_url"))
+        ):
+            continue
+        try:
+            if int(metadata.get("year")) != target_year:
+                continue
+        except (TypeError, ValueError):
+            continue
+        eligible_chunks.append(chunk)
+
+    anchor = next(
+        (
+            chunk
+            for chunk in eligible_chunks
+            if "1 trong 4 phuong thuc xet hoc bong" in normalize_question(
+                str(getattr(chunk, "text", "") or "")
+            )
+        ),
+        None,
+    )
+    if anchor is None:
+        return None
+    anchor_metadata = getattr(anchor, "metadata", {}) or {}
+    structured_id = str(
+        anchor_metadata.get("structured_document_id")
+        or anchor_metadata.get("document_id")
+        or ""
+    )
+    if not structured_id:
+        return None
+    try:
+        anchor_page = int(anchor_metadata.get("page"))
+    except (TypeError, ValueError):
+        return None
+
+    related = [
+        chunk
+        for chunk in eligible_chunks
+        if str(
+            (getattr(chunk, "metadata", {}) or {}).get("structured_document_id")
+            or (getattr(chunk, "metadata", {}) or {}).get("document_id")
+            or ""
+        ) == structured_id
+        and _metadata_page(getattr(chunk, "metadata", {}) or {}) >= anchor_page
+    ]
+    related.sort(
+        key=lambda chunk: (
+            _metadata_page(getattr(chunk, "metadata", {}) or {}),
+            _metadata_chunk_index(
+                getattr(chunk, "metadata", {}) or {},
+                0,
+            ),
+        )
+    )
+
+    captured_lines: list[str] = []
+    started = False
+    ended = False
+    for chunk in related:
+        for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not line:
+                continue
+            if not started:
+                if re.match(r"^1\.4\.\s*Học bổng tuyển sinh\b", line, re.IGNORECASE):
+                    started = True
+                continue
+            if re.match(r"^1\.5\.\s*Học bổng\b", line, re.IGNORECASE):
+                ended = True
+                break
+            if re.fullmatch(r"\d+", line):
+                continue
+            captured_lines.append(line)
+        if ended:
+            break
+    if not started or not ended:
+        return None
+
+    intro: list[str] = []
+    methods: list[dict[str, Any]] = []
+    notes: list[str] = []
+    current: dict[str, Any] | None = None
+    for line in captured_lines:
+        method_match = re.match(r"^([a-d])\.\s*(.+)$", line, re.IGNORECASE)
+        if method_match:
+            current = {"code": method_match.group(1).lower(), "title": method_match.group(2), "details": []}
+            methods.append(current)
+            continue
+        if normalize_question(line).startswith("ngoai ra"):
+            notes.append(line)
+            current = None
+            continue
+        if line.startswith(("•", "-", "–", "*")) or re.match(
+            r"^(?:Điểm|Tổng điểm)\b", line, re.IGNORECASE
+        ):
+            detail = line.lstrip("•-–* ").strip()
+            if current is None:
+                intro.append(detail)
+            else:
+                current["details"].append(detail)
+            continue
+        if current is not None:
+            if current["details"]:
+                current["details"][-1] = f"{current['details'][-1]} {line}"
+            else:
+                current["title"] = f"{current['title']} {line}"
+        else:
+            intro.append(line)
+
+    if {str(method.get("code")) for method in methods} != {"a", "b", "c", "d"}:
+        return None
+    if any(not method["details"] for method in methods):
+        return None
+
+    answer_lines = [f"Điều kiện học bổng tuyển sinh DHV {target_year} theo tài liệu:"]
+    if intro:
+        answer_lines.append(" ".join(intro))
+    for method in methods:
+        answer_lines.append(f"- {method['title']}")
+        answer_lines.extend(f"  - {detail}" for detail in method["details"])
+    answer_lines.extend(notes)
+    return "\n".join(answer_lines)
 
 
 def _is_scholarship_heading(line: str) -> bool:
@@ -4216,7 +4730,8 @@ def _advisory_evidence_clarification(
             f"Với sở thích {interest_display}, mình nghiêng về {preferred_program} hơn. "
             f"Đây là chương trình thuộc ngành {parent}{code_text}."
         )
-    lines.append("Mình tóm tắt các hướng bạn đang cân nhắc theo dữ liệu DHV đã được kiểm chứng:")
+    if candidate_majors or candidate_programs:
+        lines.append("Theo dữ liệu DHV đã được kiểm chứng, các lựa chọn được nhắc đến gồm:")
     for major in candidate_majors:
         major_text = str(major).strip()
         if not major_text:
@@ -4257,11 +4772,13 @@ def _advisory_evidence_clarification(
         )
 
     if interest:
-        if not preferred_program:
-            lines.append(f"Mình ghi nhận bạn đang quan tâm đến {interest_display}.")
         lines.append(
-            "Bạn muốn mình so sánh sâu hơn về nội dung học và hướng công việc của "
-            "các lựa chọn này không?"
+            f"Mình ghi nhận bạn quan tâm đến {interest_display}, nhưng tài liệu DHV đã xác minh "
+            "chưa nêu căn cứ để kết luận ngành hoặc chương trình nào phù hợp với sở thích này."
+        )
+        lines.append(
+            "Bạn muốn mình liệt kê các ngành/chương trình có trong tài liệu, hay cho biết thêm "
+            "tiêu chí bạn muốn ưu tiên để mình tra cứu thông tin tương ứng?"
         )
     else:
         lines.append(
@@ -4279,54 +4796,101 @@ def _advisory_preferred_program(
     interest: str,
     relations: list[dict[str, str]],
 ) -> str | None:
-    """Chọn một mục tiêu tư vấn có điều kiện từ sở thích của người dùng và các tên trong bằng chứng."""
+    """Không suy ra độ phù hợp từ quan hệ chương trình–ngành.
 
-    if not interest:
-        return None
-    interest_text = normalize_question(interest)
-    creative_signals = (
-        "edit",
-        "video",
-        "noi dung",
-        "truyen thong",
-        "media",
-        "thiet ke",
+    Evidence hiện chỉ ghi nhận tên chương trình và ngành cha, không ghi nhận
+    quan hệ giữa sở thích/năng lực cá nhân với chương trình. Chỉ bổ sung cơ chế
+    chọn khi corpus có loại evidence phù hợp riêng.
+    """
+
+    return None
+
+
+def _has_verified_advisory_fit_evidence(
+    analysis: QueryAnalysis,
+    evidence: Any,
+    state: ConversationState,
+    *,
+    target_year: int,
+) -> bool:
+    """Allow generated personal-fit advice only when one verified chunk states it.
+
+    Catalog membership and program-to-major relations are not evidence that a
+    program matches a student's interest. Both the interest and a named
+    candidate must be tied by explicit fit language in the same official,
+    verified, in-year DHV chunk.
+    """
+
+    interest = normalize_question(
+        str(analysis.entities.get("interest") or state.interest or "").strip()
     )
-    if not any(signal in interest_text for signal in creative_signals):
-        return None
-    programs = list(candidate_programs)
-    if not programs:
-        programs = list(
-            dict.fromkeys(
-                str(relation.get("program_name") or "").strip()
-                for relation in relations
-                if str(relation.get("program_name") or "").strip()
-            )
-        )
-    if any(signal in interest_text for signal in ("video", "edit", "dung video")):
-        for program in programs:
-            if "truyen thong da phuong tien" in normalize_question(program):
-                if any(
-                    str(relation.get("program_name") or "").strip() == program
-                    and str(relation.get("parent_major") or "").strip()
-                    for relation in relations
-                ):
-                    return program
-    for program in programs:
-        program_text = str(program).strip()
-        program_normalized = normalize_question(program_text)
-        if not any(
-            signal in program_normalized
-            for signal in ("truyen thong", "da phuong tien", "digital marketing")
+    if not interest:
+        return False
+
+    candidates: list[str] = []
+    for key in ("candidate_majors", "candidate_programs"):
+        values = analysis.entities.get(key)
+        if isinstance(values, (list, tuple)):
+            candidates.extend(str(value).strip() for value in values if str(value).strip())
+    for value in (analysis.entities.get("major_name"), analysis.entities.get("program_name")):
+        if value:
+            candidates.append(str(value).strip())
+    candidates.extend(state.candidate_majors)
+    candidates.extend(state.candidate_programs)
+    for relation in getattr(evidence, "entity_relations", ()) or ():
+        for key in ("program_name", "parent_major"):
+            value = str(relation.get(key) or "").strip()
+            if value:
+                candidates.append(value)
+    for fact in getattr(evidence, "score_facts", ()) or ():
+        value = str(fact.get("major_name") or "").strip()
+        if value:
+            candidates.append(value)
+
+    unique_candidates = tuple(dict.fromkeys(
+        normalize_question(candidate) for candidate in candidates if normalize_question(candidate)
+    ))
+    if not unique_candidates:
+        return False
+
+    fit_markers = (
+        r"(?<!khong )(?<!khong phai )"
+        r"(?:phu hop(?: nhat)?|thich hop|co the phu hop|danh cho)"
+    )
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if (
+            metadata.get("status") != "verified"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
         ):
             continue
-        if any(
-            str(relation.get("program_name") or "").strip() == program_text
-            and str(relation.get("parent_major") or "").strip()
-            for relation in relations
-        ):
-            return program_text
-    return None
+        try:
+            if int(metadata.get("year")) != int(target_year):
+                continue
+        except (TypeError, ValueError):
+            continue
+        source_url = str(metadata.get("source_url") or "")
+        host = (urlparse(source_url).hostname or "").lower().rstrip(".")
+        if host != "dhv.edu.vn" and not host.endswith(".dhv.edu.vn"):
+            continue
+
+        text = normalize_question(str(getattr(chunk, "text", "") or ""))
+        if interest not in text:
+            continue
+        for candidate in unique_candidates:
+            if candidate not in text:
+                continue
+            interest_after_candidate = re.search(
+                rf"{re.escape(candidate)}.{{0,180}}{fit_markers}.{{0,100}}{re.escape(interest)}",
+                text,
+            )
+            candidate_after_interest = re.search(
+                rf"{re.escape(interest)}.{{0,180}}{fit_markers}.{{0,100}}{re.escape(candidate)}",
+                text,
+            )
+            if interest_after_candidate or candidate_after_interest:
+                return True
+    return False
 
 
 def _major_rows_from_evidence(evidence: Any) -> list[tuple[str, str]]:
@@ -5495,7 +6059,12 @@ def ask_chatbot(
         intent=analysis.intent,
     )
     evidence_documents = list(evidence_selection.documents)
-    if (
+    scholarship_conditions_evidence_prioritized = False
+    if _is_admission_scholarship_conditions_question(analysis):
+        evidence_documents, scholarship_conditions_evidence_prioritized = (
+            _prioritize_admission_scholarship_conditions_documents(evidence_documents)
+        )
+    elif (
         analysis.intent == "HOI_HOC_BONG"
         and analysis.entities.get("query_mode") in {"LIST", "LIST_AND_COUNT"}
     ):
@@ -5582,6 +6151,7 @@ def ask_chatbot(
     trace["enrollment_checklist_evidence_prioritized"] = enrollment_checklist_question
     trace["admission_date_evidence_prioritized"] = date_comparison_evidence_reordered
     trace["school_overview_evidence_prioritized"] = school_overview_evidence_prioritized
+    trace["scholarship_conditions_evidence_prioritized"] = scholarship_conditions_evidence_prioritized
     trace["retrieval_calls"] = 1
     trace["score_comparisons"] = [dict(comparison) for comparison in score_comparisons]
     trace["score_engine"] = score_evaluation
@@ -5597,14 +6167,17 @@ def ask_chatbot(
         _evidence_score_list_answer(analysis, evidence)
         if analysis.entities.get("entity_type") == "major_list"
         else (
-            _evidence_score_comparison_reason_answer(analysis, evidence)
+            _evidence_method_application_threshold_answer(analysis, evidence)
+            or _evidence_score_comparison_reason_answer(analysis, evidence)
             or _structured_score_answer(analysis, lookup_facts)
         )
     )
     admission_rule_answer = None
     if analysis.intent in {"HOI_DANG_KY_XET_TUYEN", "HOI_NGUONG_DAU_VAO"}:
         admission_rule_answer = (
-            _evidence_subject_minimum_answer(analysis, evidence)
+            _evidence_law_grade_eligibility_answer(analysis, evidence)
+            or _evidence_method_application_threshold_answer(analysis, evidence)
+            or _evidence_subject_minimum_answer(analysis, evidence)
             or _evidence_eligibility_answer(analysis, evidence)
             or _evidence_major_eligibility_answer(analysis, evidence)
         )
@@ -5616,11 +6189,11 @@ def ask_chatbot(
     supplementary_route_question = (
         analysis.intent in {"HOI_XET_TUYEN_BO_SUNG", "HOI_DANG_KY_XET_TUYEN"}
         and any(marker in normalized_query for marker in (
-            "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung",
+            "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung",
         ))
         and any(marker in normalized_query for marker in (
             "online", "truc tuyen", "den truong nop", "nop tai", "nop ho so",
-            "nhan ho so", "thoi gian nhan ho so", "han nhan ho so", "khi nao nhan ho so",
+            "nhan ho so", "thoi gian nhan ho so", "thoi han", "han nhan ho so", "khi nao nhan ho so",
             "hinh thuc nop", "dang ky truc tiep",
         ))
     )
@@ -5671,6 +6244,35 @@ def ask_chatbot(
             "state": next_state.to_dict(),
             "trace": trace,
         }, answer_plan)
+
+    if analysis.intent == "TU_VAN_CHON_NGANH" and not _has_verified_advisory_fit_evidence(
+        analysis,
+        evidence,
+        state,
+        target_year=settings_obj.target_year,
+    ):
+        # The verified admissions sources establish catalogue and parent-major
+        # facts, but do not match personal interests to a suitable programme.
+        # Stop before generation instead of letting Qwen infer fit from a name.
+        trace["advisory_boundary"] = "personal_fit_not_in_verified_evidence"
+        trace["validator"] = {
+            "status": "clarification",
+            "reason": "personal_fit_not_in_verified_evidence",
+        }
+        result = _advisory_evidence_clarification(
+            analysis,
+            evidence,
+            next_state,
+            score_comparisons,
+        )
+        answer_plan = plan_answer(analysis, evidence=evidence, status="clarification")
+        trace["answer_plan"] = answer_plan.to_dict()
+        trace["planner_mode"] = answer_plan.mode
+        trace["final_status"] = "clarification"
+        result["state"] = next_state.to_dict()
+        result["conversation_state"] = next_state.to_dict()
+        result["trace"] = trace
+        return _attach_answer_plan(result, answer_plan)
 
     # Published score facts are closed lookups. Keep all three lookup types on
     # one deterministic path, then pass the result through the same validator
@@ -5963,10 +6565,18 @@ def ask_chatbot(
             or _evidence_scholarship_answer(analysis, evidence)
         )
     elif analysis.intent == "HOI_XET_TUYEN_BO_SUNG":
-        direct_evidence_answer = _evidence_supplementary_majors_answer(analysis, evidence)
+        direct_evidence_answer = (
+            _evidence_application_registration_answer(analysis, evidence)
+            or _evidence_supplementary_majors_answer(analysis, evidence)
+        )
     elif analysis.intent == "HOI_CACH_TINH_DIEM":
         direct_evidence_answer = (
-            _evidence_admission_bonus_answer(analysis, evidence)
+            (
+                _evidence_method_calculation_answer(analysis, evidence)
+                if analysis.entities.get("admission_method") == "thpt"
+                else None
+            )
+            or _evidence_admission_bonus_answer(analysis, evidence)
             or _evidence_exam_subject_count_answer(analysis, evidence)
         )
     elif analysis.intent == "HOI_CO_SO_LIEN_HE":
@@ -5979,7 +6589,10 @@ def ask_chatbot(
         )
     elif analysis.intent == "HOI_NGUONG_DAU_VAO":
         direct_evidence_answer = (
-            _evidence_vocational_same_group_eligibility_answer(analysis, evidence)
+            _evidence_law_grade_eligibility_answer(analysis, evidence)
+            or _evidence_method_application_threshold_answer(analysis, evidence)
+            or _evidence_eligibility_answer(analysis, evidence)
+            or _evidence_vocational_same_group_eligibility_answer(analysis, evidence)
             or _evidence_subject_minimum_answer(analysis, evidence)
             or _evidence_major_eligibility_answer(analysis, evidence)
         )
@@ -6015,10 +6628,21 @@ def ask_chatbot(
             trace["final_status"] = "ok"
             return _attach_answer_plan(validated_direct_answer, answer_plan)
 
+    method_formula_request = (
+        analysis.intent == "HOI_CACH_TINH_DIEM"
+        and analysis.entities.get("admission_method") == "thpt"
+        and _is_formula_request(analysis.normalized_question)
+    )
+    method_formula_answer = (
+        _evidence_method_calculation_answer(analysis, evidence)
+        if method_formula_request
+        else None
+    )
     protected_evidence_request = (
         applicant_support_question
         or result_notification_question
         or supplementary_route_question
+        or (method_formula_request and method_formula_answer is None)
         or (
             bool(analysis.entities.get("admission_condition_request"))
             and admission_rule_answer is None
@@ -6030,7 +6654,11 @@ def ask_chatbot(
         or (analysis.intent == "HOI_LICH_TUYEN_SINH" and admission_date_comparison)
     )
     if protected_evidence_request:
-        trace["evidence_boundary"] = "requested_admission_detail_not_fully_supported"
+        trace["evidence_boundary"] = (
+            "requested_method_formula_missing_matching_evidence"
+            if method_formula_request and method_formula_answer is None
+            else "requested_admission_detail_not_fully_supported"
+        )
         answer_plan = plan_answer(analysis, evidence=evidence, status="no_data")
         trace["answer_plan"] = answer_plan.to_dict()
         return _attach_answer_plan({

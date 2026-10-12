@@ -13,7 +13,7 @@ from langchain_core.documents import Document
 from src.chatbot.evidence import build_evidence
 from src.chatbot.chat_service import ChatService
 from src.chatbot.output_validator import FALLBACK_ANSWER
-from src.chatbot.rag_chain import ask_chatbot
+from src.chatbot.rag_chain import _has_verified_advisory_fit_evidence, ask_chatbot
 from src.chatbot.query_analysis import (
     ConversationState,
     analyze_question,
@@ -390,7 +390,124 @@ class TaskFRetrievalTests(unittest.TestCase):
 
 
 class TaskFGenerationTests(unittest.TestCase):
-    def test_advisory_retries_and_rejects_wrong_program_parent(self) -> None:
+    def test_method_list_followup_returns_verified_thpt_score_formula(self) -> None:
+        llm = EchoEvidenceLLM()
+        state: dict[str, object] = {}
+        first = ask_chatbot(
+            "trường có bao nhiêu phương thức xét, và hãy liệt kê chi tiết về những phương thức xét tuyển đấy",
+            retriever=_retriever(),
+            llm=llm,
+            conversation_state=state,
+        )
+        state = dict(first["state"])
+        second = ask_chatbot(
+            "xét kết quả kỳ thi tốt nghiệp THPT thì xét điểm như nào",
+            retriever=_retriever(),
+            llm=llm,
+            conversation_state=state,
+        )
+
+        trace = second["trace"]
+        self.assertEqual(first["status"], "ok")
+        self.assertIn("có 5 phương thức", first["answer"])
+        self.assertEqual(trace["intent"], "HOI_CACH_TINH_DIEM")
+        self.assertEqual(trace["entities"]["admission_method"], "thpt")
+        self.assertEqual(trace["router"]["categories"], ["phuong_thuc_xet_tuyen"])
+        self.assertEqual(trace["retrieval_calls"], 1)
+        self.assertGreater(trace["retrieved_docs_count"], 0)
+        self.assertGreater(trace["evidence_count"], 0)
+        self.assertEqual(trace["final_status"], "ok")
+        self.assertEqual(trace["evidence_direct_answer"]["status"], "ok")
+        self.assertEqual(second["status"], "ok")
+        self.assertIn("tổng điểm 03 môn", second["answer"].casefold())
+        self.assertIn("Toán + 02 môn có điểm cao nhất", second["answer"])
+        self.assertIn("Ngữ văn + 02 môn có điểm cao nhất", second["answer"])
+        self.assertEqual(llm.prompts, [])
+        self.assertEqual(
+            second["sources"],
+            [{"title": "Phương thức xét tuyển và học bổng DHV 2026", "url": "https://tuyensinh.dhv.edu.vn/"}],
+        )
+
+    def test_multi_issue_scholarship_retrieves_verified_policy_and_marks_partial_result(self) -> None:
+        question = "CNTT học phí bao nhiêu, có học bổng gì và có những chương trình nào?"
+        llm = EchoEvidenceLLM()
+        result = ask_chatbot(
+            question,
+            retriever=_retriever(),
+            llm=llm,
+        )
+
+        multi_issue = result["trace"]["multi_issue"]
+        subplans = multi_issue["subplans"]
+        scholarship_index = next(
+            index
+            for index, subplan in enumerate(subplans)
+            if subplan["intent"] == "HOI_HOC_BONG"
+        )
+        scholarship_categories = subplans[scholarship_index]["categories"]
+        self.assertIn("hoc_bong", scholarship_categories)
+        self.assertIn("phuong_thuc_xet_tuyen", scholarship_categories)
+        self.assertNotIn("ho_so", scholarship_categories)
+        self.assertGreater(multi_issue["retrieved_docs_counts"][scholarship_index], 0)
+        self.assertGreater(multi_issue["evidence_counts"][scholarship_index], 0)
+        self.assertEqual(multi_issue["statuses"][scholarship_index], "ok")
+        scholarship_answer = result["answer"].split("### Học bổng\n", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("Học bổng tuyển sinh", scholarship_answer)
+        self.assertIn("Học bổng Đôi bạn cùng tiến", scholarship_answer)
+        self.assertNotIn("TÊN NGÀNH", scholarship_answer)
+        self.assertNotIn("Công nghệ phần mềm", scholarship_answer)
+        self.assertFalse(
+            {"major_name", "major_code", "program_name", "parent_major", "candidate_majors", "candidate_programs"}
+            & set(subplans[scholarship_index]["entity_filters"])
+        )
+        scholarship_selected = multi_issue["evidence_selections"][scholarship_index]["selected"]
+        self.assertTrue(
+            any(
+                item.get("category") == "hoc_bong"
+                and "học bổng" in str(item.get("content_preview") or "").casefold()
+                for item in scholarship_selected
+            )
+        )
+        self.assertEqual(llm.prompts, [])
+        self.assertTrue(result["partial"])
+        self.assertTrue(multi_issue["partial"])
+        self.assertFalse(multi_issue["complete"])
+        self.assertEqual(multi_issue["statuses"], ["no_data", "ok", "ok"])
+
+    def test_single_issue_major_scholarship_question_uses_policy_not_program_table(self) -> None:
+        question = "CNTT có học bổng gì?"
+        analysis = analyze_question(question)
+        plan = route_question(analysis)
+        llm = EchoEvidenceLLM()
+
+        result = ask_chatbot(question, retriever=_retriever(), llm=llm)
+
+        self.assertEqual(analysis.intent, "HOI_HOC_BONG")
+        self.assertEqual(analysis.entities["query_mode"], "LIST")
+        self.assertEqual(plan.query_mode, "LIST")
+        self.assertFalse(
+            {"major_name", "major_code", "program_name", "parent_major", "candidate_majors", "candidate_programs"}
+            & set(plan.entity_filters)
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("Học bổng tuyển sinh", result["answer"])
+        self.assertIn("Học bổng Ngành Tiên phong", result["answer"])
+        self.assertNotIn("TÊN NGÀNH", result["answer"])
+        self.assertNotIn("Công nghệ phần mềm", result["answer"])
+        selected = result["trace"]["evidence_selection"]["selected"]
+        self.assertTrue(selected)
+        self.assertFalse(
+            any(
+                all(
+                    marker in normalize_question(str(item.get("content_preview") or ""))
+                    for marker in ("ten nganh", "chuong trinh dao tao", "ma nganh")
+                )
+                for item in selected
+            )
+        )
+        self.assertEqual(llm.prompts, [])
+
+    def test_advisory_does_not_generate_personal_fit_without_verified_evidence(self) -> None:
         llm = SequenceLLM(
             [
                 (
@@ -410,24 +527,95 @@ class TaskFGenerationTests(unittest.TestCase):
             llm=llm,
         )
 
-        self.assertEqual(result["status"], "ok")
-        self.assertEqual(len(llm.prompts), 2)
+        self.assertEqual(result["status"], "clarification")
+        self.assertEqual(len(llm.prompts), 0)
         self.assertIn("thuộc ngành Công nghệ thông tin", result["answer"])
         self.assertNotIn("thuộc ngành Kỹ thuật máy tính", result["answer"])
+        self.assertEqual(
+            result["trace"]["advisory_boundary"],
+            "personal_fit_not_in_verified_evidence",
+        )
+
+    def test_direct_fit_evidence_must_be_verified_dhv_and_current_year(self) -> None:
+        analysis = analyze_question(
+            "Tôi thích edit video, chương trình Truyền thông đa phương tiện có phù hợp không?"
+        )
+        state = ConversationState(current_year=2026)
+
+        def evidence_for(
+            *,
+            status: str = "verified",
+            year: int = 2026,
+            school_code: str = "DHV",
+            text: str = "Chương trình Truyền thông đa phương tiện phù hợp với người thích edit video.",
+        ) -> Any:
+            return build_evidence(
+                [
+                    Document(
+                        page_content=text,
+                        metadata={
+                            "status": status,
+                            "year": year,
+                            "school_code": school_code,
+                            "source_url": "https://tuyensinh.dhv.edu.vn/chuong-trinh",
+                        },
+                    )
+                ]
+            )
+
+        self.assertTrue(
+            _has_verified_advisory_fit_evidence(
+                analysis, evidence_for(), state, target_year=2026
+            )
+        )
+        self.assertFalse(
+            _has_verified_advisory_fit_evidence(
+                analysis, evidence_for(status="unverified"), state, target_year=2026
+            )
+        )
+        self.assertFalse(
+            _has_verified_advisory_fit_evidence(
+                analysis, evidence_for(year=2025), state, target_year=2026
+            )
+        )
+        self.assertFalse(
+            _has_verified_advisory_fit_evidence(
+                analysis,
+                evidence_for(
+                    text="Chương trình Truyền thông đa phương tiện không phù hợp với người thích edit video."
+                ),
+                state,
+                target_year=2026,
+            )
+        )
+        self.assertFalse(
+            _has_verified_advisory_fit_evidence(
+                analysis,
+                evidence_for(school_code="OTHER"),
+                state,
+                target_year=2026,
+            )
+        )
 
     def test_advisory_rejects_named_major_and_organization_outside_evidence(self) -> None:
         class UnsafeLLM:
+            called = False
+
             def generate(self, _: str) -> str:
+                self.called = True
                 return "Luật có ngưỡng ĐGNL 600 điểm; Đại học Quốc gia TP.HCM có thông tin liên quan."
 
+        llm = UnsafeLLM()
         result = ask_chatbot(
             "tôi đang phân vân giữa truyền thông đa phương tiện và kỹ thuật máy tính nhưng không biết theo ngành nào bạn có thể tư vấn cho tôi được không",
             retriever=_retriever(),
-            llm=UnsafeLLM(),
+            llm=llm,
         )
 
-        self.assertEqual(result["status"], "no_data")
-        self.assertEqual(result["sources"], [])
+        self.assertEqual(result["status"], "clarification")
+        self.assertTrue(result["sources"])
+        self.assertEqual(result["trace"]["advisory_boundary"], "personal_fit_not_in_verified_evidence")
+        self.assertFalse(llm.called)
 
     def test_generation_is_separate_and_echo_is_grounded(self) -> None:
         llm = EchoEvidenceLLM()
@@ -436,13 +624,20 @@ class TaskFGenerationTests(unittest.TestCase):
                 continue
             with self.subTest(case=case["id"]):
                 state = ConversationState.from_value(case.get("state"), default_year=2026)
+                analysis = analyze_question(case["question"], state)
                 result = ask_chatbot(
                     case["question"],
                     retriever=_retriever(),
                     llm=llm,
                     conversation_state=state,
                 )
-                self.assertEqual(result["status"], "ok")
+                if analysis.intent == "TU_VAN_CHON_NGANH":
+                    self.assertEqual(result["status"], "clarification")
+                    self.assertNotIn("mình nghiêng về", str(result["answer"]).casefold())
+                    if analysis.entities.get("interest"):
+                        self.assertIn("chưa nêu căn cứ để kết luận", str(result["answer"]))
+                else:
+                    self.assertEqual(result["status"], "ok")
                 answer = str(result["answer"])
                 for claim in case.get("forbidden_claims", []):
                     self.assertNotIn(claim, answer)
@@ -465,16 +660,22 @@ class TaskFGenerationTests(unittest.TestCase):
 
     def test_personal_admission_guarantee_is_rejected(self) -> None:
         class UnsafeLLM:
+            called = False
+
             def generate(self, _: str) -> str:
+                self.called = True
                 return "Công nghệ thông tin và Truyền thông đa phương tiện, bạn chắc chắn đậu."
 
+        llm = UnsafeLLM()
         result = ask_chatbot(
             "Tôi 19 điểm thích edit video nên chọn ngành nào?",
             retriever=_retriever(),
-            llm=UnsafeLLM(),
+            llm=llm,
         )
-        self.assertEqual(result["status"], "no_data")
-        self.assertEqual(result["sources"], [])
+        self.assertEqual(result["status"], "clarification")
+        self.assertTrue(result["sources"])
+        self.assertEqual(result["trace"]["advisory_boundary"], "personal_fit_not_in_verified_evidence")
+        self.assertFalse(llm.called)
 
     def test_wrong_program_major_code_is_rejected(self) -> None:
         class WrongRelationLLM:
@@ -582,7 +783,8 @@ class TaskFConversationTests(unittest.TestCase):
             llm=EchoEvidenceLLM(),
         )
 
-        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["status"], "clarification")
+        self.assertEqual(result["trace"]["advisory_boundary"], "personal_fit_not_in_verified_evidence")
         self.assertEqual(
             result["state"]["candidate_majors"],
             ["Marketing", "Tâm lý học"],
@@ -613,8 +815,11 @@ class TaskFConversationTests(unittest.TestCase):
             llm=llm,
             conversation_state=state,
         )
-        self.assertEqual(first["status"], "ok")
+        self.assertEqual(first["status"], "clarification")
+        self.assertEqual(first["trace"]["advisory_boundary"], "personal_fit_not_in_verified_evidence")
         self.assertNotIn("thuộc ngành Kỹ thuật máy tính", first["answer"])
+        self.assertNotIn("phù hợp", first["answer"].casefold())
+        self.assertIn("Bạn thích sáng tạo nội dung số hay tìm hiểu AI/IoT", first["answer"])
         state = dict(first["state"])
 
         second = ask_chatbot(
@@ -624,10 +829,10 @@ class TaskFConversationTests(unittest.TestCase):
             conversation_state=state,
         )
 
-        self.assertIn(second["status"], {"ok", "clarification"})
+        self.assertEqual(second["status"], "clarification")
         self.assertNotEqual(second["status"], "no_data")
         self.assertTrue(second["sources"])
-        self.assertEqual(len(llm.prompts), 3)
+        self.assertEqual(len(llm.prompts), 0)
 
     def test_advisory_fallback_keeps_verified_context_when_candidate_filter_is_empty(self) -> None:
         class CandidateMissRetriever:
@@ -670,9 +875,9 @@ class TaskFConversationTests(unittest.TestCase):
             },
         )
 
-        self.assertIn(result["status"], {"ok", "clarification"})
+        self.assertEqual(result["status"], "clarification")
         self.assertTrue(result["sources"])
-        self.assertEqual(len(llm.prompts), 2)
+        self.assertEqual(len(llm.prompts), 0)
 
     def test_two_turn_multiple_choices_then_scores_keeps_candidates_and_grounding(self) -> None:
         state: dict[str, object] = {}
@@ -701,7 +906,7 @@ class TaskFConversationTests(unittest.TestCase):
             llm=llm,
             conversation_state=state,
         )
-        self.assertEqual(first["status"], "ok")
+        self.assertEqual(first["status"], "clarification")
         state = dict(first["state"])
         self.assertIsNone(first["trace"]["entities"]["major_name"])
         self.assertIsNone(first["trace"]["entities"]["program_name"])
@@ -722,7 +927,7 @@ class TaskFConversationTests(unittest.TestCase):
             conversation_state=state,
         )
 
-        self.assertEqual(second["status"], "ok")
+        self.assertEqual(second["status"], "clarification")
         self.assertTrue(second["sources"])
         self.assertIsNone(second["trace"]["entities"]["major_name"])
         self.assertIsNone(second["trace"]["entities"]["program_name"])
@@ -748,15 +953,13 @@ class TaskFConversationTests(unittest.TestCase):
                 }
             ],
         )
-        self.assertIn("Kỹ thuật máy tính", llm.prompts[1])
-        self.assertIn("Truyền thông đa phương tiện", llm.prompts[1])
-        self.assertIn("edit video", llm.prompts[1])
-        context_match = re.search(r"<CONTEXT>\n(.*?)\n</CONTEXT>", llm.prompts[1], re.DOTALL)
-        self.assertIsNotNone(context_match)
-        self.assertNotIn("Luật", context_match.group(1))
-        self.assertIn("Kỹ thuật máy tính", context_match.group(1))
-        self.assertIn("Truyền thông đa phương tiện", context_match.group(1))
+        self.assertEqual(second["trace"]["advisory_boundary"], "personal_fit_not_in_verified_evidence")
+        self.assertEqual(llm.prompts, [])
+        self.assertIn("Kỹ thuật máy tính", second["answer"])
+        self.assertIn("Truyền thông đa phương tiện", second["answer"])
         self.assertNotIn("là ngành độc lập", second["answer"])
+        self.assertNotIn("mình nghiêng về", second["answer"].casefold())
+        self.assertIn("chưa nêu căn cứ để kết luận", second["answer"])
 
     def test_realistic_two_turn_rejected_drafts_fall_back_to_grounded_clarification(self) -> None:
         state: dict[str, object] = {}
@@ -815,7 +1018,8 @@ class TaskFConversationTests(unittest.TestCase):
         self.assertNotIn("chưa tự quyết định thay bạn", second["answer"])
         self.assertNotIn("hệ thống chưa", second["answer"].casefold())
         self.assertNotIn("ĐHQG", second["answer"])
-        self.assertIn("mình nghiêng về Truyền thông đa phương tiện", second["answer"])
+        self.assertNotIn("mình nghiêng về", second["answer"].casefold())
+        self.assertIn("chưa nêu căn cứ để kết luận", second["answer"])
         self.assertIn("Công nghệ thông tin (mã ngành 7480201)", second["answer"])
         self.assertIn("Kỹ thuật máy tính (mã ngành 7480106)", second["answer"])
         self.assertIn("Hệ thống nhúng thông minh", second["answer"])
@@ -849,8 +1053,10 @@ class TaskFConversationTests(unittest.TestCase):
             "Tôi thi tốt nghiệp xong điểm tôi đây: Toán: 8 Văn: 7.5 Anh: 7.5 ĐGNL: 720 Sở thích: edit video nhưng chưa biết chọn ngành nào",
             conversation_state=first["conversation_state"],
         )
-        self.assertEqual(second["status"], "ok")
+        self.assertEqual(second["status"], "clarification")
         self.assertIn("Truyền thông đa phương tiện là chương trình thuộc ngành Công nghệ thông tin", second["answer"])
+        self.assertNotIn("mình nghiêng về", second["answer"].casefold())
+        self.assertIn("chưa nêu căn cứ để kết luận", second["answer"])
         self.assertNotIn("Luật", second["answer"])
         self.assertEqual(second["state"]["candidate_majors"], ["Kỹ thuật máy tính", "Công nghệ thông tin"])
         self.assertEqual(second["state"]["student_scores"]["dgnl"], 720)
@@ -874,7 +1080,7 @@ class TaskFConversationTests(unittest.TestCase):
             results.append(result)
             state = dict(result["state"])
 
-        self.assertEqual(results[0]["status"], "ok")
+        self.assertEqual(results[0]["status"], "clarification")
         self.assertEqual(
             results[0]["trace"]["score_comparisons"],
             [
