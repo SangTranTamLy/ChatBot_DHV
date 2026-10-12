@@ -28,6 +28,7 @@ from src.ingestion.prepare_processed_from_raw import (
 from src.ingestion.structured_json import (
     StructuredJSONValidationError,
     build_chunk_documents,
+    build_structured_document,
     load_structured_json,
     parse_admission_methods,
     parse_enrollment_documents,
@@ -326,6 +327,113 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(pages[1]["tables"][0]["headers"], ["column_1", "column_2", "column_3"])
         self.assertNotIn("header_inherited", pages[1]["tables"][0])
 
+    def test_headerless_table_inherits_headers_when_page_boundary_proves_continuation(self) -> None:
+        pages: list[dict[str, object]] = [
+            {
+                "page_number": 1,
+                "page_bbox": [0, 0, 600, 800],
+                "native_blocks": [],
+                "tables": [
+                    {
+                        "headers": ["Mã ngành", "Tên ngành", "Điểm chuẩn"],
+                        "column_count": 3,
+                        "bbox": [60, 600, 540, 790],
+                        "rows": [],
+                    }
+                ],
+            },
+            {
+                "page_number": 2,
+                "page_bbox": [0, 0, 600, 800],
+                "native_blocks": [],
+                "elements": [{"type": "table", "table_id": "page_2_table_1", "text": "column_1 | column_2 | column_3"}],
+                "tables": [
+                    {
+                        "table_id": "page_2_table_1",
+                        "headers": ["column_1", "column_2", "column_3"],
+                        "column_count": 3,
+                        "bbox": [60, 12, 540, 300],
+                        "rows": [
+                            {
+                                "values": ["7480201", "Công nghệ thông tin", "15"],
+                                "cells": [
+                                    {"column_index": 0, "text": "7480201"},
+                                    {"column_index": 1, "text": "Công nghệ thông tin"},
+                                    {"column_index": 2, "text": "15"},
+                                ],
+                                "data": {"column_1": "7480201", "column_2": "Công nghệ thông tin", "column_3": "15"},
+                            }
+                        ],
+                    }
+                ],
+            },
+        ]
+
+        _inherit_continued_table_headers(pages)
+
+        continued = pages[1]["tables"][0]
+        self.assertEqual(continued["headers"], ["Mã ngành", "Tên ngành", "Điểm chuẩn"])
+        self.assertTrue(continued["header_inherited"])
+        self.assertEqual(continued["header_source_page"], 1)
+        self.assertEqual(continued["rows"][0]["data"]["Điểm chuẩn"], "15")
+        self.assertEqual(continued["rows"][0]["cells"][2]["header"], "Điểm chuẩn")
+        self.assertEqual(pages[1]["elements"][0]["text"], "Mã ngành | Tên ngành | Điểm chuẩn")
+
+    def test_literal_backslash_newlines_are_normalized_in_structured_table_headers(self) -> None:
+        raw = RAW_ROOT / "diem_trung_tuyen" / "V1_DIEM_TRUNG_TUYEN_DHV_2026.pdf"
+        literal_major_header = r"Mã\nngành"
+        literal_score_header = r"Điểm\nchuẩn"
+        table_id = "page_1_table_1"
+        document = build_structured_document(
+            raw_path=raw,
+            raw_root=RAW_ROOT,
+            pages=[
+                {
+                    "page": 1,
+                    "text": "Trang trích xuất được giữ nguyên.",
+                    "elements": [
+                        {
+                            "type": "table",
+                            "table_id": table_id,
+                            "text": f"{literal_major_header} | {literal_score_header}",
+                        }
+                    ],
+                    "tables": [
+                        {
+                            "table_id": table_id,
+                            "headers": [literal_major_header, literal_score_header],
+                            "rows": [
+                                {
+                                    "values": ["7480201", "15"],
+                                    "cells": [
+                                        {"column_index": 0, "header": literal_major_header, "text": "7480201"},
+                                        {"column_index": 1, "header": literal_score_header, "text": "15"},
+                                    ],
+                                    "data": {literal_major_header: "7480201", literal_score_header: "15"},
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            manifest_entry={
+                "document_id": "synthetic_literal_header_test",
+                "title": "Synthetic table header normalization",
+                "category": "misc",
+                "year": 2026,
+                "status": "pending_review",
+                "verified": False,
+            },
+            source_page_count=1,
+        )
+
+        page = document["pages"][0]
+        self.assertEqual(page["text"], "Trang trích xuất được giữ nguyên.")
+        self.assertEqual(page["tables"][0]["headers"], ["Mã ngành", "Điểm chuẩn"])
+        self.assertEqual(page["tables"][0]["rows"][0]["data"], {"Mã ngành": "7480201", "Điểm chuẩn": "15"})
+        self.assertEqual(page["tables"][0]["rows"][0]["cells"][0]["header"], "Mã ngành")
+        self.assertEqual(page["elements"][0]["text"], "Mã ngành | Điểm chuẩn")
+
     def test_header_inheritance_rejects_caption_and_misaligned_tables(self) -> None:
         scenarios = (
             (
@@ -477,12 +585,18 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(tuition["english_test_fee_vnd"], 250_000)
         self.assertEqual(tuition["total_cost_vnd"], 14_250_000)
         self.assertEqual(tuition["total_cost_breakdown"], "14.250.000 đồng + 250.000 đồng")
-        scholarship_tables = document["pages"][4]["tables"]
+        first_scholarship_page_tables = document["pages"][4]["tables"]
+        second_scholarship_page_tables = document["pages"][5]["tables"]
+        self.assertEqual(len(first_scholarship_page_tables), 1)
+        self.assertEqual(len(second_scholarship_page_tables), 1)
         self.assertEqual(
-            scholarship_tables[0]["headers"],
+            first_scholarship_page_tables[0]["headers"],
             ["Học bổng đầu vào", "Hỗ trợ HKI", "HKI cần đóng", "Giảm tiếp HKII", "Tổng ưu đãi"],
         )
-        self.assertEqual(scholarship_tables[1]["headers"], ["Số lượng tân sinh viên nhập học cùng nhau", "Mức hỗ trợ HKII"])
+        self.assertEqual(
+            second_scholarship_page_tables[0]["headers"],
+            ["Số lượng tân sinh viên nhập học cùng nhau", "Mức hỗ trợ HKII"],
+        )
         self.assertEqual(validate_structured_document(document), [])
 
     def test_catalog_json_has_pages_records_and_parent_child_programs(self) -> None:
@@ -557,15 +671,18 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         score_table = admission["pages"][0]["tables"][0]
         continued_score_table = admission["pages"][1]["tables"][0]
         self.assertEqual(continued_score_table["headers"], score_table["headers"])
-        self.assertTrue(continued_score_table["header_inherited"])
-        self.assertEqual(continued_score_table["header_source_page"], 1)
+        # The source visibly repeats the table headings on page 2; do not
+        # mislabel detected source text as inherited metadata.
+        self.assertTrue(continued_score_table["header_detected"])
+        self.assertNotIn("header_inherited", continued_score_table)
         self.assertTrue(all(set(row["data"]) == set(score_table["headers"]) for row in continued_score_table["rows"]))
 
         method_table = threshold["pages"][0]["tables"][0]
         for continued_page in threshold["pages"][1:3]:
             continued_table = continued_page["tables"][0]
             self.assertEqual(continued_table["headers"], method_table["headers"])
-            self.assertTrue(continued_table["header_inherited"])
+            self.assertTrue(continued_table["header_detected"])
+            self.assertNotIn("header_inherited", continued_table)
 
     def test_json_loader_builds_natural_record_chunks_and_flat_metadata(self) -> None:
         raw = RAW_ROOT / "ho_so" / "V1_HO_SO_VA_THU_TUC_NHAP_HOC_DHV_2026.pdf"

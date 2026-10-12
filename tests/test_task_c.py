@@ -20,13 +20,19 @@ from src.retrieval.retriever import DHVRetriever, topic_category
 
 
 SOURCE_URL = "https://dhv.edu.vn/verified-source"
-def _document(text: str, *, url: str = SOURCE_URL, chunk_id: str = "chunk-1") -> Document:
+def _document(
+    text: str,
+    *,
+    url: str = SOURCE_URL,
+    chunk_id: str = "chunk-1",
+    year: int = 2026,
+) -> Document:
     return Document(
         page_content=text,
         metadata={
-            "title": "Học phí DHV 2026",
+            "title": f"Học phí DHV {year}",
             "category": "hoc_phi",
-            "year": 2026,
+            "year": year,
             "school_code": "DHV",
             "source_url": url,
             "status": "verified",
@@ -409,6 +415,54 @@ class TaskCTests(unittest.TestCase):
         self.assertEqual(evidence.sources[0]["url"], SOURCE_URL)
         self.assertNotIn("https://", evidence.context)
 
+    def test_explicit_other_year_uses_only_matching_year_evidence(self) -> None:
+        retriever_2024 = RecordingRetriever(
+            [
+                _document("Học phí DHV năm 2024 là 1.100.000 VNĐ/tín chỉ.", year=2024),
+                _document(
+                    "Học phí DHV năm 2026 là 1.250.000 đồng/tín chỉ.",
+                    year=2026,
+                    chunk_id="2026",
+                ),
+            ]
+        )
+        llm_2024 = RecordingLLM("Học phí DHV năm 2024 là 1.100.000 VNĐ/tín chỉ.")
+
+        result_2024 = ask_chatbot(
+            "Học phí DHV năm 2024 bao nhiêu?",
+            retriever=retriever_2024,
+            llm=llm_2024,
+        )
+
+        self.assertEqual(result_2024["status"], "ok")
+        self.assertEqual(result_2024["trace"]["entities"]["year"], 2024)
+        self.assertEqual(result_2024["trace"]["evidence_count"], 1)
+        self.assertIn("1.100.000", result_2024["answer"])
+        self.assertNotIn("1.250.000", result_2024["answer"])
+        self.assertIn("1.100.000", llm_2024.prompt)
+        self.assertNotIn("1.250.000", llm_2024.prompt)
+
+        retriever_2026 = RecordingRetriever(
+            [
+                _document("Học phí DHV năm 2024 là 1.100.000 VNĐ/tín chỉ.", year=2024),
+                _document(
+                    "Học phí DHV năm 2026 là 1.250.000 đồng/tín chỉ.",
+                    year=2026,
+                    chunk_id="2026",
+                ),
+            ]
+        )
+        result_2026 = ask_chatbot(
+            "Học phí DHV năm 2026 bao nhiêu?",
+            retriever=retriever_2026,
+            llm=RecordingLLM("Học phí DHV năm 2026 là 1.250.000 đồng/tín chỉ."),
+        )
+        self.assertEqual(result_2026["status"], "ok")
+        self.assertEqual(result_2026["trace"]["entities"]["year"], 2026)
+        self.assertEqual(result_2026["trace"]["evidence_count"], 1)
+        self.assertIn("1.250.000", result_2026["answer"])
+        self.assertNotIn("1.100.000", result_2026["answer"])
+
     def test_explicit_unsupported_year_is_no_data_without_model_call(self) -> None:
         retriever = RecordingRetriever([_document("Học phí DHV 2026 là 1.250.000 đồng/tín chỉ.")])
         llm = RecordingLLM("Không nên được gọi.")
@@ -417,7 +471,9 @@ class TaskCTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "no_data")
         self.assertEqual(result["sources"], [])
-        self.assertFalse(retriever.called)
+        self.assertTrue(retriever.called)
+        self.assertEqual(result["trace"]["entities"]["year"], 2027)
+        self.assertEqual(result["trace"]["evidence_count"], 0)
         self.assertFalse(llm.called)
 
     def test_out_of_scope_is_rejected_without_retrieval_or_model_call(self) -> None:

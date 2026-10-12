@@ -191,6 +191,90 @@ def _single_line(value: object) -> str:
     return re.sub(r"\s+", " ", _clean_text(str(value or ""))).strip()
 
 
+def _table_header_text(value: object) -> str:
+    """Normalize real or escaped line breaks in a structured table header."""
+
+    text = str(value or "")
+    # Some upstream JSON-compatible fixtures encode a visual line break as
+    # two literal characters (backslash + n) instead of an actual newline.
+    # Normalize only header presentation; page text and cell contents remain
+    # untouched for source fidelity.
+    text = text.replace("\\r\\n", " ").replace("\\n", " ").replace("\\r", " ")
+    return _single_line(text)
+
+
+def _row_data_from_values(headers: list[str], values: list[str]) -> dict[str, str]:
+    """Build a header-keyed row mapping without losing duplicate columns."""
+
+    result: dict[str, str] = {}
+    occurrences: dict[str, int] = {}
+    for index, value in enumerate(values):
+        base = headers[index].strip() if index < len(headers) else f"column_{index + 1}"
+        base = base or f"column_{index + 1}"
+        occurrences[base] = occurrences.get(base, 0) + 1
+        key = base if occurrences[base] == 1 else f"{base} [{occurrences[base]}]"
+        result[key] = value
+    return result
+
+
+def _normalize_page_tables(page: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Copy page table structures while canonicalizing only their headers."""
+
+    normalized_tables: list[dict[str, Any]] = []
+    headers_by_table_id: dict[str, list[str]] = {}
+    for source_table in page.get("tables", []) or []:
+        if not isinstance(source_table, Mapping):
+            continue
+        table = dict(source_table)
+        old_headers = table.get("headers")
+        if isinstance(old_headers, list):
+            headers = [_table_header_text(header) for header in old_headers]
+            table["headers"] = headers
+            table_id = str(table.get("table_id") or "")
+            if table_id:
+                headers_by_table_id[table_id] = headers
+
+            normalized_rows: list[dict[str, Any]] = []
+            for source_row in table.get("rows", []) or []:
+                if not isinstance(source_row, Mapping):
+                    normalized_rows.append(source_row)
+                    continue
+                row = dict(source_row)
+                values = _table_values(source_row)
+                cells: list[dict[str, Any]] = []
+                for cell_index, source_cell in enumerate(source_row.get("cells", []) or []):
+                    if not isinstance(source_cell, Mapping):
+                        cells.append(source_cell)
+                        continue
+                    cell = dict(source_cell)
+                    try:
+                        column_index = int(cell.get("column_index", cell_index))
+                    except (TypeError, ValueError):
+                        column_index = cell_index
+                    if 0 <= column_index < len(headers):
+                        cell["header"] = headers[column_index]
+                    cells.append(cell)
+                if isinstance(source_row.get("cells"), list):
+                    row["cells"] = cells
+                if isinstance(source_row.get("data"), Mapping):
+                    row["data"] = _row_data_from_values(headers, values)
+                normalized_rows.append(row)
+            if isinstance(table.get("rows"), list):
+                table["rows"] = normalized_rows
+        normalized_tables.append(table)
+
+    normalized_elements: list[dict[str, Any]] = []
+    for source_element in page.get("elements", []) or []:
+        if not isinstance(source_element, Mapping):
+            continue
+        element = dict(source_element)
+        table_id = str(element.get("table_id") or "")
+        if element.get("type") == "table" and table_id in headers_by_table_id:
+            element["text"] = " | ".join(headers_by_table_id[table_id])
+        normalized_elements.append(element)
+    return normalized_tables, normalized_elements
+
+
 def _iter_table_rows(
     pages: list[dict[str, Any]],
 ) -> Iterable[tuple[int, Mapping[str, Any], list[str], list[str]]]:
@@ -207,7 +291,7 @@ def _iter_table_rows(
             raw_headers = table.get("headers")
             if not isinstance(raw_headers, list):
                 continue
-            headers = [_clean_text(str(value or "")).replace("\n", " ").strip() for value in raw_headers]
+            headers = [_table_header_text(value) for value in raw_headers]
             rows = table.get("rows")
             if not isinstance(rows, list):
                 continue
@@ -1546,6 +1630,7 @@ def build_structured_document(
     for page in pages:
         page_number = int(page.get("page_number", page["page"]))
         page_warnings = [dict(item) for item in page.get("warnings", []) if isinstance(item, Mapping)]
+        normalized_tables, normalized_elements = _normalize_page_tables(page)
         page_values.append(
             {
                 # ``page`` remains for compatibility with existing records;
@@ -1561,8 +1646,8 @@ def build_structured_document(
                 "native_words": [dict(item) for item in page.get("native_words", []) if isinstance(item, Mapping)],
                 "ocr_boxes": [dict(item) for item in page.get("ocr_boxes", []) if isinstance(item, Mapping)],
                 "ocr_lines": [dict(item) for item in page.get("ocr_lines", []) if isinstance(item, Mapping)],
-                "elements": [dict(item) for item in page.get("elements", []) if isinstance(item, Mapping)],
-                "tables": [dict(item) for item in page.get("tables", []) if isinstance(item, Mapping)],
+                "elements": normalized_elements,
+                "tables": normalized_tables,
                 "lists": [dict(item) for item in page.get("lists", []) if isinstance(item, Mapping)],
                 "warnings": page_warnings,
                 "extraction_method": str(page.get("extraction_method") or extraction_method),

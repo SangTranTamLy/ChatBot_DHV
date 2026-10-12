@@ -96,16 +96,16 @@ class TaskGCatalogTests(unittest.TestCase):
             "Kỹ thuật máy tính": 2,
             "Công nghệ thông tin": 5,
             "Ngôn ngữ Anh": 2,
-            "Ngôn ngữ Nhật": 2,
-            "Ngôn ngữ Trung Quốc": 4,
+            "Ngôn ngữ Nhật": 3,
+            "Ngôn ngữ Trung Quốc": 5,
             "Ngôn ngữ Hàn Quốc": 2,
             "Quản trị Khách sạn": 2,
             "Quản trị Dịch vụ Du lịch & Lữ hành": 3,
             "Quản lý bệnh viện": 3,
-            "Tâm lý học": 4,
+            "Tâm lý học": 5,
         }
 
-        self.assertEqual(len(actual), 47)
+        self.assertEqual(len(actual), 50)
         self.assertEqual(len(actual), len(set(actual)))
         self.assertEqual(actual, DHV_PROGRAM_PARENTS_2026)
         self.assertEqual(Counter(parent for _, parent in actual), expected_counts)
@@ -180,7 +180,7 @@ class TaskGCatalogTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIsNone(result["trace"]["entities"]["major_name"])
         self.assertIsNone(result["trace"]["catalog"]["requested_major"])
-        self.assertEqual(result["trace"]["catalog"]["program_count"], 47)
+        self.assertEqual(result["trace"]["catalog"]["program_count"], 50)
         self.assertIn("Quản trị Logistics", result["answer"])
         self.assertIn("Công nghệ phần mềm", result["answer"])
 

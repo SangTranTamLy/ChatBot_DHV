@@ -13,7 +13,8 @@ from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_core.documents import Document
 
-from src.ingestion.build_vector_db import build_vector_db
+from src.config.settings import settings
+from src.ingestion.build_vector_db import _build_parser, build_vector_db, main
 from src.ingestion.chroma_lifecycle import close_chroma_store
 from src.ingestion.loader import load_verified_documents
 from src.ingestion import splitter
@@ -156,6 +157,84 @@ class IngestionTests(unittest.TestCase):
                 "https://dhv.edu.vn/test-source",
             )
             self.assertEqual(result.documents[0].metadata["source_sha256"], "a" * 64)
+
+    def test_loader_all_years_still_excludes_unverified_documents(self) -> None:
+        root = Path("fixture-processed")
+        files = [
+            root / "verified_2024.json",
+            root / "verified_2026.json",
+            root / "draft_2025.json",
+        ]
+        envelopes = {
+            files[0]: {"year": 2024, "source": {"status": "verified", "verified": True}},
+            files[1]: {"year": 2026, "source": {"status": "verified", "verified": True}},
+            files[2]: {"year": 2025, "source": {"status": "draft", "verified": False}},
+        }
+
+        def read_envelope(path: Path, *args: object, **kwargs: object) -> str:
+            return json.dumps(envelopes[path])
+
+        def make_document(path: Path) -> list[Document]:
+            return [
+                Document(
+                    page_content=f"Verified DHV fixture {envelopes[path]['year']}",
+                    metadata={"year": envelopes[path]["year"]},
+                )
+            ]
+
+        with (
+            patch("pathlib.Path.exists", return_value=True),
+            patch("pathlib.Path.is_dir", return_value=True),
+            patch("pathlib.Path.rglob", return_value=files),
+            patch("pathlib.Path.is_file", return_value=True),
+            patch("pathlib.Path.read_text", autospec=True, side_effect=read_envelope),
+            patch("src.ingestion.loader.load_structured_json_file", side_effect=make_document),
+        ):
+            result = load_verified_documents(root, target_year=None)
+
+        self.assertEqual(result.stats.files_seen, 3)
+        self.assertEqual(result.stats.verified_documents, 2)
+        self.assertEqual(result.stats.skipped_unverified, 1)
+        self.assertEqual(
+            {document.metadata["year"] for document in result.documents},
+            {2024, 2026},
+        )
+
+    def test_build_cli_defaults_to_configured_year(self) -> None:
+        with patch("src.ingestion.build_vector_db.build_vector_db") as build_mock:
+            build_mock.return_value.as_dict.return_value = {"ok": True}
+            with patch("sys.argv", ["build_vector_db"]):
+                self.assertEqual(main(), 0)
+
+        self.assertEqual(build_mock.call_args.kwargs["target_year"], settings.target_year)
+
+    def test_build_cli_all_years_passes_no_year_filter(self) -> None:
+        with patch("src.ingestion.build_vector_db.build_vector_db") as build_mock:
+            build_mock.return_value.as_dict.return_value = {"ok": True}
+            with patch("sys.argv", ["build_vector_db", "--all-years"]):
+                self.assertEqual(main(), 0)
+
+        self.assertIsNone(build_mock.call_args.kwargs["target_year"])
+
+    def test_build_cli_explicit_year_is_preserved(self) -> None:
+        with patch("src.ingestion.build_vector_db.build_vector_db") as build_mock:
+            build_mock.return_value.as_dict.return_value = {"ok": True}
+            with patch("sys.argv", ["build_vector_db", "--year", "2024"]):
+                self.assertEqual(main(), 0)
+
+        self.assertEqual(build_mock.call_args.kwargs["target_year"], 2024)
+
+    def test_build_cli_year_and_all_years_are_mutually_exclusive(self) -> None:
+        parser = _build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--year", "2024", "--all-years"])
+
+    def test_build_cli_help_is_windows_console_encodable(self) -> None:
+        help_text = _build_parser().format_help()
+
+        self.assertIn("--all-years", help_text)
+        help_text.encode("cp1252")
 
     def test_splitter_keeps_heading_sections_separate_and_ids_unique(self) -> None:
         document = Document(

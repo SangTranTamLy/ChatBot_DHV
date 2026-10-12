@@ -298,8 +298,13 @@ def _inherit_continued_table_headers(pages: list[dict[str, object]]) -> None:
 
     def has_independent_content_before_table(page: dict[str, object], table_top: float) -> bool:
         blocks = page.get("native_blocks")
-        if not isinstance(blocks, list) or not blocks:
+        if not isinstance(blocks, list):
             return True
+        # An explicitly inspected empty block list means there is no separate
+        # page content before the table. Boundary geometry and matching column
+        # count then provide the evidence needed for safe continuation.
+        if not blocks:
+            return False
         for block in blocks:
             if not isinstance(block, dict) or not str(block.get("text") or "").strip():
                 continue

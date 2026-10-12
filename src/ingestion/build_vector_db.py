@@ -171,7 +171,9 @@ def build_vector_db(
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description="Build the DHV ChromaDB collection from verified processed JSON."
+    )
     parser.add_argument(
         "--data-dir",
         default=str(settings.processed_data_dir),
@@ -187,11 +189,20 @@ def _build_parser() -> argparse.ArgumentParser:
         default=settings.chroma_collection,
         help="ChromaDB collection name",
     )
-    parser.add_argument(
+    year_group = parser.add_mutually_exclusive_group()
+    year_group.add_argument(
         "--year",
         type=int,
-        default=settings.target_year,
+        default=None,
         help=f"knowledge-base year to index (default: {settings.target_year})",
+    )
+    year_group.add_argument(
+        "--all-years",
+        action="store_true",
+        help=(
+            "index verified documents from every year; source, DHV, and verification "
+            "gates still apply (mutually exclusive with --year)"
+        ),
     )
     parser.add_argument(
         "--embedding-backend",
@@ -240,6 +251,12 @@ def main() -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.all_years:
+        target_year = None
+    elif args.year is not None:
+        target_year = args.year
+    else:
+        target_year = settings.target_year
     try:
         stats = build_vector_db(
             data_directory=args.data_dir,
@@ -249,7 +266,7 @@ def main() -> int:
             embedding_model=args.embedding_model,
             ollama_base_url=args.ollama_base_url,
             sentence_transformer_model=args.sentence_transformer_model,
-            target_year=args.year,
+            target_year=target_year,
             chunk_size=args.chunk_size,
             chunk_overlap=args.chunk_overlap,
             tokenizer_model=args.tokenizer_model,

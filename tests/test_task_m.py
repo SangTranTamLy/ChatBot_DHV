@@ -56,9 +56,12 @@ class TaskMRawDataTests(unittest.TestCase):
             self.assertTrue(entry["raw_file"].endswith(".pdf"))
             self.assertTrue(all(is_official_dhv_url(url) for url in entry["source_urls"]))
             if entry["verified"] is True:
-                self.assertEqual(entry["year"], 2026)
+                self.assertIn(entry["year"], {2024, 2026})
                 self.assertEqual(entry["verification_status"], "verified")
                 self.assertTrue(is_official_dhv_url(entry["source_url"]))
+                if entry["year"] == 2024:
+                    self.assertEqual(entry["document_id"], "hoc-phi-dhv-2024")
+                    self.assertEqual(entry["category"], "hoc_phi")
             else:
                 self.assertNotEqual(entry["status"], "verified")
                 self.assertIsNone(entry["source_url"])

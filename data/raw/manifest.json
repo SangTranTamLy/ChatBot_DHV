@@ -51,13 +51,15 @@
       "title": "Cam kết về học phí DHV 2024",
       "category": "hoc_phi",
       "year": 2024,
-      "status": "missing_source_url",
-      "verification_status": "missing_source_url",
-      "verified": false,
-      "source_type": "unknown",
-      "source_url": null,
-      "source_urls": [],
-      "source_date": "",
+      "status": "verified",
+      "verification_status": "verified",
+      "verified": true,
+      "source_type": "official_website",
+      "source_url": "https://dhv.edu.vn/news-event/news/cam-ket-ve-hoc-phi-truong-dai-hoc-hung-vuong-tp-hcm-dhv",
+      "source_urls": [
+        "https://dhv.edu.vn/news-event/news/cam-ket-ve-hoc-phi-truong-dai-hoc-hung-vuong-tp-hcm-dhv"
+      ],
+      "source_date": "31/10/2023",
       "collected_at": "2026-09-23"
     },
     {

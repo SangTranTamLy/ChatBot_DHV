@@ -149,13 +149,11 @@ _PROGRAM_ALIASES = (
     ("cong nghe tai chinh", "Công nghệ tài chính"),
     ("quan tri khach san", "Quản trị khách sạn"),
     ("quan tri kinh doanh tong hop", "Quản trị Kinh doanh tổng hợp"),
-    # Preserve the literal labels used by the verified 2026 PDF, including
-    # its extracted ``Marketin``/``kinh doan`` endings.  The longer legacy
-    # aliases below remain supported for user queries that use the expanded
-    # names.
+    # Accept common truncated user spellings, but resolve them to the
+    # canonical program labels present in verified corpus evidence.
     ("quan tri nhan luc", "Quản trị Nhân lực"),
-    ("quan tri marketin", "Quản trị Marketin"),
-    ("phan tich du lieu kinh doan", "Phân tích dữ liệu kinh doan"),
+    ("quan tri marketin", "Quản trị Marketing"),
+    ("phan tich du lieu kinh doan", "Phân tích dữ liệu kinh doanh"),
     ("quan tri nguon nhan luc", "Quản trị Nguồn nhân lực"),
     ("quan tri logistics", "Quản trị Logistics"),
     ("logistics", "Quản trị Logistics"),
@@ -183,13 +181,13 @@ _PROGRAM_ALIASES = (
     ("giang day tieng anh", "Giảng dạy Tiếng Anh"),
     ("tieng anh thuong mai", "Tiếng Anh thương mại"),
     ("tieng nhat thuong mai", "Tiếng Nhật thương mại"),
-    ("ngon ngu - van hoa nhat ban", "Ngôn ngữ - Văn hóa Nhật Bản"),
-    ("ngon ngu van hoa nhat ban", "Ngôn ngữ - Văn hóa Nhật Bản"),
+    ("ngon ngu", "Ngôn ngữ"),
+    ("van hoa nhat ban", "Văn hóa Nhật Bản"),
     ("tieng trung thuong mai", "Tiếng Trung thương mại"),
     ("tieng trung hanh chinh van phong", "Tiếng Trung hành chính văn phòng"),
     ("giang day tieng trung", "Giảng dạy Tiếng Trung"),
-    ("tieng trung van hoa - du lich", "Tiếng Trung văn hóa - Du lịch"),
-    ("tieng trung van hoa du lich", "Tiếng Trung văn hóa - Du lịch"),
+    ("tieng trung van hoa", "Tiếng Trung văn hóa"),
+    ("du lich", "Du lịch"),
     ("giang day tieng han", "Giảng dạy Tiếng Hàn"),
     ("tieng han thuong mai", "Tiếng Hàn thương mại"),
     ("quan tri nha hang va dich vu am thuc", "Quản trị nhà hàng và dịch vụ ẩm thực"),
@@ -201,8 +199,8 @@ _PROGRAM_ALIASES = (
     ("quan ly trang thiet bi y te", "Quản lý trang thiết bị y tế"),
     ("tam ly hoc duong", "Tâm lý học đường"),
     ("tam ly lam sang", "Tâm lý lâm sàng"),
-    ("tam ly to chuc - nhan su", "Tâm lý tổ chức - Nhân sự"),
-    ("tam ly to chuc nhan su", "Tâm lý tổ chức - Nhân sự"),
+    ("tam ly to chuc", "Tâm lý tổ chức"),
+    ("nhan su", "Nhân sự"),
     ("ung dung ai trong tam ly", "Ứng dụng AI trong tâm lý"),
 )
 _MAX_CANDIDATES = 8
@@ -1620,6 +1618,13 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     # ordinary major/catalog questions the major interpretation wins; only an
     # explicit relation question keeps the same-name row as a program entity.
     explicit_program_relation = bool(re.search(r"\bthuoc\s+nganh\b", normalized))
+    generic_program_aliases = {"ngon ngu", "du lich", "nhan su"}
+    if not explicit_program_relation:
+        program_alias_matches = [
+            (alias, canonical)
+            for alias, canonical in program_alias_matches
+            if alias not in generic_program_aliases
+        ]
     if not explicit_program_relation:
         major_names_normalized = {normalize_question(name) for name in major_names}
         program_alias_matches = [

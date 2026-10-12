@@ -5843,6 +5843,29 @@ def ask_chatbot(
     query = question.strip() if isinstance(question, str) else ""
     state = ConversationState.from_value(conversation_state, default_year=settings_obj.target_year)
     analysis = analyze_question(query, state, default_year=settings_obj.target_year)
+    explicit_year = requested_year(query)
+    inherit_year = explicit_year is None and should_inherit_context(
+        analysis.normalized_question,
+        analysis.intent,
+        state.previous_intent,
+        state,
+    )
+    query_year = (
+        explicit_year
+        if explicit_year is not None
+        else state.current_year
+        if inherit_year
+        else settings_obj.target_year
+    )
+    if int(query_year) != int(settings_obj.target_year):
+        # Exact per-request year filters keep historical facts isolated from
+        # the configured default-year corpus.
+        settings_obj = replace(settings_obj, target_year=int(query_year))
+    state = replace(state, current_year=int(query_year))
+    analysis = replace(
+        analysis,
+        entities={**analysis.entities, "year": int(query_year)},
+    )
     analysis = _analysis_with_state(analysis, state)
     plan = route_question(analysis, state, target_year=settings_obj.target_year)
 
@@ -5944,17 +5967,6 @@ def ask_chatbot(
             "state": next_state.to_dict(),
             "conversation_state": next_state.to_dict(),
             "trace": trace,
-        }, answer_plan)
-
-    explicit_year = requested_year(query)
-    if explicit_year is not None and explicit_year != settings_obj.target_year:
-        answer_plan = plan_answer(analysis, status="no_data")
-        return _attach_answer_plan({
-            "answer": FALLBACK_ANSWER,
-            "sources": [],
-            "status": "no_data",
-            "state": state.to_dict(),
-            "trace": _trace(analysis, plan, state, answer_plan=answer_plan),
         }, answer_plan)
 
     if plan.needs_clarification:

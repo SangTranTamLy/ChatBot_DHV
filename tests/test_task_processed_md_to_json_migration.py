@@ -45,11 +45,23 @@ class ProcessedJSONMigrationTests(unittest.TestCase):
         self.assertEqual(result.stats.files_seen, len(manifest["documents"]))
         self.assertEqual(
             result.stats.verified_documents,
-            sum(1 for entry in manifest["documents"] if entry["verified"] is True),
+            sum(
+                1
+                for entry in manifest["documents"]
+                if entry["verified"] is True and entry["year"] == settings.target_year
+            ),
         )
         self.assertEqual(
             result.stats.skipped_unverified,
             sum(1 for entry in manifest["documents"] if entry["verified"] is not True),
+        )
+        self.assertEqual(
+            result.stats.skipped_other_year,
+            sum(
+                1
+                for entry in manifest["documents"]
+                if entry["verified"] is True and entry["year"] != settings.target_year
+            ),
         )
         self.assertEqual(result.stats.metadata_errors, 0)
         self.assertTrue(result.documents)

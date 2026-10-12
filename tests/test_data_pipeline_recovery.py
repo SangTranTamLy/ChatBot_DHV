@@ -10,6 +10,7 @@ from unittest.mock import patch
 from src.ingestion.prepare_processed_from_raw import _extract_pdf_pages, _normalize_extracted_text
 from src.ingestion.raw_manifest import load_raw_manifest, validate_manifest_sync
 from src.ingestion.structured_json import build_structured_document, validate_structured_document
+from src.ingestion.loader import load_verified_documents
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -64,7 +65,7 @@ class DataPipelineRecoveryTests(unittest.TestCase):
         self.assertEqual(pages[0]["extraction_method"], "ocr")
         self.assertEqual(pages[0]["text"], "OCR text có đủ nội dung để lập chỉ mục.")
 
-    def test_manifest_provenance_survives_pdf_without_url(self) -> None:
+    def test_manifest_provenance_preserves_verified_2024_source_url(self) -> None:
         entry = _manifest_entry("hoc-phi-dhv-2024")
         document = build_structured_document(
             raw_path=PROJECT_ROOT / str(entry["raw_file"]),
@@ -74,7 +75,8 @@ class DataPipelineRecoveryTests(unittest.TestCase):
         )
 
         self.assertEqual(document["year"], 2024)
-        self.assertIsNone(document["source"]["source_url"])
+        self.assertEqual(document["source"]["source_url"], entry["source_url"])
+        self.assertTrue(document["source"]["verified"])
         self.assertEqual(validate_structured_document(document), [])
 
     def test_normalization_preserves_numbers_dates_money_urls_and_vietnamese(self) -> None:
@@ -95,12 +97,22 @@ class DataPipelineRecoveryTests(unittest.TestCase):
         ):
             self.assertIn(token, value)
 
-    def test_processed_corpus_keeps_2024_and_loader_source_is_not_verified(self) -> None:
+    def test_verified_2024_tuition_loads_only_for_2024_target_year(self) -> None:
         entry = _manifest_entry("hoc-phi-dhv-2024")
         processed = json.loads(_processed_path_for(entry).read_text(encoding="utf-8"))
         self.assertEqual(processed["year"], 2024)
-        self.assertEqual(processed["source"]["status"], "missing_source_url")
-        self.assertFalse(processed["source"]["verified"])
+        self.assertEqual(processed["source"]["status"], "verified")
+        self.assertTrue(processed["source"]["verified"])
+        self.assertEqual(processed["source"]["source_url"], entry["source_url"])
+
+        processed_root = PROJECT_ROOT / "data" / "processed"
+        historical = load_verified_documents(processed_root, target_year=2024)
+        current = load_verified_documents(processed_root, target_year=2026)
+        self.assertEqual(historical.stats.verified_documents, 1)
+        self.assertTrue(historical.documents)
+        self.assertTrue(all(document.metadata["year"] == 2024 for document in historical.documents))
+        self.assertEqual(current.stats.verified_documents, 6)
+        self.assertTrue(all(document.metadata["year"] == 2026 for document in current.documents))
 
 
 if __name__ == "__main__":
