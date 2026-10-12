@@ -1,267 +1,153 @@
-<div align="center">
+# ChatBot DHV
 
-# 🎓 ChatBot DHV
+> Trợ lý tra cứu thông tin tuyển sinh Trường Đại học Hùng Vương TP.HCM.
 
-### Trợ lý tư vấn tuyển sinh Trường Đại học Hùng Vương TP.HCM
+Chatbot chạy cục bộ bằng Streamlit, Ollama và ChromaDB. Câu trả lời được tạo từ dữ liệu DHV đã xác minh; nếu không có evidence phù hợp, bot cần báo chưa có thông tin thay vì tự đoán.
 
-Chatbot sử dụng mô hình **RAG** để tìm kiếm và trả lời dựa trên dữ liệu tuyển sinh của trường.
+## Chức năng
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
-![Streamlit](https://img.shields.io/badge/Streamlit-App-FF4B4B?logo=streamlit&logoColor=white)
-![RAG](https://img.shields.io/badge/AI-RAG-6C63FF)
+- Tra cứu thông tin trường/website DHV, ngành/chương trình, phương thức và điều kiện xét tuyển, điểm, học phí, học bổng, hồ sơ và nhập học.
+- Phân tích ý định, trường, năm và ngữ cảnh câu hỏi; hỗ trợ tách một số câu hỏi nhiều ý trước khi tìm dữ liệu.
+- Tìm kiếm kết hợp từ khóa BM25 và vector, sau đó lọc evidence trước khi tạo câu trả lời.
+- Chặn câu hỏi trường ngoài hoặc ngoài phạm vi trước khi truy xuất dữ liệu DHV.
 
-</div>
-
-> **Phạm vi hỗ trợ:** Chatbot chỉ trả lời các câu hỏi liên quan đến tuyển sinh của Trường Đại học Hùng Vương TP.HCM. Các câu hỏi về trường khác hoặc nội dung ngoài phạm vi sẽ được từ chối rõ ràng.
-
-<details>
-<summary><strong>📚 Mục lục</strong></summary>
-
-- [1. Giới thiệu dự án](#1-giới-thiệu-dự-án)
-- [2. Tính năng](#2-tính-năng)
-- [3. Kiến trúc hệ thống](#3-kiến-trúc-hệ-thống)
-- [4. Công nghệ sử dụng](#4-công-nghệ-sử-dụng)
-- [5. Yêu cầu môi trường](#5-yêu-cầu-môi-trường)
-- [6. Cài đặt](#6-cài-đặt)
-- [7. Cấu hình môi trường](#7-cấu-hình-môi-trường)
-- [8. Chuẩn bị model Ollama](#8-chuẩn-bị-model-ollama)
-- [9. Chạy chatbot](#9-chạy-chatbot)
-- [10. Xây dựng dữ liệu và ChromaDB](#10-xây-dựng-dữ-liệu-và-chromadb)
-- [11. Dataset Phase 5](#11-dataset-phase-5)
-- [12. Kiểm thử](#12-kiểm-thử)
-- [13. Cấu trúc project](#13-cấu-trúc-project)
-- [14. Câu hỏi mẫu](#14-câu-hỏi-mẫu)
-- [15. GitHub workflow và file không commit](#15-github-workflow-và-file-không-commit)
-- [16. Giới hạn, quyền riêng tư và thông tin nhóm](#16-giới-hạn-quyền-riêng-tư-và-thông-tin-nhóm)
-
-</details>
-
-## 1. Giới thiệu dự án
-
-ChatBot DHV hỗ trợ tra cứu thông tin tuyển sinh năm 2026 như ngành học, phương thức xét tuyển, học phí, điểm chuẩn, hồ sơ và quy trình nhập học.
-
-Chatbot chỉ trả lời trong phạm vi dữ liệu của Trường Đại học Hùng Vương TP.HCM. Các câu hỏi về trường khác hoặc nội dung ngoài tuyển sinh sẽ được từ chối rõ ràng.
-
-## 2. Tính năng
-
-- Tra cứu thông tin tuyển sinh bằng tiếng Việt.
-- Tìm kiếm kết hợp BM25 và vector embedding.
-- Xếp hạng kết quả bằng RRF.
-- Trả lời có kiểm tra bằng nguồn dữ liệu liên quan.
-- Từ chối câu hỏi ngoài phạm vi DHV.
-- Có giao diện web trực quan bằng Streamlit.
-- Có bộ dữ liệu và kịch bản đánh giá chất lượng trả lời.
-
-## 3. Kiến trúc hệ thống
+## Luồng xử lý
 
 ```text
-Câu hỏi người dùng
-        ↓
-Phân tích intent và trường đích
-        ↓
-Kiểm tra phạm vi câu hỏi
-        ↓
-Tìm kiếm dữ liệu DHV
-        ↓
-Evidence và kiểm tra câu trả lời
-        ↓
-Trả lời hoặc thông báo ngoài phạm vi
+Câu hỏi
+  → Nhận diện ý định, trường, năm và ngữ cảnh
+  → Kiểm tra phạm vi an toàn
+  → Tách câu phức tạp khi phù hợp
+  → Tìm kiếm BM25 + vector trong ChromaDB
+  → Lọc và kiểm tra evidence
+  → Qwen trả lời hoặc báo chưa có dữ liệu
 ```
 
-## 4. Công nghệ sử dụng
+## Công nghệ
 
-- Python
+- Python 3.10 trở lên (khuyến nghị Python 3.12)
 - Streamlit
-- Ollama
-- ChromaDB
-- LangChain
-- Qwen `qwen2.5:3b`
-- Embedding `nomic-embed-text`
-- Tokenizer `BAAI/bge-m3`
-- BM25, vector search và Reciprocal Rank Fusion
-- Pytest
+- Ollama: `qwen2.5:3b`
+- Embedding: `nomic-embed-text`
+- ChromaDB, BM25, RRF và Pytest
 
-## 5. Yêu cầu môi trường
+## Cài đặt và chạy trên Windows
 
-- Windows, macOS hoặc Linux.
-- Python 3.10 trở lên.
-- Ollama đã được cài đặt.
-- RAM và dung lượng phù hợp để chạy mô hình ngôn ngữ cục bộ.
-
-## 6. Cài đặt
+Tải project và mở PowerShell tại thư mục vừa tải:
 
 ```powershell
 git clone https://github.com/SangTranTamLy/ChatBot_DHV.git
-cd ChatBot_DHV
-
+Set-Location ChatBot_DHV
 python -m venv .venv
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\.venv\Scripts\Activate.ps1
-
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-## 7. Cấu hình môi trường
-
-Tạo file cấu hình từ file mẫu:
+Nếu PowerShell chặn kích hoạt môi trường, chỉ áp dụng cho cửa sổ hiện tại rồi kích hoạt lại:
 
 ```powershell
-Copy-Item .env.example .env
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
 ```
 
-Kiểm tra lại các biến cấu hình trong `.env` nếu cần. Không đưa file `.env` lên GitHub vì có thể chứa thông tin riêng tư hoặc khóa API.
+## Ollama
 
-## 8. Chuẩn bị model Ollama
-
-Khởi động Ollama và tải các model cần thiết:
+Trên Windows, Ollama có thể đã chạy nền. Nếu chưa chạy, mở terminal riêng và chạy:
 
 ```powershell
 ollama serve
+```
+
+Ở terminal khác, kiểm tra/tải model:
+
+```powershell
+ollama list
 ollama pull qwen2.5:3b
 ollama pull nomic-embed-text
 ```
 
-Nếu tokenizer chưa được tải về máy:
+Nếu `ollama serve` báo cổng `11434` đã được sử dụng, thường là Ollama đã chạy; kiểm tra bằng `ollama list`, không cần mở thêm server.
+
+## Dữ liệu lần chạy đầu
+
+Các file nguồn gồm PDF trong `data/raw/` và `data/raw/manifest.json`. `data/processed/` và `chroma_db/` là dữ liệu sinh cục bộ, không được lưu trong Git; vì vậy một bản clone mới cần tạo chúng trước khi chạy chatbot.
 
 ```powershell
-python -c "from transformers import AutoTokenizer; AutoTokenizer.from_pretrained('BAAI/bge-m3')"
+python -m src.ingestion.prepare_processed_from_raw
+python -m src.ingestion.build_vector_db --all-years --reset
 ```
 
-## 9. Chạy chatbot
+**Lưu ý:** lệnh trích xuất mặc định làm mới thư mục JSON đầu ra. `--reset` ở lệnh xây Chroma sẽ đặt lại vector store được cấu hình trong `.env`. Chỉ chạy khi chủ động tái tạo dữ liệu; không cần chạy lại mỗi lần mở chatbot.
+
+- Mặc định project dùng `TARGET_YEAR=2026`.
+- Nếu chỉ lập chỉ mục năm mặc định, dùng `python -m src.ingestion.build_vector_db --reset`.
+- Dùng `--all-years` nếu cần tra cứu cả dữ liệu 2024 và 2026. Dữ liệu học phí 2024 chỉ áp dụng cho câu hỏi năm 2024.
+- Loader chỉ nạp tài liệu đã xác minh, đúng năm, đúng trường và có nguồn hợp lệ.
+
+## Cấu hình
+
+Các giá trị mặc định nằm trong `.env.example`; chỉnh trong `.env` nếu môi trường của bạn khác.
+
+| Biến | Mặc định | Ý nghĩa |
+|---|---|---|
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Địa chỉ Ollama |
+| `OLLAMA_MODEL` | `qwen2.5:3b` | Model trả lời |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Model embedding |
+| `TARGET_YEAR` | `2026` | Năm dữ liệu mặc định |
+| `PROCESSED_DATA_DIR` | `data/processed` | JSON đã xử lý |
+| `CHROMA_PERSIST_DIR` | `chroma_db` | Vector store cục bộ |
+| `CHROMA_COLLECTION` | `dhv_admissions_2026` | Tên collection |
+
+## Khởi động giao diện
+
+Từ thư mục gốc, sau khi môi trường và dữ liệu đã sẵn sàng:
 
 ```powershell
 streamlit run app.py
 ```
 
-Sau đó mở trình duyệt tại [http://localhost:8501](http://localhost:8501).
+Mở địa chỉ được Streamlit hiển thị, mặc định là <http://localhost:8501>.
 
-## 10. Xây dựng dữ liệu và ChromaDB
-
-Chuẩn hóa dữ liệu nguồn:
+## Kiểm thử
 
 ```powershell
-python -m src.ingestion.prepare_processed_from_raw
-```
-
-Tạo lại cơ sở dữ liệu vector:
-
-```powershell
-python -m src.ingestion.build_vector_db `
-  --data-dir data/processed `
-  --embedding-backend ollama `
-  --embedding-model nomic-embed-text `
-  --chunk-size 512 `
-  --chunk-overlap 50 `
-  --tokenizer-model BAAI/bge-m3 `
-  --reset
-```
-
-Tài liệu được cắt theo token với kích thước 512 token và phần chồng lấn 50 token. Metadata của mỗi đoạn gồm mã đoạn, nguồn, tiêu đề và số token.
-
-## 11. Dataset Phase 5
-
-Dataset Phase 5 gồm 500 câu hỏi - đáp án chuẩn, được dùng để đánh giá chatbot. Dataset được tạo từ file Excel nguồn bằng các lệnh:
-
-```powershell
-python scripts/build_phase5_dataset.py
-python scripts/evaluate_phase5.py --skip-e2e
-```
-
-Kết quả đánh giá được lưu trong `reports/`, còn dữ liệu đánh giá nằm trong `data/evaluation/`.
-
-Project không dùng Q&A sinh tự động để thay thế dữ liệu chuẩn và không fine-tune Qwen. Chatbot sử dụng RAG để truy xuất dữ liệu khi người dùng đặt câu hỏi.
-
-## 12. Kiểm thử
-
-Chạy toàn bộ test:
-
-```powershell
-python -m pytest -q
+python -m pytest tests -q
 python -m compileall -q src tests
 ```
 
-Nên chạy kiểm thử sau khi thay đổi logic truy xuất, bộ lọc phạm vi hoặc dữ liệu tuyển sinh.
+Bộ 500 câu tại `data/evaluation/qa_master_500.jsonl` dùng để đánh giá/regression, không phải dữ liệu để chatbot học thuộc hay fine-tune model.
 
-## 13. Cấu trúc project
+## Ví dụ câu hỏi
+
+- `DHV xét tuyển bằng những phương thức nào?`
+- `Điều kiện xét tuyển học bạ năm 2026 là gì?`
+- `Học phí DHV năm 2024 bao nhiêu?`
+- `Hồ sơ nhập học cần những gì?`
+
+## Cấu trúc chính
 
 ```text
-ChatBot_DHV/
-├── app.py
-├── src/
-│   ├── chatbot/
-│   ├── config/
-│   ├── ingestion/
-│   ├── models/
-│   ├── prompts/
-│   └── retrieval/
-├── data/
-│   ├── raw/
-│   ├── processed/
-│   └── evaluation/
-├── models/
-├── scripts/
-├── tests/
-├── requirements.txt
-├── .env.example
-└── README.md
+app.py                 Giao diện Streamlit
+src/chatbot/           Phân tích câu hỏi, state, điều phối RAG và trả lời
+src/retrieval/         Tìm kiếm, hợp nhất và lọc kết quả
+src/ingestion/         Trích xuất, kiểm tra JSON và xây ChromaDB
+src/prompts/           Prompt cho model
+src/models/            Kết nối model cục bộ
+data/raw/              PDF nguồn và manifest
+data/processed/        JSON sinh từ PDF (local, không commit)
+data/evaluation/       Dataset đánh giá chuẩn
+chroma_db/             Vector store (local, không commit)
+scripts/               Công cụ audit, kiểm tra và đánh giá
+tests/                 Unit/regression tests
 ```
 
-## 14. Câu hỏi mẫu
+## Phạm vi và giới hạn
 
-Câu hỏi được hỗ trợ:
+- Chỉ trả lời theo dữ liệu DHV đã xác minh; trường ngoài phạm vi được chặn, dữ liệu thiếu thì bot báo chưa có thông tin.
+- Năm mặc định là 2026. Để hỏi dữ liệu lịch sử, nêu rõ năm trong câu hỏi; hội thoại kế thừa năm cũ hiện vẫn cần QA kiểm tra thêm.
+- Project đang trong giai đoạn phát triển và kiểm thử, chưa có xác nhận QA cuối cùng để dùng production.
+- Không nhập CCCD, số điện thoại, email hoặc thông tin cá nhân nhạy cảm vào chatbot. Với thông tin quan trọng, hãy đối chiếu kênh chính thức của trường.
 
-- Học phí DHV năm 2026 bao nhiêu?
-- Trường có xét học bạ không?
-- Điểm chuẩn ngành Công nghệ thông tin là bao nhiêu?
-- Hồ sơ nhập học cần những gì?
-
-Câu hỏi bị từ chối:
-
-- Điểm chuẩn Trường Đại học Văn Hiến?
-- Học phí Đại học FPT?
-- So sánh điểm chuẩn DHV và Văn Hiến?
-- Hôm nay trời mưa không?
-
-## 15. GitHub workflow và file không commit
-
-Sau khi cập nhật project:
-
-```powershell
-git switch main
-git pull origin main
-git add src tests README.md
-git commit -m "Cap nhat chatbot"
-git push origin main
-```
-
-Nên phát triển trên branch riêng và tạo Pull Request trước khi gộp vào `main`.
-
-Các file hoặc thư mục sau không nên commit:
-
-```gitignore
-.env
-.venv/
-__pycache__/
-*.pyc
-.pytest_cache/
-pytest-cache-files-*/
-data/processed/
-chroma_db/
-*.log
-```
-
-## 16. Giới hạn, quyền riêng tư và thông tin nhóm
-
-Chatbot chỉ cung cấp thông tin dựa trên dữ liệu tuyển sinh DHV đã có. Nếu không tìm thấy bằng chứng phù hợp, chatbot cần thông báo chưa có dữ liệu thay vì tự suy đoán.
-
-Thông tin quan trọng như điểm chuẩn, học phí và thời hạn nộp hồ sơ nên được kiểm tra lại trên kênh chính thức của nhà trường. Không nhập CCCD, số điện thoại, email hoặc thông tin cá nhân nhạy cảm vào chatbot.
-
-> Đây là đồ án được thực hiện với mục đích học tập và nghiên cứu.
-
-### 👥 Nhóm 4
-
-- Đặng Đinh Đức Độ
-- Đoàn Quang Khang
-- Hồ Viết Bảo
-- Châu Thanh Sang
+`.env`, môi trường Python, JSON đã xử lý, ChromaDB và `reports/` là file/thư mục cục bộ được loại khỏi Git. Không đưa khóa bí mật lên GitHub.
