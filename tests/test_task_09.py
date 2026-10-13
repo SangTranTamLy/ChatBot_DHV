@@ -93,6 +93,8 @@ class Task09RoutingTests(unittest.TestCase):
         school_info_cases = (
             "DHV là trường gì?",
             "Trường thành lập khi nào?",
+            "Lịch sử của trường",
+            "Triết lý giáo dục của trường là gì?",
         )
         for question in school_info_cases:
             with self.subTest(question=question):

@@ -538,7 +538,12 @@ class TaskCTests(unittest.TestCase):
             return Store()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            configured = replace(settings, chroma_persist_dir=Path(temp_dir))
+            configured = replace(
+                settings,
+                chroma_persist_dir=Path(temp_dir),
+                embedding_backend="ollama",
+                embedding_model="nomic-embed-text",
+            )
             retriever = DHVRetriever(
                 settings_obj=configured,
                 store_factory=store_factory,
@@ -570,7 +575,8 @@ class TaskCTests(unittest.TestCase):
 
     def test_local_llm_calls_configured_qwen_model(self) -> None:
         client = RecordingClient()
-        llm = LocalLLM(client=client)
+        configured = replace(settings, ollama_model="qwen2.5:3b")
+        llm = LocalLLM(settings_obj=configured, client=client)
 
         answer = llm.generate("prompt")
 

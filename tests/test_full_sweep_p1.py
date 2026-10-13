@@ -408,6 +408,21 @@ class IntentAndYearSweepTests(unittest.TestCase):
                 self.assertEqual(analysis.entities["major_group"], expected_group)
                 self.assertEqual(analysis.entities["query_mode"], "COUNT")
 
+    def test_colloquial_major_count_and_list_queries(self) -> None:
+        for question in ("trường có nhiêu ngành", "DHV có mấy ngành", "trường có bao nhiêu ngành"):
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                self.assertEqual(analysis.intent, "DANH_SACH_NGANH")
+                self.assertEqual(analysis.entities["query_mode"], "COUNT")
+                plan = route_question(analysis)
+                self.assertIn("nganh_dao_tao", plan.categories)
+
+        for question in ("trường có những ngành nào", "trường có các ngành nào", "trường đào tạo ngành gì"):
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                self.assertEqual(analysis.intent, "DANH_SACH_NGANH")
+                self.assertIn(analysis.entities["query_mode"], {"LIST", "LIST_AND_COUNT"})
+
     def test_basic_admission_eligibility_routes_to_verified_conditions(self) -> None:
         question = (
             "Muốn xét tuyển vào Trường Đại học Hùng Vương TP.HCM thì "
