@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import Sequence
+import threading
+from typing import Any, Sequence
 
 from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
@@ -15,6 +16,15 @@ from src.config.settings import settings
 DEFAULT_SENTENCE_TRANSFORMER_MODEL = (
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 )
+
+# Prevent HuggingFace Hub from making unauthenticated network checks on every load
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
+
+_SENTENCE_TRANSFORMER_CACHE: dict[str, Any] = {}
+_MODEL_LOAD_LOCK = threading.RLock()
+_EMBEDDINGS_INSTANCE_CACHE: dict[str, Any] = {}
 
 
 class SentenceTransformerEmbeddings(Embeddings):
@@ -30,7 +40,17 @@ class SentenceTransformerEmbeddings(Embeddings):
             ) from exc
 
         self.model_name = model_name
-        self._model = SentenceTransformer(model_name)
+        if model_name not in _SENTENCE_TRANSFORMER_CACHE:
+            with _MODEL_LOAD_LOCK:
+                if model_name not in _SENTENCE_TRANSFORMER_CACHE:
+                    try:
+                        _SENTENCE_TRANSFORMER_CACHE[model_name] = SentenceTransformer(
+                            model_name,
+                            local_files_only=True,
+                        )
+                    except Exception:
+                        _SENTENCE_TRANSFORMER_CACHE[model_name] = SentenceTransformer(model_name)
+        self._model = _SENTENCE_TRANSFORMER_CACHE[model_name]
 
     def _encode(self, texts: Sequence[str]) -> list[list[float]]:
         vectors = self._model.encode(
@@ -81,7 +101,11 @@ def create_embeddings(
             "SENTENCE_TRANSFORMER_MODEL",
             DEFAULT_SENTENCE_TRANSFORMER_MODEL,
         )
-        return SentenceTransformerEmbeddings(model_name)
+        if model_name not in _EMBEDDINGS_INSTANCE_CACHE:
+            with _MODEL_LOAD_LOCK:
+                if model_name not in _EMBEDDINGS_INSTANCE_CACHE:
+                    _EMBEDDINGS_INSTANCE_CACHE[model_name] = SentenceTransformerEmbeddings(model_name)
+        return _EMBEDDINGS_INSTANCE_CACHE[model_name]
     raise ValueError(
         "unsupported embedding backend: "
         f"{selected_backend!r}; choose 'ollama' or 'sentence-transformers'"

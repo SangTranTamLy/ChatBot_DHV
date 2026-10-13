@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 import unicodedata
 from collections import Counter
 from dataclasses import dataclass
@@ -15,7 +16,6 @@ from langchain_chroma import Chroma
 from langchain_core.documents import Document
 
 from src.config.settings import Settings, settings
-from src.chatbot.year_semantics import extract_requested_year
 from src.ingestion.chroma_lifecycle import close_chroma_store
 from src.ingestion.embeddings import create_embeddings
 
@@ -170,6 +170,7 @@ def _bm25_scores(query: str, documents: Iterable[Document]) -> dict[str, float]:
 
 def requested_year(question: str) -> int | None:
     """Trả năm dữ liệu được hỏi, bỏ qua năm tốt nghiệp chỉ làm điều kiện."""
+    from src.chatbot.year_semantics import extract_requested_year
 
     return extract_requested_year(question)
 
@@ -190,6 +191,17 @@ def topic_category(question: str) -> str | None:
         or "truong thanh lap" in normalized
         or "thanh lap khi nao" in normalized
         or "thanh lap nam" in normalized
+        or "lich su" in normalized
+        or "qua trinh hinh thanh" in normalized
+        or "triet ly" in normalized
+        or "su menh" in normalized
+        or "tam nhin" in normalized
+        or "gia tri cot loi" in normalized
+        or "ban giam hieu" in normalized
+        or "hieu truong" in normalized
+        or "hoi dong truong" in normalized
+        or "ngay truyen thong" in normalized
+        or "logo" in normalized
     ):
         return "thong_tin_truong"
     if (
@@ -199,8 +211,23 @@ def topic_category(question: str) -> str | None:
         return "thong_tin_truong"
     if "xac nhan nhap hoc" in normalized:
         return "lich_tuyen_sinh"
-    if "hoc phi" in normalized:
+    if (
+        "hoc phi" in normalized
+        or "hoc ky" in normalized
+        or "hoc ki" in normalized
+        or "tin chi" in normalized
+        or "1 nam" in normalized
+        or "mot nam" in normalized
+        or "dong tien" in normalized
+        or "thanh toan" in normalized
+    ):
         return "hoc_phi"
+    if (
+        "thoi gian dao tao" in normalized
+        or "dao tao may nam" in normalized
+        or "hoc may nam" in normalized
+    ):
+        return "thong_tin_truong"
     if "hoc bong" in normalized:
         return "hoc_bong"
     if (
@@ -429,10 +456,22 @@ def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters:
             "danh sach",
             "liet ke",
             "bao nhieu nganh",
+            "nhieu nganh",
+            "bao nhiu nganh",
+            "nhiu nganh",
+            "may nganh",
+            "so luong nganh",
             "tat ca cac nganh",
             "co nhung nganh",
+            "cac nganh",
+            "nganh gi",
+            "nganh nao",
+            "nhung nganh",
             "chuong trinh nao",
+            "chuong trinh gi",
             "co may chuong trinh",
+            "intent:danh_sach_nganh",
+            "intent:danh_sach_chuong_trinh",
             "intent:tu_van_chon_nganh",
         )
     )
@@ -585,6 +624,8 @@ class DHVRetriever:
         self.settings = settings_obj
         self._store_factory = store_factory
         self._embedding_factory = embedding_factory
+        self._embedding_cache: dict[tuple[str, str | None, str | None], Any] = {}
+        self._lock = threading.Lock()
 
     def retrieve(self, question: str) -> list[Document]:
         """Truy xuất các tài liệu đã xác thực cho năm cơ sở tri thức được cấu hình.
@@ -634,16 +675,25 @@ class DHVRetriever:
                 f"Chroma persist directory is missing: {persist_directory}"
             )
 
-        try:
-            embedding_function = self._embedding_factory(
-                backend=self.settings.embedding_backend,
-                ollama_model=self.settings.embedding_model,
-                ollama_base_url=self.settings.ollama_base_url,
-            )
-        except Exception as exc:
-            if self.settings.embedding_backend == "ollama":
-                raise RetrieverEmbeddingError("query embedding service failed") from exc
-            raise VectorDatabaseError("query embedding backend could not be created") from exc
+        emb_key = (
+            self.settings.embedding_backend,
+            self.settings.embedding_model,
+            self.settings.ollama_base_url,
+        )
+        with self._lock:
+            embedding_function = self._embedding_cache.get(emb_key)
+            if embedding_function is None:
+                try:
+                    embedding_function = self._embedding_factory(
+                        backend=self.settings.embedding_backend,
+                        ollama_model=self.settings.embedding_model,
+                        ollama_base_url=self.settings.ollama_base_url,
+                    )
+                    self._embedding_cache[emb_key] = embedding_function
+                except Exception as exc:
+                    if self.settings.embedding_backend == "ollama":
+                        raise RetrieverEmbeddingError("query embedding service failed") from exc
+                    raise VectorDatabaseError("query embedding backend could not be created") from exc
 
         try:
             vector_store = self._store_factory(

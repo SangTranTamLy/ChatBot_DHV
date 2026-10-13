@@ -1133,6 +1133,350 @@ def parse_official_websites(pages: list[dict[str, Any]]) -> list[dict[str, Any]]
     return records
 
 
+def parse_school_information(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Parse structured school background, leadership, campuses and partnerships.
+
+    Emits fine-grained semantic records for the school-information corpus
+    without losing provenance or official website records.
+    """
+    records: list[dict[str, Any]] = parse_official_websites(pages)
+    combined_text = "\n".join(str(page.get("text", "")) for page in pages)
+
+    p1_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 1), "")
+    p2_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 2), "")
+    p3_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 3), "")
+    p4_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 4), "")
+    p5_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 5), "")
+    p6_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 6), "")
+    p7_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 7), "")
+
+    # 1.1 Tổng quan về trường
+    if "TỔNG QUAN VỀ TRƯỜNG" in p1_text or "TỔNG QUAN VỀ TRƯỜNG" in combined_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "school_overview",
+                "topic": "tong_quan",
+                "page": 1,
+                "information_text": (
+                    "Tổng quan về Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "Trường Đại học Hùng Vương Thành phố Hồ Chí Minh là một trong những trường đại học lâu năm "
+                    "tại Thành phố lớn nhất nước. Với sứ mệnh đào tạo và phát triển nguồn nhân lực cho xã hội, "
+                    "Trường Đại học Hùng Vương Thành phố Hồ Chí Minh tự hào là nơi đào tạo các thế hệ sinh viên "
+                    "trở thành người có Trách nhiệm, Trung Nghĩa và Tự tin trong cuộc sống.\n"
+                    "Chương trình đào tạo là sự kết hợp một số nguyên tắc và giá trị cốt lõi của giáo dục Việt Nam "
+                    "cũng như những nền giáo dục tiên tiến trên thế giới như Mỹ: tập trung phát triển nhân cách và đạo đức "
+                    "của sinh viên cũng như nhấn mạnh việc phát triển kỹ năng, tư duy sáng tạo, khả năng tự học và khả năng "
+                    "giải quyết vấn đề của sinh viên nhằm tạo ra một thế hệ công dân có trách nhiệm với xã hội."
+                ),
+            }
+        )
+
+    # 1.2 - 1.5 Triết lý giáo dục
+    if "Triết lý giáo dục" in p1_text or "GIÁO DỤC - KHAI PHÓNG - KHỞI NGHIỆP" in p1_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "educational_philosophy",
+                "topic": "triet_ly_giao_duc",
+                "page": 1,
+                "information_text": (
+                    "Triết lý giáo dục của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "Nền tảng của triết lý giáo dục này là 6 chữ \"GIÁO DỤC - KHAI PHÓNG - KHỞI NGHIỆP\", "
+                    "mục tiêu của triết lý này là \"vươn mình - phát triển - thành công\".\n"
+                    "• Giáo dục để vươn mình: DHV coi sứ mệnh của giáo dục là thay đổi vận mệnh của đất nước, "
+                    "vận mệnh của dân tộc, vận mệnh của mỗi người. Để có thể thay đổi vận mệnh, nền giáo dục phải "
+                    "mang tính toàn diện và là một quá trình học tập suốt đời.\n"
+                    "• Khai phóng để phát triển: Để thực hiện được sứ mệnh vươn mình, giáo dục DHV không giới hạn "
+                    "ở việc truyền thụ kiến thức, mà phải giúp khai mở tư duy, rèn luyện năng lực phản biện để có thể "
+                    "sáng tạo không ngừng.\n"
+                    "• Khởi nghiệp để thành công: Không dừng lại ở chữ nghĩa lý thuyết, giáo dục DHV dẫn người học đến hành động. "
+                    "Chỉ có hành động sáng tạo không ngừng mới có thể đưa người học đến thành công, đưa đất nước đến phát triển, "
+                    "đưa dân tộc đến vươn mình."
+                ),
+            }
+        )
+
+    # Tầm nhìn & Kiểm định
+    if "Đại học khởi nghiệp hàng đầu châu Á" in p1_text or "Tầm nhìn" in p1_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "school_vision",
+                "topic": "tam_nhin",
+                "page": 1,
+                "information_text": (
+                    "Tầm nhìn của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "Đại học khởi nghiệp hàng đầu châu Á. DHV trở thành trường đại học định hướng ứng dụng theo mô hình "
+                    "đại học khởi nghiệp hàng đầu Việt Nam và khu vực Châu Á.\n"
+                    "Chương trình đạt kiểm định quốc tế: Một số ngành hoặc chuyên ngành được kiểm định và xếp hạng "
+                    "bởi các tổ chức kiểm định và đánh giá chất lượng giáo dục uy tín trên thế giới."
+                ),
+            }
+        )
+
+    # 1.7 Sứ mệnh
+    if "1.7. Sứ mệnh" in p2_text or "Sứ mệnh" in p2_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "school_mission",
+                "topic": "su_menh",
+                "page": 2,
+                "information_text": (
+                    "Sứ mệnh của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "• Cộng đồng học thuật đa ngành: Xây dựng một cộng đồng học thuật đa văn hóa, đa ngành, phát huy tối đa "
+                    "sự giao tiếp và hợp tác đa chiều giữa sinh viên, giảng viên, doanh nghiệp và xã hội.\n"
+                    "• Phát triển tư duy và kỹ năng: Khuyến khích khả năng sáng tạo, tư duy độc lập, tư duy phản biện "
+                    "cùng các kỹ năng của giảng viên và sinh viên.\n"
+                    "• Nghiên cứu và đổi mới sáng tạo: Nghiên cứu và phát triển các công nghệ, phương pháp và ứng dụng mới "
+                    "trong các lĩnh vực như học thuật, công nghệ, kinh doanh…\n"
+                    "• Góp phần phát triển xã hội: Góp phần vào sự phát triển và cải thiện xã hội thông qua các giải pháp như "
+                    "cung cấp nguồn nhân lực chất lượng cao, các phương pháp và ứng dụng mới trong các lĩnh vực của nền kinh tế."
+                ),
+            }
+        )
+
+    # 1.8 Giá trị cốt lõi
+    if "1.8. Giá trị cốt lõi" in p2_text or "Giá trị cốt lõi" in p2_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "core_values",
+                "topic": "gia_tri_cot_loi",
+                "page": 2,
+                "information_text": (
+                    "Giá trị cốt lõi của Trường Đại học Hùng Vương TP.HCM (DHV) gồm 3 giá trị:\n"
+                    "a. Trách nhiệm (Faithful): Mọi thành viên DHV đều xác định đảm nhận trách nhiệm và chịu trách nhiệm "
+                    "với hành động hoặc nhiệm vụ mình được giao, với xã hội.\n"
+                    "b. Trung nghĩa (Confident): Thể hiện sự trung thành, tin cậy và kiên định dựa trên tính công bằng, "
+                    "khách quan và sự tôn trọng đối với tất cả quan điểm.\n"
+                    "c. Tự tin (Responsible): Thể hiện sự tự tin vào khả năng của bản thân, sẵn sàng đối mặt với thách thức, "
+                    "dám đưa ra các ý kiến phản biện mang tính chất xây dựng và bảo vệ quan điểm của mình dù có thể "
+                    "đi ngược với quan điểm số đông."
+                ),
+            }
+        )
+
+    # 1.9 Lịch sử hình thành
+    if "LỊCH SỬ HÌNH THÀNH" in p2_text or "2395/QĐ-TCCB" in combined_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "school_history",
+                "topic": "lich_su_hinh_thanh",
+                "page": 2,
+                "source_pages": [2, 3],
+                "information_text": (
+                    "Lịch sử hình thành và phát triển của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "• Ngày 03/11/1993: Bộ Giáo dục và Đào tạo ra quyết định số 2395/QĐ-TCCB chính thức công nhận "
+                    "Hội đồng Sáng lập Trường Đại học Dân lập Hùng Vương Thành phố Hồ Chí Minh gồm 9 thành viên, trong đó "
+                    "cố Giáo sư, Thạc sĩ Y khoa Ngô Gia Hy giữ vai trò Chủ tịch. Đây là cột mốc đầu tiên, đánh dấu "
+                    "sự ra đời của ngôi trường mang tên Quốc tổ Vua Hùng.\n"
+                    "• Ngày 14/08/1995: Thủ tướng Chính phủ ký quyết định số 470-TTg cho phép thành lập Trường Đại học Dân lập "
+                    "Hùng Vương Thành phố Hồ Chí Minh. Trong giai đoạn này, Trường xây dựng tôn chỉ: 'Khoa học – Phát triển – Đạo đức' "
+                    "với phương châm: Chất lượng hàng đầu, không chạy theo số lượng, không vụ lợi cá nhân, trong sáng về tài chính.\n"
+                    "• Ngày 09/03/1996 (âm lịch): Logo đầu tiên của Trường chính thức ra mắt vào Ngày truyền thống lần thứ nhất "
+                    "ngày 9/3/1996 (âm lịch).\n"
+                    "• Ngày 14/05/2008: Bộ trưởng Bộ Giáo dục và Đào tạo ban hành văn bản số 4167/BGDĐT-PC cho phép "
+                    "Trường Đại học Dân lập Hùng Vương đổi tên thành Trường Đại học Hùng Vương Thành phố Hồ Chí Minh."
+                ),
+            }
+        )
+
+    # Logo, Tên trường & Ngày truyền thống
+    if "Logo đầu tiên" in p3_text or "Ý nghĩa tên trường" in p3_text or "Ngày truyền thống của Trường" in p4_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "school_logo_and_tradition",
+                "topic": "ngay_truyen_thong_va_logo",
+                "page": 3,
+                "source_pages": [3, 4],
+                "information_text": (
+                    "Ý nghĩa Tên trường, Biểu tượng Logo và Ngày truyền thống DHV:\n"
+                    "• Ngày truyền thống của Trường: Hằng năm lấy ngày 9 tháng 3 âm lịch (ngày tiên thường Giỗ Quốc tổ Hùng Vương) "
+                    "làm Ngày truyền thống của Trường. Tượng Vua Hùng được xây dựng tại cơ sở chính 736 Nguyễn Trãi, Quận 5, TP. Hồ Chí Minh.\n"
+                    "• Ý nghĩa tên trường Đại học Hùng Vương TP.HCM: Với tên gọi Hùng Vương, tất cả thành viên của Trường đều "
+                    "luôn nhắc nhở bản thân gìn giữ và phát huy các truyền thống quý báu từ thời đại Hùng Vương, từ nền văn hóa Văn Lang:\n"
+                    "  - Truyền thống đoàn kết và yêu thương giữa các dân tộc (liên minh hòa bình 15 bộ lạc dựng xây nước Văn Lang);\n"
+                    "  - Truyền thống xem tất cả người dân Việt Nam như anh em ruột thịt (truyền thuyết Âu Cơ cùng một mẹ);\n"
+                    "  - Truyền thống đoàn kết đối phó với thiên tai và bảo vệ cuộc sống (chuyện Sơn Tinh - Thủy Tinh);\n"
+                    "  - Truyền thống kiên cường vượt qua khó khăn để bảo vệ Tổ quốc (hình tượng Thánh Gióng vươn lên đánh bại giặc).\n"
+                    "• Ý nghĩa biểu tượng Logo: Chiếc vạc ba chân ở trung tâm tượng trưng cho tam tài: thiên, địa, nhân. "
+                    "Sự kết hợp giữa hình vuông và hình tròn gợi nhắc bánh chưng và bánh dày (đất và trời, cha và mẹ, âm và dương, "
+                    "triết lý 'vuông tròn'). 18 đường gạch ở giữa biểu trưng cho 18 đời Vua Hùng; 5 cột khói tượng trưng cho ngũ hành "
+                    "quyện thành hình Rồng, Tiên và bản đồ Việt Nam. Hai ngôi sao 15 cánh đại diện cho 15 bộ lạc của nước Văn Lang xưa. "
+                    "Màu xanh biểu trưng cho tuổi trẻ và tương lai, màu trắng là sự tổng hòa của mọi sức mạnh và tinh hoa kết nối thế giới. "
+                    "Link xem logo: https://drive.google.com/file/d/1sjemgqjD_cAm7i-gMIOG2w_o-YD81lgx/view?usp=drive_link"
+                ),
+            }
+        )
+
+    # 1.10 Cơ cấu tổ chức & Lãnh đạo
+    if "CƠ CẤU TỔ CHỨC" in p4_text or "Đặng Thành Tâm" in p4_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "school_leadership",
+                "topic": "lanh_dao_va_to_chuc",
+                "page": 4,
+                "source_pages": [4, 5],
+                "information_text": (
+                    "Cơ cấu tổ chức và Lãnh đạo Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "Cơ cấu tổ chức gồm: Hội đồng trường, Hội đồng khoa học và đào tạo, Ban Giám hiệu, Các khoa/viện đào tạo, "
+                    "Các phòng/ban và đơn vị trực thuộc.\n"
+                    "1. Hội đồng trường:\n"
+                    "• Kỹ sư Đặng Thành Tâm – Chủ tịch Hội đồng Trường.\n"
+                    "• TS. Trần Việt Anh – Phó Chủ tịch Thường trực Hội đồng Trường, Phó Hiệu trưởng Phụ trách, Chủ tịch Hội đồng Khoa học và Đào tạo.\n"
+                    "• Kỹ sư Trương Hạ Long – Phó Chủ tịch Hội đồng Trường.\n"
+                    "2. Hội đồng khoa học & đào tạo: TS. Trần Việt Anh – Chủ tịch Hội đồng Khoa học và Đào tạo.\n"
+                    "3. Ban Giám hiệu:\n"
+                    "• TS. Trần Việt Anh – Phó Chủ tịch Thường trực Hội đồng Trường, Phó Hiệu trưởng Phụ trách, Chủ tịch Hội đồng Khoa học và Đào tạo.\n"
+                    "• PGS.TS. Trần Văn Hưng – Phó Hiệu trưởng, Ủy viên Hội đồng Khoa học và Đào tạo.\n"
+                    "• TS. Lương Thị Hòa – Phó Hiệu trưởng, Trưởng khoa Luật (Tiến sĩ Luật Hành chính – Hiến pháp, hơn 10 năm cống hiến cho ngành giáo dục).\n"
+                    "4. Lãnh đạo Khoa/Viện tiêu biểu:\n"
+                    "• TS. Nguyễn Quang Hiếu – Trưởng khoa Ngôn ngữ (hơn 25 năm kinh nghiệm giảng dạy và quản lý các trung tâm/học viện/trường đào tạo Ngôn ngữ Anh).\n"
+                    "• TS. Nguyễn Văn Dũng – Trưởng khoa Kỹ thuật – Công nghệ, Ủy viên Hội đồng Khoa học và Đào tạo.\n"
+                    "• TS. Lương Thị Hoà – Phó Hiệu trưởng, Trưởng khoa Luật."
+                ),
+            }
+        )
+
+    # 1.11.1 Hợp tác quốc tế
+    if "HỢP TÁC – ĐỐI TÁC" in p5_text or "Đại học Khai Nam" in p5_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "international_partnerships",
+                "topic": "doi_tac_quoc_te",
+                "page": 5,
+                "source_pages": [5, 6],
+                "information_text": (
+                    "Hợp tác quốc tế của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "DHV triển khai các hoạt động hợp tác quốc tế trong đào tạo, trao đổi sinh viên, trao đổi giảng viên, "
+                    "học thuật và chương trình liên kết. Các đối tác và hoạt động tiêu biểu gồm:\n"
+                    "• Trường Đại học Khai Nam – Đài Loan: hợp tác trao đổi sinh viên, chuyển đổi tín chỉ, trao đổi giảng viên "
+                    "và phát triển học bổng. Năm 2026, hai trường ký thỏa thuận thành lập Trung tâm Hợp tác và Quan hệ quốc tế.\n"
+                    "• Trường Đại học Chosun – Hàn Quốc: ký Biên bản Ghi nhớ hợp tác (MOU) với DHV vào tháng 01/2026.\n"
+                    "• Trường Đại học Hyogo – Nhật Bản: DHV tiếp đón và trao đổi các cơ hội hợp tác quốc tế vào cuối năm 2025.\n"
+                    "• Glenn College – Canada: hợp tác nhằm mở rộng cơ hội tiếp cận giáo dục quốc tế và nâng cao chất lượng đào tạo cho sinh viên.\n"
+                    "• Chivast Education – Trung Quốc: hợp tác trong lĩnh vực giáo dục quốc tế.\n"
+                    "• StudyDIY: hợp tác xây dựng các chương trình thực hành, học tập trải nghiệm và làm việc tại Đài Loan hoặc Việt Nam.\n"
+                    "• DAISO INDUSTRIES Co., Ltd. – Nhật Bản: trao đổi về chương trình thực tập sinh tại Nhật Bản kéo dài 6 tháng hoặc 1 năm dành cho sinh viên DHV."
+                ),
+            }
+        )
+
+    # 1.11.2 - 1.11.3 Hợp tác doanh nghiệp và mục tiêu
+    if "Hợp tác doanh nghiệp" in p6_text or "Fleur De Lys" in p6_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "business_partnerships",
+                "topic": "doi_tac_doanh_nghiep",
+                "page": 6,
+                "information_text": (
+                    "Hợp tác doanh nghiệp và kết nối nghề nghiệp tại DHV:\n"
+                    "Các khoa của DHV hợp tác chặt chẽ với doanh nghiệp và tổ chức chuyên môn nhằm tạo điều kiện cho sinh viên kiến tập, thực hành, thực tập và tìm việc làm:\n"
+                    "• Khoa Du lịch – Nhà hàng – Khách sạn hợp tác với các doanh nghiệp: Chuỗi khách sạn Fleur De Lys, Kỳ Hòa Tourist, Khách sạn InterContinental, "
+                    "Khách sạn Đệ Nhất, Vietravel, Chợ Lớn Tourist, Khách sạn Mai House Sài Gòn, Trung tâm Hội nghị & Tiệc cưới Metropole "
+                    "cùng nhiều doanh nghiệp trong lĩnh vực du lịch, khách sạn và sự kiện.\n"
+                    "• Khoa Ngôn ngữ có các đối tác thuộc lĩnh vực giáo dục, thương mại, tài chính và đào tạo: Glenn College, Woori Bank, Ngân hàng Quân đội (MB), "
+                    "Tập đoàn Giáo dục Đại Trường Phát, AECC Global Việt Nam, Cengage Learning Asia, IMAP Việt Nam và nhiều đơn vị khác.\n"
+                    "• Khoa Quản trị Kinh doanh – Marketing tăng cường kết nối với doanh nghiệp để sinh viên được kiến tập, thực hành, trải nghiệm thực tế, tiếp cận việc làm và hỗ trợ khởi nghiệp.\n"
+                    "• Khoa Luật hợp tác với trung tâm trợ giúp pháp lý, công ty luật, văn phòng luật sư, văn phòng công chứng, trọng tài thương mại, tòa án và viện kiểm sát "
+                    "nhằm hỗ trợ sinh viên kiến tập, thực hành nghề nghiệp và thực tập tốt nghiệp.\n"
+                    "• Mục tiêu hợp tác: Tạo cơ hội thực tập và trải nghiệm thực tế cho sinh viên; tăng cường kết nối với doanh nghiệp; hỗ trợ việc làm sau tốt nghiệp; "
+                    "phát triển chương trình đào tạo gắn với thực tiễn; mở rộng chương trình trao đổi sinh viên và giảng viên; tạo cơ hội học tập và trải nghiệm quốc tế; "
+                    "nâng cao năng lực ngoại ngữ, kỹ năng mềm và kỹ năng nghề nghiệp cho sinh viên."
+                ),
+            }
+        )
+
+    # 1.11.4 Cơ sở đào tạo & Kênh liên hệ
+    if "Các cơ sở của trường" in p7_text or "194 Lê Đức Thọ" in p7_text:
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "campus_locations",
+                "fact_category": "co_so_lien_he",
+                "topic": "co_so_dao_tao",
+                "page": 7,
+                "information_text": (
+                    "Các cơ sở đào tạo của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
+                    "• Cơ sở 1: 194 Lê Đức Thọ, Phường An Nhơn, Thành phố Hồ Chí Minh\n"
+                    "• Cơ sở 2 (Cơ sở chính có tượng Vua Hùng): 736 Nguyễn Trãi, Phường Chợ Lớn, Thành phố Hồ Chí Minh (Quận 5)\n"
+                    "• Cơ sở 3: 37 Kinh Dương Vương, Phường Phú Lâm, Thành phố Hồ Chí Minh\n"
+                    "• Cơ sở 4 (Cơ sở thực hành, nghiên cứu): Công viên Phần mềm Quang Trung, Phường Trung Mỹ Tây, Thành phố Hồ Chí Minh"
+                ),
+            }
+        )
+        records.append(
+            {
+                "record_type": "school_information",
+                "record_id": "school_contacts",
+                "fact_category": "co_so_lien_he",
+                "topic": "thong_tin_lien_he",
+                "page": 7,
+                "information_text": (
+                    "Thông tin liên hệ và các kênh thông tin chính thức của DHV:\n"
+                    "• Tổng đài tư vấn tuyển sinh: 0287 1000 888\n"
+                    "• Email chính thức: info@dhv.edu.vn, media@dhv.edu.vn\n"
+                    "• Cổng thông tin tuyển sinh chính thức: https://tuyensinh.dhv.edu.vn/\n"
+                    "• Website chính thức: https://dhv.edu.vn/\n"
+                    "• Kênh TikTok chính thức: https://www.tiktok.com/@dhv.official\n"
+                    "• Kênh Zalo chính thức: https://zalo.me/1822829687649866202\n"
+                    "• Kênh YouTube chính thức: https://www.youtube.com/@hungvuonguni\n"
+                    "• Trang Facebook chính thức: https://www.facebook.com/hungvuonguni"
+                ),
+            }
+        )
+        # Đồng thời tạo các bản ghi liên hệ cụ thể có fact_category=co_so_lien_he
+        campus_items = (
+            ("Cơ sở 1", "194 Lê Đức Thọ, Phường An Nhơn, Thành phố Hồ Chí Minh"),
+            ("Cơ sở 2 (Cơ sở chính)", "736 Nguyễn Trãi, Phường Chợ Lớn, Thành phố Hồ Chí Minh"),
+            ("Cơ sở 3", "37 Kinh Dương Vương, Phường Phú Lâm, Thành phố Hồ Chí Minh"),
+            ("Cơ sở 4 (Cơ sở thực hành, nghiên cứu)", "Công viên Phần mềm Quang Trung, Phường Trung Mỹ Tây, Thành phố Hồ Chí Minh"),
+        )
+        for idx, (label, val) in enumerate(campus_items, start=1):
+            records.append(
+                {
+                    "record_type": "contact",
+                    "record_id": f"contact_campus_{idx:02d}",
+                    "fact_category": "co_so_lien_he",
+                    "contact_type": "address",
+                    "label": label,
+                    "value": val,
+                    "page": 7,
+                }
+            )
+        records.append(
+            {
+                "record_type": "contact",
+                "record_id": "contact_hotline_01",
+                "fact_category": "co_so_lien_he",
+                "contact_type": "hotline",
+                "label": "Tổng đài tư vấn tuyển sinh",
+                "value": "0287 1000 888",
+                "page": 7,
+            }
+        )
+        records.append(
+            {
+                "record_type": "contact",
+                "record_id": "contact_email_01",
+                "fact_category": "co_so_lien_he",
+                "contact_type": "email",
+                "label": "Email tuyển sinh và truyền thông",
+                "value": "info@dhv.edu.vn, media@dhv.edu.vn",
+                "page": 7,
+            }
+        )
+
+    return records
+
+
 def parse_score_formulas(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     method = ""
@@ -1471,7 +1815,7 @@ PARSERS = {
     "lich_tuyen_sinh": parse_deadlines,
     "nhap_hoc": parse_enrollment_modes,
     "phuong_thuc_xet_tuyen": parse_admission_methods,
-    "thong_tin_truong": parse_official_websites,
+    "thong_tin_truong": parse_school_information,
     "xet_tuyen_bo_sung": parse_supplementary,
 }
 
@@ -2278,6 +2622,7 @@ __all__ = [
     "parse_major_catalog",
     "parse_official_websites",
     "parse_scholarship",
+    "parse_school_information",
     "parse_tuition",
     "validate_structured_document",
     "write_structured_json",
