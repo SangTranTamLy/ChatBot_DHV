@@ -41,6 +41,8 @@ chroma_db/*
 chroma_db_*/
 chroma_stage_*/
 chroma_backup_*/
+data/chroma/
+scratch/
 
 # Generated QA/evaluation result dumps
 .reports/
