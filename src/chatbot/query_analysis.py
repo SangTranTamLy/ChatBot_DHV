@@ -732,13 +732,42 @@ def _is_school_info_request(normalized: str) -> bool:
         "thanh lap chinh thuc",
         "moc thanh lap",
         "doi ten thanh",
+        "lich su",
+        "lich su truong",
+        "lich su cua truong",
         "lich su hinh thanh",
+        "lich su phat trien",
         "qua trinh hinh thanh",
+        "ngay truyen thong",
+        "triet ly",
+        "triet ly giao duc",
+        "su menh",
+        "tam nhin",
+        "gia tri cot loi",
+        "ban giam hieu",
+        "hieu truong",
+        "hoi dong truong",
+        "chu tich hoi dong truong",
+        "lanh dao truong",
+        "logo",
+        "y nghia logo",
+        "bieu tuong",
         "vien dao tao sau dai hoc",
         "vien lien ket giao duc va dao tao tu xa",
         "dao tao tu xa",
+        "bao nhieu khoa",
+        "may khoa",
+        "co may khoa",
+        "cac khoa vien",
+        "khoa vien",
+        "khoa dao tao",
+        "danh sach khoa",
+        "nhung khoa nao",
+        "co nhung khoa",
     )
-    return any(marker in normalized for marker in markers)
+    if any(marker in normalized for marker in markers):
+        return True
+    return bool(re.search(r"\bcac khoa\b", normalized))
 
 
 def _is_verified_school_info_request(
@@ -755,28 +784,6 @@ def _is_verified_school_info_request(
     if _is_specific_school_unit_website_request(normalized):
         return False
 
-    unsupported_event_markers = (
-        "toa dam",
-        "workshop",
-        "hoi thao",
-        "su kien",
-        "chien dich",
-        "le ra quan",
-        "company tour",
-        "chuyen tham quan",
-        "cuoc thi",
-        "ngay hoi",
-        "khoi nghiep cung sinh vien",
-        "unihackfest",
-        "talent administrator",
-        "scff26",
-        "iaaa",
-        "phong lab",
-        "phong thi nghiem",
-        "aero space lab",
-    )
-    if any(marker in normalized for marker in unsupported_event_markers):
-        return False
 
     known_partner_names = (
         "chosun", "hyogo", "glenn college", "chivast", "studydiy", "daiso", "khai nam"
@@ -800,8 +807,15 @@ def _is_verified_school_info_request(
     has_unit_noun = bool(
         re.search(r"(?<!sinh )(?<!tu )\b(?:vien|khoa)\s+\w+", normalized)
     )
-    generic_unit_group = any(
-        marker in normalized for marker in ("cac khoa", "cac vien", "cac khoa vien", "co cau to chuc")
+    generic_unit_group = (
+        bool(re.search(r"\bcac khoa\b", normalized))
+        or any(
+            marker in normalized for marker in (
+                "cac vien", "cac khoa vien", "co cau to chuc",
+                "bao nhieu khoa", "may khoa", "co may khoa", "nhung khoa nao",
+                "danh sach khoa", "khoa dao tao",
+            )
+        )
     )
     if (
         has_unit_noun
@@ -829,6 +843,15 @@ def _is_verified_school_info_request(
         ):
             return False
 
+    unsupported_event_markers = (
+        "khoi nghiep cung sinh vien",
+        "phong thi nghiem",
+        "scff26",
+        "iaaa",
+    )
+    if any(marker in normalized for marker in unsupported_event_markers):
+        return False
+
     overview_markers = (
         "thong tin truong",
         "thong tin ve truong",
@@ -839,10 +862,16 @@ def _is_verified_school_info_request(
         "tong quan ve truong",
         "dhv la truong",
         "truong dhv la",
+        "triet ly",
         "triet ly giao duc",
         "tam nhin",
+        "su menh",
         "gia tri cot loi",
+        "lich su",
+        "lich su truong",
+        "lich su cua truong",
         "lich su hinh thanh",
+        "lich su phat trien",
         "qua trinh hinh thanh",
         "truong thanh lap",
         "thanh lap khi nao",
@@ -852,6 +881,14 @@ def _is_verified_school_info_request(
         "doi ten thanh",
         "duoc phep doi ten",
         "ngay truyen thong",
+        "ban giam hieu",
+        "hieu truong",
+        "hoi dong truong",
+        "chu tich hoi dong truong",
+        "lanh dao truong",
+        "logo",
+        "y nghia logo",
+        "bieu tuong",
         "co cau to chuc",
         "thong diep tuyen sinh",
         "gia tri that",
@@ -860,6 +897,14 @@ def _is_verified_school_info_request(
         "vien dao tao sau dai hoc",
         "vien lien ket giao duc va dao tao tu xa",
         "dao tao tu xa",
+        "hoat dong sinh vien",
+        "cau lac bo",
+        "bao nhieu khoa",
+        "may khoa",
+        "co may khoa",
+        "cac khoa vien",
+        "khoa dao tao",
+        "danh sach khoa",
     )
     partnership_markers = (
         "doi tac",
@@ -881,6 +926,16 @@ def _is_verified_school_info_request(
         "ho tro thuc tap",
         "thuc tap sinh vien",
         "kien tap va thuc tap",
+        "visa j-1",
+        "visa j1",
+        "j-1",
+        "j1",
+        "thuc tap quoc te",
+        "thuc tap hoa ky",
+        "thuc tap my",
+        "co hoi viec lam",
+        "co hoi nghe nghiep",
+        "doanh nghiep",
     )
     has_overview_or_partnership = any(
         marker in normalized for marker in (*overview_markers, *partnership_markers)
@@ -1453,7 +1508,57 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
         or any(term in normalized for term in ("co so", "hotline", "dia chi", "so dien thoai", "email"))
     ):
         add("HOI_CO_SO_LIEN_HE")
-    if _is_school_info_request(normalized):
+    has_supplementary = _has_supplementary_marker(normalized)
+    has_specialization = (
+        "chuyen nganh" in normalized
+        or "chuong trinh" in normalized
+        or bool(entities.get("program_name"))
+        or bool(entities.get("catalog_operation"))
+    )
+    major_list_in_multi = (
+        not has_supplementary
+        and not has_specialization
+        and (
+            ("danh sach" in normalized and bool(re.search(r"\bnganh\b", normalized)))
+            or ("liet ke" in normalized and bool(re.search(r"\bnganh\b", normalized)))
+            or any(
+                marker in normalized
+                for marker in (
+                    "co nhung nganh",
+                    "nhung nganh nao",
+                    "nhung nganh gi",
+                    "cac nganh nao",
+                    "cac nganh gi",
+                    "cac nganh dao tao",
+                    "nganh dao tao nao",
+                    "dao tao nganh gi",
+                    "bao nhieu nganh",
+                    "may nganh",
+                    "co may nganh",
+                    "bao nhiu nganh",
+                    "so luong nganh",
+                )
+            )
+        )
+    )
+    if major_list_in_multi:
+        add("DANH_SACH_NGANH")
+    faculty_in_multi = (
+        bool(re.search(r"\bcac khoa\b", normalized))
+        or any(
+            marker in normalized
+            for marker in (
+                "bao nhieu khoa",
+                "may khoa",
+                "co may khoa",
+                "khoa vien",
+                "nhung khoa nao",
+                "co nhung khoa",
+                "khoa dao tao",
+            )
+        )
+    )
+    if faculty_in_multi or _is_school_info_request(normalized):
         add("SCHOOL_INFO")
     # Keep an explicitly requested event/activity topic visible in compound
     # answers while preserving the current no-verified-event-data boundary.
@@ -1473,7 +1578,10 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
             "xet tuyen",
         ),
         "DANH_SACH_CHUONG_TRINH": ("chuong trinh",),
-        "DANH_SACH_NGANH": ("nganh dao tao", "danh sach nganh", "liet ke nganh"),
+        "DANH_SACH_NGANH": (
+            "nganh dao tao", "danh sach nganh", "liet ke nganh",
+            "bao nhieu nganh", "may nganh", "nganh",
+        ),
         "HOI_NGUONG_DAU_VAO": ("diem san", "nguong dau vao", "diem dau vao"),
         "HOI_DIEM_TRUNG_TUYEN": ("diem trung tuyen", "diem chuan"),
         "HOI_XET_TUYEN_BO_SUNG": ("xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung"),
@@ -1493,8 +1601,9 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
             "website", "web ", "co so", "hotline", "dia chi", "so dien thoai", "email",
         ),
         "SCHOOL_INFO": (
-            "thong tin truong", "thong tin ve truong", "gioi thieu", "truong thanh lap",
-            "lich su hinh thanh",
+            "khoa", "thong tin truong", "thong tin ve truong", "gioi thieu", "truong thanh lap",
+            "lich su", "lich su hinh thanh", "triet ly", "su menh", "tam nhin",
+            "ban giam hieu", "hieu truong", "hoi dong truong", "logo",
         ),
         "OUT_OF_SCOPE": _UNSUPPORTED_SCHOOL_EVENT_MARKERS,
     }
@@ -1581,6 +1690,8 @@ def _decomposed_subquery(
                 if text and text not in anchors:
                     anchors.append(text)
     label = _DECOMPOSED_QUERY_LABELS.get(intent, intent)
+    if intent == "SCHOOL_INFO" and entities.get("faculty_request"):
+        label = "các khoa đào tạo"
     return " ".join((*anchors[:8], label, str(entities.get("year") or target_year)))
 
 
@@ -1640,11 +1751,27 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     parent_major = None
     method_mentions = _extract_method_mentions(normalized)
     admission_method = method_mentions[0] if method_mentions else None
-    if admission_method is None:
-        if re.search(r"phuong thuc\s*1\b", normalized):
-            admission_method = "thpt"
-        elif re.search(r"phuong thuc\s*2\b", normalized):
-            admission_method = "hoc_ba"
+    if admission_method is None and not state.last_listed_methods:
+        ordinal_method_map = {
+            1: "thpt",
+            2: "hoc_ba",
+            3: "dgnl",
+            4: "h_sca",
+            5: "trung_cap",
+        }
+        match_pt = re.search(r"phuong thuc\s*(?:thu\s*)?([1-5])\b", normalized)
+        if match_pt:
+            num = int(match_pt.group(1))
+            admission_method = ordinal_method_map.get(num)
+            if admission_method and admission_method not in method_mentions:
+                method_mentions.append(admission_method)
+        else:
+            match_pt_word = re.search(r"phuong thuc\s+thu\s+(nhat|hai|ba|tu|bon|nam)\b", normalized)
+            if match_pt_word:
+                word_map = {"nhat": "thpt", "hai": "hoc_ba", "ba": "dgnl", "tu": "h_sca", "bon": "h_sca", "nam": "trung_cap"}
+                admission_method = word_map.get(match_pt_word.group(1))
+                if admission_method and admission_method not in method_mentions:
+                    method_mentions.append(admission_method)
 
     score_type = None
     if _has_supplementary_marker(normalized):
@@ -1740,18 +1867,23 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     website_count_request = _is_website_count_request(normalized)
     count_requested = not _is_score_amount_request(normalized) and bool(
         re.search(
-            r"\b(?:bao nhieu|may|so luong)\s+(?:nganh|phuong thuc|chuong trinh|hoc bong|loai|moc|mon|giay to)\b",
+            r"\b(?:bao\s+nhieu|bao\s+nhiu|nhieu|nhiu|may|so\s+luong)\s+(?:nganh|phuong\s+thuc|chuong\s+trinh|hoc\s+bong|loai|moc|mon|giay\s+to)\b",
             normalized,
         )
         or re.search(
-            r"\b(?:nganh|phuong thuc|chuong trinh|loai|moc|mon|giay to)\b.{0,32}\b(?:bao nhieu|may|so luong)\b",
+            r"\b(?:nganh|phuong\s+thuc|chuong\s+trinh|loai|moc|mon|giay\s+to)\b.{0,32}\b(?:bao\s+nhieu|bao\s+nhiu|nhieu|nhiu|may|so\s+luong)\b",
+            normalized,
+        )
+        or re.search(
+            r"\bco\s+(?:bao\s+)?(?:nhieu|nhiu|may)\s+nganh\b",
             normalized,
         )
         or website_count_request
     )
     list_requested = any(marker in normalized for marker in (
         "danh sach", "liet ke", "liet ra", "co nhung", "nhung loai",
-        "nhung gi", "gom nhung", "gom gi", "toan bo", "tat ca"
+        "nhung gi", "gom nhung", "gom gi", "toan bo", "tat ca",
+        "cac nganh", "nganh nao", "nganh gi", "nhung nganh",
     ))
     scholarship_catalog_requested = bool(
         re.search(r"\bhoc bong\s+(?:gi|nao)\b", normalized)
@@ -1829,6 +1961,20 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "admission_combination_detail": _is_admission_combination_structure_question(normalized),
         "requested_information": [],
         "query_mode": query_mode,
+        "faculty_request": any(
+            marker in normalized
+            for marker in (
+                "bao nhieu khoa",
+                "may khoa",
+                "co may khoa",
+                "cac khoa",
+                "khoa vien",
+                "nhung khoa nao",
+                "co nhung khoa",
+                "khoa dao tao",
+                "danh sach khoa",
+            )
+        ),
     }
 
 
@@ -1900,6 +2046,7 @@ def _resolve_coreferences(
         or entities.get("candidate_majors")
         or entities.get("candidate_programs")
         or entities.get("candidate_methods")
+        or (entities.get("admission_method") and ordinal is None)
     )
 
     if is_list_reference and not explicit_entity:
@@ -1943,7 +2090,7 @@ def _resolve_coreferences(
         elif kind == "program":
             values = state.last_listed_programs or state.candidate_programs
         elif kind == "method":
-            values = state.last_listed_methods or state.candidate_methods
+            values = state.last_listed_methods or state.candidate_methods or ("thpt", "hoc_ba", "dgnl", "h_sca", "trung_cap")
         else:
             values = ()
         if not values or ordinal < 1 or ordinal > len(values):
@@ -2330,6 +2477,15 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         return "HOI_HO_SO"
     if _is_admission_date_comparison(normalized):
         return "HOI_LICH_TUYEN_SINH"
+    if any(marker in normalized for marker in (
+        "thoi gian dao tao", "dao tao may nam", "hoc may nam", "hoc bao nhieu nam",
+        "may nam tot nghiep", "may nam ra truong", "may nam hoc", "chuong trinh dao tao may nam",
+    )):
+        return "SCHOOL_INFO"
+    if ("cam ket" in normalized and "hoc phi" in normalized) or any(marker in normalized for marker in (
+        "on dinh hoc phi", "tang hoc phi", "co tang hoc phi khong",
+    )):
+        return "HOI_HOC_PHI"
     if (
         "dong tien mat" in normalized
         or "dong tien" in normalized and any(marker in normalized for marker in ("o dau", "thoi gian nao"))
@@ -2422,7 +2578,25 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         or ("con thieu" in normalized and "nganh" in normalized)
         or any(
             marker in normalized
-            for marker in ("co nhung nganh", "nhung nganh nao", "bao nhieu nganh")
+            for marker in (
+                "co nhung nganh",
+                "nhung nganh nao",
+                "nhung nganh gi",
+                "cac nganh nao",
+                "cac nganh gi",
+                "cac nganh dao tao",
+                "nganh dao tao nao",
+                "dao tao nganh gi",
+                "dao tao nhung nganh",
+                "dao tao cac nganh",
+                "bao nhieu nganh",
+                "nhieu nganh",
+                "bao nhiu nganh",
+                "nhiu nganh",
+                "may nganh",
+                "so luong nganh",
+                "co may nganh",
+            )
         )
         or ("danh sach tren" in normalized and any(
             marker in normalized for marker in ("chua du", "thieu", "sai", "10 nganh", "12 nganh")
@@ -2541,7 +2715,15 @@ def _apply_school_scope(
     mentions = list(detected.get("school_mentions") or ())
     # Follow-up questions inherit only the bounded school slot, never raw
     # conversation text. Greetings/system turns must not inherit it.
-    if (
+    if state.current_school == TARGET_SCHOOL_AMBIGUOUS:
+        is_confirmation = any(
+            marker in normalized
+            for marker in ("dung", "phai", "chinh xac", "vang", "da", "uh", "dung the", "tphcm", "tp hcm", "dhv", "ho chi minh")
+        )
+        if is_confirmation:
+            target = TARGET_SCHOOL_DHV
+            mentions = ["Trường Đại học Hùng Vương TP.HCM"]
+    elif (
         target == TARGET_SCHOOL_UNSPECIFIED
         and state.current_school
         and intent not in {"GREETING", "THANKS", "SYSTEM_IDENTITY", "SYSTEM_SCOPE"}
@@ -2925,7 +3107,7 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             categories = ("nganh_dao_tao", "nguong_dau_vao")
         elif (
             resolved.intent == "DANH_SACH_NGANH"
-            and entities.get("query_mode") == "COUNT"
+            and entities.get("query_mode") in {"COUNT", "LIST_AND_COUNT"}
             and not entities.get("major_name")
         ):
             # The verified major/program summary currently lives in the

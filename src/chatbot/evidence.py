@@ -802,6 +802,7 @@ def _parse_admission_table_facts(
     # Recover only this explicit row shape; do not infer values across rows.
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines() if line.strip()]
     score_cell = re.compile(r"^(\d+(?:[.,]\d+)?)(?:\(\*\))?$")
+    dash_cell = re.compile(r"^[-–—]+$|^n/?a$|^khong\s+xet$", re.IGNORECASE)
     for index in range(len(lines) - 1):
         if not re.fullmatch(r"\d{1,3}", lines[index]):
             continue
@@ -810,7 +811,7 @@ def _parse_admission_table_facts(
         name_start = index + 2
         score_start = None
         for position in range(name_start, min(len(lines), name_start + 8)):
-            if score_cell.fullmatch(lines[position]):
+            if score_cell.fullmatch(lines[position]) or dash_cell.fullmatch(lines[position].strip()):
                 score_start = position
                 break
             if (
@@ -825,10 +826,15 @@ def _parse_admission_table_facts(
         position = score_start
         while position < len(lines) and len(parsed_values) < 3:
             match = score_cell.fullmatch(lines[position])
-            if not match:
-                break
-            parsed_values.append((match.group(1), lines[position]))
-            position += 1
+            if match:
+                parsed_values.append((match.group(1), lines[position]))
+                position += 1
+                continue
+            if dash_cell.fullmatch(lines[position].strip()):
+                parsed_values.append(("-", lines[position]))
+                position += 1
+                continue
+            break
         if len(parsed_values) != 3:
             continue
         major_name = " ".join(lines[name_start:score_start]).strip(" •*-")
@@ -845,7 +851,7 @@ def _parse_admission_table_facts(
                     "score_type": "admission_score",
                     "method": method,
                     "raw_value": numeric_value,
-                    "value": _numeric_or_none(numeric_value),
+                    "value": _numeric_or_none(numeric_value) if numeric_value != "-" else None,
                     "category": "diem_trung_tuyen",
                     **_fact_provenance(chunk),
                 }

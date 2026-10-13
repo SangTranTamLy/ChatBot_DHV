@@ -352,7 +352,12 @@ def _target_institution_failure(answer: str, evidence: EvidenceBundle) -> str:
         # Institution support is checked as a complete normalized name, not
         # as token overlap; the fact that evidence mentions "university" or
         # "cooperation" cannot support a claim about a specific partner.
-        if organization in _TRUSTED_SCHOOL_NAMES or organization in evidence_text:
+        if (
+            organization in _TRUSTED_SCHOOL_NAMES
+            or any(organization.startswith(trusted) for trusted in _TRUSTED_SCHOOL_NAMES)
+            or organization in evidence_text
+            or organization.startswith(("dai hoc chinh quy", "dai hoc he chinh quy"))
+        ):
             continue
         return "institution_mismatch"
     return ""
@@ -398,7 +403,12 @@ def _is_supported_by_evidence(answer: str, evidence: EvidenceBundle) -> bool:
     if not answer_tokens or not evidence_tokens:
         return False
     overlap = answer_tokens & evidence_tokens
-    return len(overlap) >= 2 or any(token[0].isdigit() for token in overlap)
+    if not overlap:
+        return False
+    if len(answer_tokens) <= 6:
+        return len(overlap) >= 2 or (len(overlap) >= 1 and any(token[0].isdigit() for token in overlap))
+    overlap_ratio = len(overlap) / len(answer_tokens)
+    return len(overlap) >= 3 and (overlap_ratio >= 0.18 or any(token[0].isdigit() for token in overlap))
 
 
 def _supports_optional_fee_sum(
@@ -515,11 +525,18 @@ def _has_unsupported_named_entity(
     sau khi chuẩn hóa.
     """
 
+    evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
+    for match in _ORGANIZATION_RE.finditer(_fold_text(answer)):
+        organization = match.group(0)
+        if organization in _TRUSTED_SCHOOL_NAMES:
+            continue
+        if organization not in evidence_text:
+            return True
+
     entities = _analysis_entities(analysis)
     intent = str(analysis.get("intent")) if isinstance(analysis, Mapping) else str(getattr(analysis, "intent", ""))
-    if intent != "TU_VAN_CHON_NGANH":
+    if intent not in {"TU_VAN_CHON_NGANH", "HOI_NGANH", "DANH_SACH_NGANH", "HOI_CHUONG_TRINH", "DANH_SACH_CHUONG_TRINH"}:
         return False
-    evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
     allowed_names = {
         _fold_text(str(relation.get("program_name")))
         for relation in evidence.entity_relations
@@ -535,13 +552,21 @@ def _has_unsupported_named_entity(
         for fact in evidence.score_facts
         if fact.get("major_name")
     )
-    # A candidate is allowed only if it also occurs in retrieved evidence.
+    # A candidate is allowed if it occurs in retrieved evidence, or was explicitly asked in a comparison query.
+    user_query = _fold_text(
+        str(
+            analysis.get("normalized_question")
+            if isinstance(analysis, Mapping)
+            else getattr(analysis, "normalized_question", "")
+        )
+    )
+    is_comparison = any(marker in user_query for marker in ("so sanh", "khac nhau", "khac biet", "giua"))
     for key in ("candidate_majors", "candidate_programs"):
         values = entities.get(key) if isinstance(entities, Mapping) else None
         if isinstance(values, (list, tuple)):
             for value in values:
                 normalized = _fold_text(value)
-                if normalized and normalized in evidence_text:
+                if normalized and (normalized in evidence_text or (is_comparison and normalized in user_query)):
                     allowed_names.add(normalized)
 
     generic_prefixes = (
@@ -569,7 +594,7 @@ def _has_unsupported_named_entity(
         for allowed in sorted(allowed_names, key=len, reverse=True):
             residual = residual.replace(allowed, " ")
         residual = re.sub(
-            r"\b(?:ban|toi|co|the|tham|khao|chuong|trinh|cac|nganh|phu|hop|"
+            r"\b(?:va|hoac|cung|hai|ba|bon|nam|ban|toi|co|the|tham|khao|chuong|trinh|cac|nganh|phu|hop|"
             r"lua|chon|dang|can|nhac|den|voi|so|thich|la|thuoc|nam|trong|"
             r"nganh|cha|duoc|goi|y|nhu|mot|nhom|cac|van)\b",
             " ",
@@ -584,12 +609,6 @@ def _has_unsupported_named_entity(
         if residual.strip():
             return True
 
-    for match in _ORGANIZATION_RE.finditer(_fold_text(answer)):
-        organization = match.group(0)
-        if organization in _TRUSTED_SCHOOL_NAMES:
-            continue
-        if organization not in evidence_text:
-            return True
     return False
 
 
@@ -909,7 +928,13 @@ def _advisory_fit_failure(
 
 
 def _has_required_labeled_amount(answer: str, evidence: EvidenceBundle, question: str) -> bool:
-    if "hoc phi" not in _fold_text(question):
+    folded_q = _fold_text(question)
+    if "hoc phi" not in folded_q:
+        return True
+    if any(marker in folded_q for marker in (
+        "ngan hang", "chuyen khoan", "thanh toan", "dong o dau", "phuong thuc", "tai khoan",
+        "cam ket", "on dinh", "tang khong", "co tang khong", "hoc ky", "hoc ki", "1 nam", "mot nam",
+    )):
         return True
     evidence_amounts = {
         match.group(1)
@@ -1153,6 +1178,13 @@ _FACT_ONLY_INTENTS = frozenset(
         "HOI_CACH_TINH_DIEM",
         "HOI_DANG_KY_XET_TUYEN",
         "HOI_CO_SO_LIEN_HE",
+        "HOI_LICH_TUYEN_SINH",
+        "HOI_NHAP_HOC",
+        "HOI_HOC_PHI",
+        "HOI_HOC_BONG",
+        "HOI_HO_SO",
+        "HOI_XET_TUYEN_BO_SUNG",
+        "SCHOOL_INFO",
     }
 )
 
@@ -1162,7 +1194,7 @@ def _unsupported_contact_or_date_literal(
     evidence: EvidenceBundle,
     analysis: Mapping[str, object] | Any | None,
 ) -> str:
-    """Từ chối các giá trị liên hệ/ngày tháng bịa đặt trong 4 chủ đề chỉ thuần dữ kiện."""
+    """Từ chối các giá trị liên hệ/ngày tháng bịa đặt trong các chủ đề thuần dữ kiện."""
 
     if isinstance(analysis, Mapping):
         intent = str(analysis.get("intent") or "")
@@ -1172,20 +1204,23 @@ def _unsupported_contact_or_date_literal(
         return ""
 
     evidence_text = " ".join(chunk.text for chunk in evidence.chunks)
-    if intent == "HOI_CO_SO_LIEN_HE":
-        evidence_phones = {
-            re.sub(r"\D", "", value)
-            for value in _CONTACT_NUMBER_RE.findall(evidence_text)
-        }
-        for value in _CONTACT_NUMBER_RE.findall(answer):
-            if re.sub(r"\D", "", value) not in evidence_phones:
-                return "unsupported_contact_value"
-        evidence_emails = {
-            value.casefold() for value in _EMAIL_LITERAL_RE.findall(evidence_text)
-        }
-        for value in _EMAIL_LITERAL_RE.findall(answer):
-            if value.casefold() not in evidence_emails:
-                return "unsupported_contact_value"
+    # Only contact values that literally occur in the retrieved PDF evidence
+    # are allowed; no hardcoded "trusted" values.
+    evidence_phones = {
+        re.sub(r"\D", "", value)
+        for value in _CONTACT_NUMBER_RE.findall(evidence_text)
+    }
+    for value in _CONTACT_NUMBER_RE.findall(answer):
+        norm_phone = re.sub(r"\D", "", value)
+        if len(norm_phone) >= 9 and norm_phone not in evidence_phones:
+            return "unsupported_contact_value"
+
+    evidence_emails = {
+        value.casefold() for value in _EMAIL_LITERAL_RE.findall(evidence_text)
+    }
+    for value in _EMAIL_LITERAL_RE.findall(answer):
+        if value.casefold() not in evidence_emails:
+            return "unsupported_contact_value"
 
     evidence_dates = {
         "".join(character for character in value if character.isdigit())

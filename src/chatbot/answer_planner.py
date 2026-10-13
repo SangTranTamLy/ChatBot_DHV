@@ -284,8 +284,33 @@ def choose_answer_mode(
     if intent in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}:
         count_only_major = (
             intent == "DANH_SACH_NGANH"
-            and any(marker in normalized for marker in ("bao nhieu nganh", "may nganh", "so luong nganh"))
-            and not any(marker in normalized for marker in ("danh sach", "liet ke", "liet ra"))
+            and any(
+                marker in normalized
+                for marker in (
+                    "bao nhieu nganh",
+                    "nhieu nganh",
+                    "bao nhiu nganh",
+                    "nhiu nganh",
+                    "may nganh",
+                    "so luong nganh",
+                    "tong so nganh",
+                    "co bao nhieu",
+                    "co nhieu",
+                    "co may",
+                )
+            )
+            and not any(
+                marker in normalized
+                for marker in (
+                    "danh sach",
+                    "liet ke",
+                    "liet ra",
+                    "cac nganh",
+                    "nhung nganh",
+                    "nganh nao",
+                    "nganh gi",
+                )
+            )
         )
         return "DIRECT_SHORT" if _catalog_operation(analysis) == "COUNT" or count_only_major else "TABLE"
     if _has_multiple_choices(analysis) and any(marker in normalized for marker in _COMPARISON_MARKERS):

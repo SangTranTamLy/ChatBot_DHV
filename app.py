@@ -18,6 +18,11 @@ from src.chatbot.query_analysis import ConversationState
 
 load_dotenv()
 
+from src.chatbot.warmup import start_background_warmup, wait_for_warmup
+
+# Pre-warm SentenceTransformer and ChromaDB in daemon background thread immediately
+start_background_warmup()
+
 st.set_page_config(
     page_title="Chatbot tuyển sinh DHV",
     page_icon=":material/school:",
@@ -205,6 +210,7 @@ def _ask_question(question: str) -> dict[str, object]:
     """Chỉ gọi service của Task C và phân loại các lỗi bất ngờ ở ranh giới UI."""
 
     try:
+        wait_for_warmup(timeout=5.0)
         result = ask_chatbot(
             question,
             conversation_state=st.session_state.get("conversation_state"),
