@@ -1,4 +1,3 @@
-import json
 from src.chatbot.chat_service import get_chat_service
 
 def run():

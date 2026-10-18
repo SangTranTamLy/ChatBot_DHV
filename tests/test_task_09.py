@@ -161,7 +161,7 @@ class Task09RoutingTests(unittest.TestCase):
         analysis = analyze_question("DHV có những cơ sở nào?")
         plan = route_question(analysis)
         self.assertEqual(analysis.intent, "HOI_CO_SO_LIEN_HE")
-        self.assertEqual(plan.categories, ("co_so_lien_he",))
+        self.assertEqual(plan.categories, ("thong_tin_truong", "co_so_lien_he"))
 
         scope = analyze_question("Đây có phải toàn bộ thông tin về trường không?")
         scope_plan = route_question(scope)
@@ -699,7 +699,7 @@ class Task09RoutingTests(unittest.TestCase):
         class NeverCalledLLM:
             def generate(self, *_: object, **__: object) -> str:
                 raise AssertionError(
-                    "verified scholarship facts should use the deterministic evidence answer"
+                    "verified evidence answers must not call the model"
                 )
 
         scholarship_result = ask_chatbot(
@@ -716,10 +716,6 @@ class Task09RoutingTests(unittest.TestCase):
         self.assertNotIn("HỌC BỔNG - HỌC PHÍ", scholarship_result["answer"])
         self.assertNotIn("Học bổng DHV 2026", scholarship_result["answer"])
         self.assertNotIn("(#)", scholarship_result["answer"])
-
-        class NeverCalledLLM:
-            def generate(self, *_: object, **__: object) -> str:
-                raise AssertionError("verified overview and website are deterministic")
 
         for question, expected_url in (
             (

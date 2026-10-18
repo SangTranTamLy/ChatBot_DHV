@@ -178,6 +178,8 @@ class TaskCTests(unittest.TestCase):
                 expected_categories = (
                     ("dang_ky_xet_tuyen", "phuong_thuc_xet_tuyen")
                     if expected_intent == "HOI_DANG_KY_XET_TUYEN"
+                    else ("thong_tin_truong", "co_so_lien_he")
+                    if expected_intent == "HOI_CO_SO_LIEN_HE"
                     else (expected_category,)
                 )
                 self.assertEqual(plan.categories, expected_categories)
@@ -215,7 +217,7 @@ class TaskCTests(unittest.TestCase):
             ),
             (
                 TOPIC_CASES[6][0],
-                "co_so_lien_he",
+                ("thong_tin_truong", "co_so_lien_he"),
                 "Trụ sở chính: 194 Lê Đức Thọ. Tổng đài tư vấn tuyển sinh: 0287 1000 888.",
             ),
         )

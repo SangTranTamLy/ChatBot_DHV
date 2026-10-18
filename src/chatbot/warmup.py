@@ -11,7 +11,6 @@ import logging
 import os
 import threading
 import time
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,6 @@ def is_warmed_up() -> bool:
 
 def wait_for_warmup(timeout: float = 5.0) -> bool:
     """Blocks until background warmup completes or timeout expires."""
-    global _warmup_thread, _warmup_done
     if _warmup_done:
         return True
     if _warmup_thread is not None and _warmup_thread.is_alive():

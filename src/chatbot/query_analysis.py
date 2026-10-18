@@ -1435,6 +1435,14 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
     để tránh tách nhầm câu hỏi mô tả một chủ đề duy nhất.
     """
 
+    # The campus is the destination of this action, not a second request
+    # for general contact information.
+    if (
+        "nop ho so nhap hoc" in normalized
+        and any(marker in normalized for marker in ("co so nao", "o dau", "dia chi nao"))
+        and not re.search(r"\b(?:va|con|dong thoi|ngoai ra)\b|[;?].+\w", normalized)
+    ):
+        return ("HOI_NHAP_HOC",)
     intents: list[str] = []
     admission_condition_request = _is_admission_eligibility_question(normalized)
 
@@ -2450,6 +2458,8 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     ):
         return "HOI_NHAP_HOC"
     issue_intents = _multi_issue_intents(normalized, entities)
+    if issue_intents == ("HOI_NHAP_HOC",):
+        return "HOI_NHAP_HOC"
     if len(issue_intents) >= 2:
         entities["issue_intents"] = list(issue_intents)
         return "MULTI_ISSUE"
@@ -3084,17 +3094,17 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             # verified registration rule and timeline.
             categories = ("dang_ky_xet_tuyen", "phuong_thuc_xet_tuyen")
     elif resolved.intent == "HOI_CO_SO_LIEN_HE":
-        # Website/portal questions are compatible with the legacy contact
-        # intent, but the school-information PDF is also an authoritative
-        # provenance source for those links. Keep the contact category in the
-        # plan so existing callers and specialized contact evidence remain
-        # valid; add school information instead of replacing it.
+        # Contact facts are indexed with school information; advisor contacts
+        # and support instructions are in the enrollment document.
         categories = (
             ("thong_tin_truong", "co_so_lien_he")
             if entities.get("website_request")
             else ("diem_trung_tuyen", "co_so_lien_he")
             if "ma truong" in resolved.normalized_question
-            else ("co_so_lien_he",)
+            else (
+                "ho_so" if "tu van vien" in resolved.normalized_question else "thong_tin_truong",
+                "co_so_lien_he",
+            )
         )
     elif resolved.intent in {
         "HOI_NGANH",

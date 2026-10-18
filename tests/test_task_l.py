@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from src.chatbot.answer_planner import ANSWER_MODES, AnswerPlanner, plan_answer
-from src.chatbot.query_analysis import analyze_question, route_question
+from src.chatbot.query_analysis import analyze_question
 from src.chatbot.rag_chain import ask_chatbot
 from src.prompts.rag_prompt import build_rag_prompt
 

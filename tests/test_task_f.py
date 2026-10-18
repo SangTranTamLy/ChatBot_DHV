@@ -24,7 +24,6 @@ from src.chatbot.query_analysis import (
 from src.config.settings import settings
 from src.ingestion.loader import load_verified_documents
 from src.ingestion.splitter import split_documents
-from src.prompts.rag_prompt import build_rag_prompt
 from src.retrieval.retriever import DHVRetriever
 
 

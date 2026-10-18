@@ -5,13 +5,13 @@ from __future__ import annotations
 import unittest
 
 from src.chatbot.query_analysis import (
-    ConversationState,
     SYSTEM_INTENTS,
     analyze_question,
     route_question,
     update_conversation_state,
 )
 from src.chatbot.rag_chain import ask_chatbot
+from src.chatbot.conversational import detect_smalltalk
 
 
 class _NeverCalledRetriever:
@@ -28,6 +28,18 @@ class _NeverCalledLLM:
 
 
 class TaskISystemRouterTests(unittest.TestCase):
+    def test_identity_and_capabilities_use_bounded_welcome_copy(self) -> None:
+        for question in ("Bạn là ai?", "Bạn hỗ trợ được gì?"):
+            with self.subTest(question=question):
+                reply = detect_smalltalk(question)
+                self.assertIsNotNone(reply)
+                answer = str(reply.answer)
+                self.assertNotIn("giải đáp mọi thắc mắc", answer.casefold())
+                self.assertNotIn("toàn diện", answer.casefold())
+                self.assertIn("một số thông tin tuyển sinh", answer)
+                if reply.intent == "identity":
+                    self.assertIn("dữ liệu đã được kiểm chứng", answer)
+
     def test_greeting_identity_and_scope_are_deterministic(self) -> None:
         cases = (
             ("hello", "GREETING"),

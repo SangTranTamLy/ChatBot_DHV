@@ -481,6 +481,51 @@ def _evidence_directory_answer(analysis: QueryAnalysis, evidence: Any) -> str | 
     )
 
 
+def _evidence_campus_list_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Extract the school's labelled campus list, not historical/tuition prose."""
+    question = analysis.normalized_question
+    if analysis.entities.get("major_name") or analysis.entities.get("program_name"):
+        return None
+    if not any(marker in question for marker in (
+        "nhung co so", "cac co so", "bao nhieu co so", "may co so", "co so nao",
+    )) or any(marker in question for marker in ("nop ho so", "nhap hoc", "hoc phi")):
+        return None
+    campuses: dict[int, str] = {}
+    pattern = re.compile(
+        r"(?:^|\n)\s*[•*-]?\s*(Cơ sở\s*(\d+)\s*[:–-].*?)"
+        r"(?=\n\s*(?:[•*-]?\s*Cơ sở\s*\d+|Tổng đài|Kênh|Email|\d+[.)]|#{1,6}\s)|$)",
+        re.IGNORECASE | re.DOTALL,
+    )
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        if chunk.metadata.get("category") not in {"thong_tin_truong", "co_so_lien_he"}:
+            continue
+        for match in pattern.finditer(chunk.text):
+            number = int(match.group(2))
+            campuses.setdefault(number, re.sub(r"\s+", " ", match.group(1)).strip())
+    if not campuses:
+        return None
+    return "Các cơ sở của DHV theo tài liệu đã xác minh:\n" + "\n".join(
+        f"- {campuses[number]}" for number in sorted(campuses)
+    )
+
+
+def _evidence_contact_email_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    if "email" not in analysis.normalized_question:
+        return None
+    emails = list(dict.fromkeys(re.findall(
+        r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}",
+        "\n".join(_evidence_text_lines(evidence)),
+    )))
+    if not emails:
+        return None
+    prefix = ""
+    if re.search(r"\b(?:khoa|vien)\b", analysis.normalized_question):
+        if any(email.casefold() not in {"info@dhv.edu.vn", "media@dhv.edu.vn"} for email in emails):
+            return None
+        prefix = "Dữ liệu được truy xuất chưa xác nhận email riêng của khoa/viện bạn hỏi. "
+    return prefix + "Email liên hệ chung của DHV: " + ", ".join(emails) + "."
+
+
 def _evidence_school_code_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     if "ma truong" not in normalize_question(analysis.normalized_question):
         return None

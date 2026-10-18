@@ -713,6 +713,20 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                         f"trước ngày {date_match.group(0)} để hưởng mức ưu đãi cao nhất."
                     )
 
+    if "nop ho so nhap hoc" in normalized and any(
+        marker in normalized for marker in ("co so nao", "o dau", "dia chi nao")
+    ):
+        locations = unique([
+            line
+            for line in _evidence_text_lines(evidence)
+            if re.search(r"\bCơ sở\s*[12]\s*:", line, re.IGNORECASE)
+        ])
+        if locations:
+            return "Bạn có thể nộp hồ sơ nhập học tại một trong hai cơ sở của DHV:\n" + "\n".join(
+                f"- {line}" for line in locations[:2]
+            )
+        return None
+
     document_answer = _evidence_required_document_answer(analysis, evidence)
     if document_answer:
         return document_answer

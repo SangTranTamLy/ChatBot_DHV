@@ -14,7 +14,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import mean
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Mapping, Sequence
 
 from src.chatbot.output_validator import validate_model_answer
 

@@ -61,6 +61,40 @@ class FixtureRetriever:
 
 
 class RuntimeEnrollmentTests(unittest.TestCase):
+    def test_enrollment_submission_location_is_one_question(self) -> None:
+        for question in (
+            "nộp hồ sơ nhập học ở cơ sở nào",
+            "Em nộp hồ sơ nhập học ở đâu?",
+            "Nộp hồ sơ nhập học tại địa chỉ nào?",
+        ):
+            with self.subTest(question=question):
+                analysis = analyze_question(question, ConversationState())
+                plan = route_question(analysis)
+                self.assertEqual(analysis.intent, "HOI_NHAP_HOC")
+                self.assertEqual(plan.categories, ("ho_so", "nhap_hoc"))
+                self.assertFalse(plan.subplans)
+
+    def test_enrollment_submission_location_returns_only_addresses(self) -> None:
+        document = _enrollment_document(
+            "enrollment_location",
+            "Nhà trường tiếp nhận hồ sơ tại một trong hai cơ sở:\n"
+            "Cơ sở 1: 194 Lê Đức Thọ, phường An Nhơn, TP. Hồ Chí Minh\n"
+            "Cơ sở 2: 37 Kinh Dương Vương, phường Phú Lâm, TP. Hồ Chí Minh\n"
+            "Học phí HKI: 12.500.000 đồng.\nHọc bạ THPT.",
+        )
+        document.metadata["page"] = 1
+        result = ask_chatbot(
+            "nộp hồ sơ nhập học ở cơ sở nào",
+            retriever=FixtureRetriever([document]),
+        )
+        self.assertEqual(result["status"], "ok")
+        answer = str(result["answer"])
+        self.assertIn("194 Lê Đức Thọ", answer)
+        self.assertIn("37 Kinh Dương Vương", answer)
+        self.assertNotIn("Học bạ", answer)
+        self.assertNotIn("12.500.000", answer)
+        self.assertNotIn("chưa biết câu trả lời", answer)
+
     def test_enrollment_semantic_alias_routes_to_verified_category(self) -> None:
         analysis = analyze_question("Nhập học cần những gì", ConversationState())
         plan = route_question(analysis)

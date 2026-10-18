@@ -91,7 +91,7 @@ _DEFAULT_SUGGESTIONS = [
 ]
 
 _CAPABILITY_TEXT = (
-    "Mình có thể hỗ trợ bạn tra cứu toàn diện thông tin tuyển sinh năm 2026 của **Trường Đại học Hùng Vương TP.HCM (DHV)**:\n\n"
+    "Bạn có thể hỏi mình về một số thông tin tuyển sinh năm 2026 của **Trường Đại học Hùng Vương TP.HCM (DHV)** như:\n\n"
     "- 📚 **Ngành học & Chương trình đào tạo:** 20 ngành chính quy và hơn 50 chương trình đào tạo đa dạng.\n"
     "- 📝 **Phương thức xét tuyển:** 5 phương thức (Điểm thi THPT, Học bạ, ĐGNL ĐHQG-HCM, H-SCA và Trung cấp).\n"
     "- 🎯 **Điểm chuẩn & Ngưỡng đảm bảo chất lượng:** Điểm sàn và điểm chuẩn các năm.\n"
@@ -104,8 +104,9 @@ def _build_reply(intent: str, has_history: bool) -> SmalltalkReply:
     if intent == "identity":
         answer = (
             "Chào bạn! Mình là **Trợ lý tư vấn tuyển sinh AI** của **Trường Đại học Hùng Vương TP.HCM (DHV)** 🎓.\n\n"
-            "Mục tiêu của mình là đồng hành, giải đáp mọi thắc mắc và hỗ trợ bạn tra cứu thông tin tuyển sinh năm 2026 "
-            "một cách nhanh chóng, chuẩn xác và thuận tiện nhất!\n\n" + _CAPABILITY_TEXT
+            "Mình hỗ trợ tra cứu thông tin tuyển sinh DHV năm 2026 dựa trên dữ liệu đã được kiểm chứng. "
+            "Nếu chưa tìm thấy thông tin phù hợp, mình sẽ nói rõ để bạn tiện kiểm tra thêm với nhà trường.\n\n"
+            + _CAPABILITY_TEXT
         )
         return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS)
 

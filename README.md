@@ -27,8 +27,8 @@ Câu hỏi
 
 - Python 3.10 trở lên (khuyến nghị Python 3.12)
 - Streamlit
-- Ollama: `qwen2.5:3b`
-- Embedding: `nomic-embed-text`
+- Ollama: model trong `.env` (mẫu dùng `qwen2.5:7b-instruct-q4_0`; máy nhẹ có thể dùng `qwen2.5:3b`)
+- Embedding: mẫu dùng Sentence Transformers `paraphrase-multilingual-MiniLM-L12-v2`; hỗ trợ Ollama nếu Chroma được xây với backend đó
 - ChromaDB, BM25, RRF và Pytest
 
 ## Cài đặt và chạy trên Windows
@@ -64,9 +64,10 @@ ollama serve
 
 ```powershell
 ollama list
-ollama pull qwen2.5:3b
-ollama pull nomic-embed-text
+ollama pull qwen2.5:7b-instruct-q4_0
 ```
+
+Tải model đúng với `OLLAMA_MODEL` trong `.env`. Nếu dùng embedding Ollama, tải thêm model tương ứng với `EMBEDDING_MODEL`; cấu hình mẫu dùng Sentence Transformers nên không cần tải `nomic-embed-text` qua Ollama.
 
 Nếu `ollama serve` báo cổng `11434` đã được sử dụng, thường là Ollama đã chạy; kiểm tra bằng `ollama list`, không cần mở thêm server.
 
@@ -93,8 +94,9 @@ Các giá trị mặc định nằm trong `.env.example`; chỉnh trong `.env` n
 | Biến | Mặc định | Ý nghĩa |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Địa chỉ Ollama |
-| `OLLAMA_MODEL` | `qwen2.5:3b` | Model trả lời |
-| `EMBEDDING_MODEL` | `nomic-embed-text` | Model embedding |
+| `OLLAMA_MODEL` | `qwen2.5:7b-instruct-q4_0` | Model trả lời |
+| `EMBEDDING_BACKEND` | `sentence-transformers` | Backend embedding |
+| `EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Model embedding |
 | `TARGET_YEAR` | `2026` | Năm dữ liệu mặc định |
 | `PROCESSED_DATA_DIR` | `data/processed` | JSON đã xử lý |
 | `CHROMA_PERSIST_DIR` | `chroma_db` | Vector store cục bộ |

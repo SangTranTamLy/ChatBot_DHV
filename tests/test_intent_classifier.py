@@ -19,7 +19,6 @@ from src.chatbot.scope_guard import is_in_scope, is_personal_life_advice
 from src.chatbot.evidence import build_evidence
 from src.chatbot.output_validator import (
     EXTERNAL_SCHOOL_ANSWER,
-    OUT_OF_SCOPE_ANSWER,
     validate_model_answer,
 )
 from src.models.local_llm import OllamaError

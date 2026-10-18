@@ -1,6 +1,5 @@
 import sys
 import logging
-import json
 
 sys.stdout.reconfigure(encoding='utf-8')
 

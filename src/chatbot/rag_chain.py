@@ -171,6 +171,8 @@ from .scholarship_formatters import (
     _prioritize_scholarship_catalog_documents,
 )
 from .school_info_formatters import (
+    _evidence_campus_list_answer,
+    _evidence_contact_email_answer,
     _evidence_directory_answer,
     _evidence_overview_answer,
     _evidence_school_code_answer,
@@ -1108,7 +1110,11 @@ def ask_chatbot(
             or _evidence_exam_subject_count_answer(analysis, evidence)
         )
     elif analysis.intent == "HOI_CO_SO_LIEN_HE":
-        direct_evidence_answer = _evidence_school_code_answer(analysis, evidence)
+        direct_evidence_answer = (
+            _evidence_school_code_answer(analysis, evidence)
+            or _evidence_campus_list_answer(analysis, evidence)
+            or _evidence_contact_email_answer(analysis, evidence)
+        )
     elif analysis.intent == "HOI_DANG_KY_XET_TUYEN":
         direct_evidence_answer = (
             _evidence_vocational_same_group_eligibility_answer(analysis, evidence)

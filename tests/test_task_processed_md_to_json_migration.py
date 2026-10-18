@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import unittest
-from pathlib import Path
 
 from src.config.settings import PROJECT_ROOT, settings
 from src.ingestion.loader import load_verified_documents

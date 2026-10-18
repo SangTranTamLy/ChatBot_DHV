@@ -18,6 +18,7 @@ from langchain_core.documents import Document
 from src.config.settings import Settings, settings
 from src.ingestion.chroma_lifecycle import close_chroma_store
 from src.ingestion.embeddings import create_embeddings
+from .structured_lookup import lookup_structured_documents
 
 
 class RetrieverError(RuntimeError):
@@ -525,6 +526,11 @@ def _rank_hybrid_candidates_with_audit(
         for rank, document in enumerate(vector_documents, start=1)
         if _document_identity(document) in unique
     }
+    structured_documents = lookup_structured_documents(query, unique.values(), entity_filters)
+    structured_rank = {
+        _document_identity(document): rank
+        for rank, document in enumerate(structured_documents, start=1)
+    }
     bm25_scores = _bm25_scores(query, unique.values())
     bm25_ranked = [
         identity
@@ -542,19 +548,24 @@ def _rank_hybrid_candidates_with_audit(
         identity = _document_identity(document)
         if identity in rrf_scores:
             rrf_scores[identity] += 1.0 / (_RRF_K + rank)
+    # Exact typed-field matches have two votes; broad keyword/semantic
+    # matches must not crowd out a record for the requested field/entity.
+    for identity, rank in structured_rank.items():
+        rrf_scores[identity] += 2.0 / (_RRF_K + rank)
     # A dense search can miss an exact structured record while the collection
     # keyword pass recovers it. Give that lexical vote a second, bounded
     # contribution only when no dense vote exists for the same document.
     # This keeps hybrid retrieval useful for dates/codes without replacing the
     # normal BM25+dense fusion for documents found by both paths.
     for identity, rank in bm25_rank.items():
-        if identity not in dense_rank:
+        if identity not in dense_rank and identity not in structured_rank:
             rrf_scores[identity] += 1.0 / (_RRF_K + rank)
 
     ranking = sorted(
         unique,
         key=lambda identity: (
             -rrf_scores[identity],
+            structured_rank.get(identity, 10**6),
             bm25_rank.get(identity, 10**6),
             dense_rank.get(identity, 10**6),
             vector_scores.get(identity, 10**6),
@@ -567,6 +578,8 @@ def _rank_hybrid_candidates_with_audit(
             "bm25_score": bm25_scores.get(identity, 0.0),
             "dense_rank": dense_rank.get(identity),
             "dense_score": vector_scores.get(identity),
+            "structured_rank": structured_rank.get(identity),
+            "structured_weight": 2.0 if identity in structured_rank else 0.0,
             "rrf_score": rrf_scores[identity],
         }
         for identity in unique
@@ -609,9 +622,9 @@ def _audit_hit(
 class DHVRetriever:
     """Trình truy xuất Chroma kết hợp (hybrid) tải trễ, sử dụng hợp đồng embedding của Task B.
 
-    Chroma vẫn là nguồn dữ liệu gốc (source of truth). Một bước duyệt từ khóa nhỏ trong quá trình
-    chạy (runtime) trên cùng collection chỉ được dùng để cải thiện việc khớp chính xác thực thể/mã số;
-    nó không ghi vào collection hay làm thay đổi embedding.
+    Chroma vẫn là nguồn dữ liệu gốc. BM25, vector và lookup SQLite trên metadata
+    bản ghi JSON cùng truy hồi từ collection đã xác minh; không ghi vào
+    collection, tạo dữ kiện mới hay thay đổi embedding.
     """
 
     def __init__(
@@ -802,6 +815,9 @@ class DHVRetriever:
             hits=hits,
             candidates=tuple(candidate_audits),
             filtered_candidates=tuple(filtered_audits),
+            fusion_method="bm25+dense+structured+rrf" if any(
+                item.get("structured_rank") is not None for item in fusion.values()
+            ) else "bm25+dense+rrf",
         )
         return RetrievalResult(tuple(documents), audit)
 

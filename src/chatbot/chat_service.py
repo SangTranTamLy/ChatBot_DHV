@@ -21,7 +21,7 @@ from .answer_cache import (
     make_key as cache_make_key,
     put as cache_put,
 )
-from .conversational import SmalltalkReply, detect_smalltalk
+from .conversational import detect_smalltalk
 from .query_analysis import ConversationState
 from .rag_chain import ask_chatbot as _ask_chatbot
 

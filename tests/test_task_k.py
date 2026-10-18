@@ -9,7 +9,6 @@ from langchain_core.documents import Document
 from src.chatbot.evidence import build_evidence, select_evidence_documents
 from src.chatbot.rag_chain import ask_chatbot
 from src.chatbot.query_analysis import analyze_question, route_question
-from src.retrieval.retriever import DHVRetriever
 
 from tests.test_task_f import (
     EchoEvidenceLLM,
@@ -27,7 +26,7 @@ class TaskKRetrievalTests(unittest.TestCase):
             retrieval_query="7480201 là ngành gì?",
         )
 
-        self.assertEqual(result.audit.fusion_method, "bm25+dense+rrf")
+        self.assertEqual(result.audit.fusion_method, "bm25+dense+structured+rrf")
         self.assertTrue(result.audit.candidates)
         self.assertIn("bm25_rank", result.audit.hits[0])
         self.assertIn("dense_rank", result.audit.hits[0])

@@ -21,6 +21,7 @@ from .query_analysis import (
     _is_admission_date_comparison,
     _is_formula_request,
     _is_global_catalog_request,
+    _is_website_request,
     normalize_question,
     should_inherit_context,
     update_conversation_state,
@@ -339,7 +340,7 @@ def _retrieve(
         expanded_combination_top_k = None
         expanded_score_top_k = None
         if (
-            getattr(plan, "intent", "") in {"SCHOOL_INFO", "HOI_CO_SO_LIEN_HE"}
+            (getattr(plan, "intent", "") == "SCHOOL_INFO" or _is_website_request(normalized_query))
             and "thong_tin_truong" in tuple(getattr(plan, "categories", ()) or ())
         ):
             expanded_directory_top_k = 64

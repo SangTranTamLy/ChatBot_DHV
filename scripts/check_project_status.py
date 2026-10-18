@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from typing import Set
 
 def check_manifest():
@@ -32,7 +31,6 @@ def check_db_categories():
 def check_query_analysis(db_categories: Set[str]):
     print("\n=== QUERY ANALYSIS CATEGORIES MAP ===")
     # Extract mapped categories from query_analysis.py
-    import re
     with open('src/chatbot/query_analysis.py', 'r', encoding='utf-8') as f:
         content = f.read()
     

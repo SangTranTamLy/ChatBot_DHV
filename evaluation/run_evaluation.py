@@ -7,7 +7,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping
 
 from langchain_core.documents import Document
 
