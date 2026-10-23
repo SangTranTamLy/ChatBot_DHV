@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 
 from .intent_classifier import IntentPrediction, predict_intent
 from .query_semantics import (
+    enrollment_request,
     is_semester_fee_total_question,
     mentions_optional_english_test,
 )
@@ -241,6 +242,8 @@ _METHOD_PATTERNS = (
     ("trung_cap", re.compile(r"\b(?:trung\s+cap(?:\s+nghe)?|tot\s+nghiep\s+trung\s+cap)\b")),
 )
 _REFERENCE_LIST_MARKERS = (
+    "tat ca cac nganh",
+    "toan bo cac nganh",
     "cac nganh tren",
     "cac nganh neu tren",
     "nhung nganh tren",
@@ -252,6 +255,11 @@ _REFERENCE_LIST_MARKERS = (
     "nhung chuong trinh tren",
     "cac phuong thuc tren",
     "cac phuong thuc vua ke",
+    "cac phuong thuc do",
+    "nhung phuong thuc do",
+    "cac phuong thuc vua neu",
+    "nhung phuong thuc vua neu",
+    "nhung phuong thuc vua ke",
 )
 _ORDINAL_WORDS = {
     "mot": 1,
@@ -373,7 +381,7 @@ class ConversationState:
                 value.get("last_listed_program_parents"), limit=_MAX_LISTED_ENTITIES
             ),
             last_listed_methods=_safe_str_tuple(
-                value.get("last_listed_methods"), limit=4
+                value.get("last_listed_methods"), limit=5
             ),
             last_list_count=max(0, _safe_int(value.get("last_list_count"), 0)),
             previous_intent=_safe_str(value.get("previous_intent")),
@@ -450,6 +458,8 @@ class QueryPlan:
     entity_filters: dict[str, object] = field(default_factory=dict)
     query_mode: str = "SINGLE_FACT"
     pre_rag_decomposition: dict[str, object] | None = None
+    issue_question: str = ""
+    issue_entities: dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         result = {
@@ -465,6 +475,8 @@ class QueryPlan:
         }
         if self.pre_rag_decomposition is not None:
             result["pre_rag_decomposition"] = dict(self.pre_rag_decomposition)
+        if self.issue_question:
+            result["issue_question"] = self.issue_question
         return result
 
 
@@ -601,7 +613,7 @@ def _catalog_operation(normalized: str) -> str | None:
     list_requested = any(
         marker in normalized
         for marker in (
-            "danh sach",
+            "danh sach", "danh muc",
             "liet ke",
             "liet ra",
             "co nhung",
@@ -1089,6 +1101,7 @@ def _is_admission_eligibility_question(normalized: str) -> bool:
             "thi thpt",
             "tot nghiep",
             "thi sinh",
+            "phuong thuc",
             "nganh ",
             "luat",
             "hoc luc",
@@ -1427,6 +1440,32 @@ def _is_admission_date_comparison(normalized: str) -> bool:
     return has_two_dates and has_deadline_reference and (has_admission_anchor or guide_milestones)
 
 
+def _is_social_channel_question(normalized: str) -> bool:
+    """Recognize direct requests for DHV's official social channels."""
+
+    text = normalize_question(normalized)
+    explicit_markers = (
+        "mang xa hoi",
+        "kenh theo doi",
+        "kenh truyen thong",
+        "fanpage",
+        "facebook",
+        "tiktok",
+        "zalo",
+        "youtube",
+    )
+    if any(marker in text for marker in explicit_markers):
+        return True
+    return (
+        "theo doi" in text
+        and "o dau" in text
+        and any(
+            marker in text
+            for marker in ("biet them thong tin", "cap nhat thong tin", "tin tuc", "hoat dong")
+        )
+    )
+
+
 def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tuple[str, ...]:
     """Tách các chủ đề nghiệp vụ độc lập có mặt trong một lượt hỏi.
 
@@ -1435,12 +1474,39 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
     để tránh tách nhầm câu hỏi mô tả một chủ đề duy nhất.
     """
 
+    # ``nhập học`` describes the advisor being contacted here, not a separate
+    # request about enrollment procedures. Keep advisor phone questions on
+    # the contact route so the verified-phone formatter can answer them.
+    if (
+        "tu van vien" in normalized
+        and any(marker in normalized for marker in ("so dien thoai", "dien thoai", "hotline", "tong dai"))
+    ):
+        return ("HOI_CO_SO_LIEN_HE",)
+
+    enrollment_parts = [p.strip() for p in re.split(r"[,;?]|\b(?:va|con|dong thoi|ngoai ra)\b", normalized) if p.strip()]
+    if "nop ho so" in normalized and "dang ky xet tuyen" in normalized and len(enrollment_parts) == 1 and not any(
+        x in normalized for x in ("can gi", "giay to", "bao gom", "nhung gi", "can chuan bi")
+    ):
+        return ("HOI_DANG_KY_XET_TUYEN",)
+    if "ho so" in normalized and "xet tuyen" not in normalized and not _has_supplementary_marker(normalized) and 2 <= len(enrollment_parts) <= 4:
+        requests = []
+        for part in enrollment_parts:
+            contextual = not any(term in part for term in ("ho so", "giay to", "nhap hoc"))
+            request = enrollment_request("ho so nhap hoc " + part if contextual else part)
+            requests.append("" if contextual and request == "documents" else request)
+        roles = {"documents": "HOI_HO_SO", "enrollment_location": "HOI_NHAP_HOC",
+                 "reception_hours": "HOI_NHAP_HOC", "reception_dates": "HOI_LICH_TUYEN_SINH",
+                 "deadline": "HOI_LICH_TUYEN_SINH", "submission_mode": "HOI_NHAP_HOC"}
+        if all(request in roles for request in requests) and len(set(requests)) == len(requests):
+            return tuple(roles[request] for request in requests)
     # The campus is the destination of this action, not a second request
     # for general contact information.
     if (
-        "nop ho so nhap hoc" in normalized
+        "nop ho so" in normalized
+        and "xet tuyen" not in normalized
+        and not _has_supplementary_marker(normalized)
         and any(marker in normalized for marker in ("co so nao", "o dau", "dia chi nao"))
-        and not re.search(r"\b(?:va|con|dong thoi|ngoai ra)\b|[;?].+\w", normalized)
+        and len(enrollment_parts) == 1
     ):
         return ("HOI_NHAP_HOC",)
     intents: list[str] = []
@@ -1498,22 +1564,44 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
         for marker in ("nop ho so", "du dieu kien", "nguong", "diem san")
     )
     has_documents = (
-        any(term in normalized for term in ("ho so", "giay to", "thu tuc"))
+        (any(term in normalized for term in ("ho so", "giay to")) or ("thu tuc" in normalized and (
+            "nhap hoc" not in normalized or any(x in normalized for x in ("can chuan bi", "can gi", "gom"))
+        )))
         and not score_eligibility
         and not supplementary
     )
+    clauses = re.split(r"[,;]|\b(?:va|con|dong thoi|ngoai ra)\b", normalized)
+    submission_clauses = [
+        clause for clause in clauses
+        if "nop ho so" in clause and "xet tuyen" not in clause
+        and any(marker in clause for marker in ("co so nao", "o dau", "dia chi nao"))
+    ]
     if has_documents:
-        add("HOI_HO_SO")
+        if not submission_clauses or any(
+            any(term in clause for term in ("ho so", "giay to", "thu tuc"))
+            for clause in clauses if clause not in submission_clauses
+        ):
+            add("HOI_HO_SO")
+        if submission_clauses:
+            add("HOI_NHAP_HOC")
+        if "xet tuyen" not in normalized and re.search(r"(?:,|;|\bva\b|\bcon\b)\s*nop\s+(?:o dau|tai dau|o co so nao)", normalized):
+            add("HOI_NHAP_HOC")
     if "lich tuyen sinh" in normalized or ("han xet tuyen" in normalized and not supplementary):
         add("HOI_LICH_TUYEN_SINH")
     if ("nhap hoc" in normalized or "xac nhan nhap hoc" in normalized) and not has_documents:
         add("HOI_NHAP_HOC")
     if "dang ky xet tuyen" in normalized or "nguyen vong" in normalized:
         add("HOI_DANG_KY_XET_TUYEN")
+    submission_destination = "HOI_NHAP_HOC" in intents and bool(
+        re.search(r"\bnop\s+(?:o|tai)\s+co so nao", normalized)
+    )
+    contact_text = " ".join(clause for clause in clauses if clause not in submission_clauses)
     if (
         entities.get("website_request")
         or entities.get("website_count_request")
-        or any(term in normalized for term in ("co so", "hotline", "dia chi", "so dien thoai", "email"))
+        or _is_social_channel_question(normalized)
+        or ("co so" in contact_text and not submission_destination)
+        or any(term in normalized for term in ("hotline", "dia chi", "so dien thoai", "email"))
     ):
         add("HOI_CO_SO_LIEN_HE")
     has_supplementary = _has_supplementary_marker(normalized)
@@ -1601,12 +1689,14 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
         "HOI_CACH_TINH_DIEM": ("cach tinh diem", "quy doi diem"),
         "HOI_HO_SO": ("ho so", "giay to", "thu tuc"),
         "HOI_LICH_TUYEN_SINH": ("lich tuyen sinh", "han xet tuyen"),
-        "HOI_NHAP_HOC": ("nhap hoc", "xac nhan nhap hoc"),
+        "HOI_NHAP_HOC": ("nhap hoc", "xac nhan nhap hoc", "nop o dau", "nop tai dau", "nop o co so nao"),
         "HOI_DANG_KY_XET_TUYEN": (
             "dang ky xet tuyen", "dang ky tuyen sinh", "cong dang ky", "nguyen vong",
         ),
         "HOI_CO_SO_LIEN_HE": (
             "website", "web ", "co so", "hotline", "dia chi", "so dien thoai", "email",
+            "mang xa hoi", "kenh theo doi", "kenh truyen thong", "theo doi o dau",
+            "fanpage", "facebook", "tiktok", "zalo", "youtube",
         ),
         "SCHOOL_INFO": (
             "khoa", "thong tin truong", "thong tin ve truong", "gioi thieu", "truong thanh lap",
@@ -1784,9 +1874,9 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     score_type = None
     if _has_supplementary_marker(normalized):
         score_type = SUPPLEMENTARY_THRESHOLD
-    elif any(term in normalized for term in ("diem trung tuyen", "diem chuan")) or re.search(r"\bdiem dau(?!\s+vao)\b", normalized):
+    elif any(term in normalized for term in ("diem trung tuyen", "diem chuan")) or re.search(r"\bdiem dau(?!\s+vao)\b|\btrung tuyen.{0,30}bao nhieu diem\b", normalized):
         score_type = ADMISSION_SCORE
-    elif any(term in normalized for term in ("diem san", "nguong dau vao", "diem dau vao", "diem nhan ho so", "duoc dang ky")) or (
+    elif any(term in normalized for term in ("diem san", "nguong dau vao", "diem dau vao", "diem nhan ho so", "nguong nhan ho so", "nguong dam bao chat luong", "diem toi thieu", "duoc dang ky")) or (
         admission_method is not None and _is_score_amount_request(normalized)
     ) or _is_subject_minimum_request(normalized):
         score_type = APPLICATION_THRESHOLD
@@ -1893,6 +1983,17 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "nhung gi", "gom nhung", "gom gi", "toan bo", "tat ca",
         "cac nganh", "nganh nao", "nganh gi", "nhung nganh",
     ))
+    method_list_requested = "phuong thuc" in normalized and any(
+        marker in normalized
+        for marker in (
+            "cac phuong thuc",
+            "nhung phuong thuc",
+            "liet ke",
+            "liet ra",
+            "moi phuong thuc",
+            "tung phuong thuc",
+        )
+    )
     scholarship_catalog_requested = bool(
         re.search(r"\bhoc bong\s+(?:gi|nao)\b", normalized)
         or re.search(r"\b(?:cac|nhung)\s+hoc bong\b", normalized)
@@ -1905,6 +2006,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     )
     list_requested = (
         list_requested
+        or method_list_requested
         or supplementary_list_requested
         or scholarship_catalog_requested
     )
@@ -1968,6 +2070,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "admission_combination": combination_match.group(1).upper() if combination_match else None,
         "admission_combination_detail": _is_admission_combination_structure_question(normalized),
         "requested_information": [],
+        "request_type": enrollment_request(normalized),
         "query_mode": query_mode,
         "faculty_request": any(
             marker in normalized
@@ -2074,6 +2177,18 @@ def _resolve_coreferences(
                     # general-rule records.
                     entities["score_type"] = ADMISSION_SCORE
                     entities["score_query_type"] = ADMISSION_SCORE_LOOKUP
+            elif any(marker in normalized for marker in ("tat ca cac nganh", "toan bo cac nganh")):
+                # A first-turn request for every major is still a valid list
+                # query. Keep the list scope explicit so retrieval can expand
+                # the complete verified score table instead of returning a
+                # single school-wide minimum as though it answered the list.
+                entities["entity_type"] = "major_list"
+                if entities.get("score_type") == APPLICATION_THRESHOLD and any(
+                    marker in normalized
+                    for marker in ("diem san", "nguong dau vao", "diem nhan ho so", "diem dau vao")
+                ):
+                    entities["score_type"] = ADMISSION_SCORE
+                    entities["score_query_type"] = ADMISSION_SCORE_LOOKUP
             else:
                 _mark_ambiguous_reference(entities, "major_list_unavailable")
         elif kind == "program":
@@ -2119,7 +2234,7 @@ def _resolve_coreferences(
                 entities["candidate_methods"] = list(values)
                 entities["entity_type"] = "method"
 
-    if is_single_reference and not explicit_entity and ordinal is None:
+    if is_single_reference and not is_list_reference and not explicit_entity and ordinal is None:
         kind = _reference_kind(normalized, state)
         if kind == "major":
             values = state.candidate_majors or ((state.current_major,) if state.current_major else ())
@@ -2411,7 +2526,7 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         return "OUT_OF_SCOPE"
     advisory = any(
         term in normalized
-        for term in ("chon nganh", "chua biet chon", "phan van", "nen hoc nganh", "nen chon")
+        for term in ("chon nganh", "chua biet chon", "phan van", "nen hoc nganh", "nen chon", "goi y nganh", "nganh hoc phu hop")
     )
     if advisory or (entities.get("interest") and entities.get("student_scores")):
         # A score inside a counselling question is context for the advice,
@@ -2438,6 +2553,8 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         # published threshold, not application instructions. Keep the method
         # entity so the router searches its verified method/conditions page.
         return "HOI_NGUONG_DAU_VAO"
+    if "diem toi thieu" in normalized and not entities.get("student_scores"):
+        return "HOI_NGUONG_DAU_VAO"
     if _is_admission_eligibility_question(normalized):
         entities["admission_condition_request"] = True
         condition_issue_intents = _multi_issue_intents(normalized, entities)
@@ -2463,6 +2580,22 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     if len(issue_intents) >= 2:
         entities["issue_intents"] = list(issue_intents)
         return "MULTI_ISSUE"
+    if "ho so nhap hoc" in normalized and re.search(
+        r"\b(?:da co|co)\b.+\b(?:con thieu|can gi nua|can them|con lai)\b", normalized
+    ):
+        entities["admission_method"] = None
+        entities["candidate_methods"] = []
+        return "HOI_HO_SO"
+    if entities.get("request_type") == "reception_hours":
+        return "HOI_NHAP_HOC"
+    if entities.get("request_type") in {"reception_dates", "deadline"} and not _has_supplementary_marker(normalized):
+        return "HOI_LICH_TUYEN_SINH"
+    if entities.get("request_type") == "submission_mode":
+        return "HOI_NHAP_HOC"
+    if entities.get("request_type") == "enrollment_location":
+        return "HOI_NHAP_HOC"
+    if issue_intents == ("HOI_DANG_KY_XET_TUYEN",):
+        return "HOI_DANG_KY_XET_TUYEN"
     if _has_supplementary_marker(normalized) and any(
         marker in normalized
         for marker in ("nganh nao", "nhung nganh", "chuong trinh nao", "nhung chuong trinh")
@@ -2513,9 +2646,18 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         term in normalized for term in ("dang ky", "nguyen vong", "nop")
     ):
         return "HOI_CO_SO_LIEN_HE"
+    if _is_social_channel_question(normalized):
+        return "HOI_CO_SO_LIEN_HE"
+    if (
+        "tu van vien" in normalized
+        and any(marker in normalized for marker in ("so dien thoai", "dien thoai", "hotline", "tong dai"))
+    ):
+        # ``nhập học`` identifies the advisor in this question; the requested
+        # fact is a contact number, not an enrollment procedure.
+        return "HOI_CO_SO_LIEN_HE"
     # Keep enrollment confirmation distinct from applying for admission.
     if (
-        "xac nhan nhap hoc" in normalized
+        ("xac nhan nhap hoc" in normalized and "ho so" not in normalized)
         or "hoan tat xac nhan" in normalized
         or (
             "nhap hoc" in normalized
@@ -2674,9 +2816,10 @@ def _classify_intent(
     """
 
     rule_intent = _classify_intent_rules(normalized, entities, state)
-
     if rule_intent in ROUTER_ONLY_INTENTS:
         return rule_intent, None, "deterministic_router"
+    if rule_intent == "OUT_OF_SCOPE" and "truong khac" in normalized and entities.get("target_school") != TARGET_SCHOOL_DHV:
+        return "OUT_OF_SCOPE", None, "explicit_other_school_guard"
 
     prediction: IntentPrediction | None = predict_intent(normalized)
 
@@ -2707,10 +2850,10 @@ def _classify_intent(
 
 
 def _is_school_switch_followup(normalized: str) -> bool:
-    return any(
-        marker in normalized
-        for marker in ("con dhv", "con hung vuong", "vay dhv", "thi dhv", "dhv thi sao")
-    )
+    return bool(re.fullmatch(
+        r"(?:con|vay|thi)\s+(?:dhv|hung vuong)(?:\s+thi sao)?[?.!]*|(?:dhv|hung vuong)\s+thi sao[?.!]*",
+        normalized,
+    ))
 
 
 def _apply_school_scope(
@@ -2748,8 +2891,11 @@ def _apply_school_scope(
     entities["target_school"] = target
     entities["school_mentions"] = mentions
     verified_school_info = (
-        intent == "SCHOOL_INFO"
-        and _is_verified_school_info_request(normalized, entities)
+        (
+            intent == "SCHOOL_INFO"
+            and _is_verified_school_info_request(normalized, entities)
+        )
+        or (intent == "HOI_CO_SO_LIEN_HE" and _is_social_channel_question(normalized))
     )
     entities["verified_school_info_scope"] = verified_school_info
     resolved_scope_reason = scope_reason(
@@ -2791,6 +2937,20 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
     active_state = ConversationState.from_value(state, default_year=default_year)
     original = question if isinstance(question, str) else ""
     normalized = normalize_question(original)
+    if active_state.previous_intent in {"HOI_HO_SO", "HOI_NHAP_HOC"} and active_state.current_school in {None, "DHV", "UNSPECIFIED"}:
+        followup = re.sub(r"^(?:vay|con|the)\s+", "", normalized).strip(" ?.!")
+        if re.fullmatch(r"can (?:mang(?: theo)?|chuan bi)(?: nhung)? gi", followup):
+            expanded = "Hồ sơ nhập học cần những giấy tờ gì?"
+        elif re.fullmatch(r"nop (?:o|tai) dau", followup):
+            expanded = "Nộp hồ sơ nhập học ở đâu?"
+        elif re.fullmatch(r"(?:thu bay|chu nhat|ngay le)(?: (?:co )?(?:duoc|nhan|nop)(?: khong)?)?", followup):
+            expanded = "Nhận hồ sơ nhập học " + original
+        else:
+            expanded = ""
+        if expanded:
+            resolved = analyze_question(expanded, active_state, default_year=active_state.current_year)
+            return replace(resolved, question=original,
+                           entities={**resolved.entities, "contextual_question": expanded})
     detected_school = detect_target_school(normalized)
     context_state = active_state
     explicit_school_switch = bool(
@@ -2831,8 +2991,7 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
     entities.update(detected_school)
     intent, intent_confidence, intent_source = _classify_intent(normalized, entities, context_state)
     if (
-        intent == "OUT_OF_SCOPE"
-        and entities.get("target_school") == TARGET_SCHOOL_DHV
+        entities.get("target_school") == TARGET_SCHOOL_DHV
         and active_state.previous_intent in INTENTS
         and _is_school_switch_followup(normalized)
     ):
@@ -2897,6 +3056,13 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
             if entities.get("website_count_request")
             else ["official_website"]
         )
+    elif intent == "HOI_CO_SO_LIEN_HE" and _is_social_channel_question(normalized):
+        requested = ["official_social_channels"]
+    if intent == "HOI_PHUONG_THUC_XET_TUYEN" and re.fullmatch(
+        r"(?:cac )?phuong thuc(?: xet tuyen| tuyen sinh)?(?: (?:cua )?(?:truong|dhv|nam|20\d{2}))*[?.!]*",
+        normalized,
+    ):
+        entities["query_mode"] = "LIST"
     entities["requested_information"] = requested
     return QueryAnalysis(
         question=original,
@@ -2906,6 +3072,60 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
         intent_confidence=intent_confidence,
         intent_source=intent_source,
     )
+
+
+def _explicit_issue_analyses(analysis: QueryAnalysis, target_year: int) -> tuple[QueryAnalysis, ...]:
+    """Keep original clauses only when every requested issue can be routed safely."""
+
+    parts = [part.strip(" .:–-") for part in re.split(
+        r"(?<!\d),(?!\d)|[;?\n]+|\s+(?:và|đồng thời|ngoài ra|(?<!giờ )(?<!tại )(?<!nay )còn)\s+",
+        analysis.question, flags=re.IGNORECASE,
+    ) if part.strip(" .:–-")]
+    if not 2 <= len(parts) <= 4:
+        return ()
+    expected = set(analysis.entities.get("issue_intents") or ())
+    children: list[QueryAnalysis] = []
+    signatures: set[tuple[str, str]] = set()
+    neutral = ConversationState(current_year=int(analysis.entities.get("year") or target_year))
+    for part in parts:
+        text = normalize_question(part)
+        child = analyze_question(part, neutral, default_year=neutral.current_year)
+        # An elliptical destination still refers to the paperwork in this turn.
+        if "ho so" in analysis.normalized_question and not any(x in text for x in ("ho so", "giay to", "nhap hoc")):
+            contextual = "Hồ sơ nhập học: " + part
+            if enrollment_request(contextual) not in {"", "documents"}:
+                child = analyze_question(contextual, neutral, default_year=neutral.current_year)
+        signature = (child.intent, str(child.entities.get("request_type") or ""))
+        if child.intent not in expected or signature in signatures:
+            return ()
+        signatures.add(signature)
+        if child.entities.get("target_school") in {"OTHER_SCHOOL", "MIXED", "AMBIGUOUS"}:
+            return ()
+        entities = dict(child.entities)
+        for key in ("target_school", "school_mentions", "explicit_school", "scope_reason"):
+            if not entities.get(key) and analysis.entities.get(key):
+                entities[key] = analysis.entities[key]
+        # Share an unambiguous major/method, never a list belonging to other clauses.
+        for candidate_key, keys in (
+            ("candidate_majors", ("major_name", "major_code")),
+            ("candidate_programs", ("program_name", "parent_major")),
+            ("candidate_methods", ("admission_method",)),
+        ):
+            if child.intent in {"HOI_CO_SO_LIEN_HE", "SCHOOL_INFO", "HOI_LICH_TUYEN_SINH", "HOI_NHAP_HOC", "HOI_HO_SO"}:
+                break
+            if candidate_key == "candidate_methods" and child.intent not in {
+                "HOI_NGUONG_DAU_VAO", "HOI_DIEM_TRUNG_TUYEN", "HOI_PHUONG_THUC_XET_TUYEN",
+                "HOI_CACH_TINH_DIEM", "HOI_DANG_KY_XET_TUYEN",
+            }:
+                continue
+            if len(analysis.entities.get(candidate_key) or ()) <= 1 and not any(entities.get(k) for k in keys):
+                for key in keys:
+                    if analysis.entities.get(key):
+                        entities[key] = analysis.entities[key]
+        entities.update(issue_intents=[], multi_issue_subplan=True, requested_information=[child.intent],
+                        issue_original_question=part)
+        children.append(replace(child, entities=entities))
+    return tuple(children) if {child.intent for child in children} == expected else ()
 
 
 def _clarification_needed(analysis: QueryAnalysis, state: ConversationState) -> tuple[bool, str]:
@@ -2989,40 +3209,44 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     categories: tuple[str, ...]
     subplans: tuple[QueryPlan, ...] = ()
     if resolved.intent == "MULTI_ISSUE":
+        explicit_issues = _explicit_issue_analyses(resolved, target_year)
         issue_intents = tuple(
             str(intent)
             for intent in entities.get("issue_intents", ())
             if str(intent) in INTENTS or str(intent) == "SCHOOL_INFO"
         )
-        subplans = tuple(
-            route_question(
-                replace(
-                    resolved,
-                    question=_decomposed_subquery(
-                        entities,
-                        sub_intent,
-                        target_year=target_year,
-                    ),
-                    normalized_question=normalize_question(
-                        _decomposed_subquery(
+        if explicit_issues:
+            subplans = tuple(route_question(child, active_state, target_year=target_year) for child in explicit_issues)
+        else:
+            subplans = tuple(
+                route_question(
+                    replace(
+                        resolved,
+                        question=_decomposed_subquery(
                             entities,
                             sub_intent,
                             target_year=target_year,
-                        )
+                        ),
+                        normalized_question=normalize_question(
+                            _decomposed_subquery(
+                                entities,
+                                sub_intent,
+                                target_year=target_year,
+                            )
+                        ),
+                        intent=sub_intent,
+                        entities={
+                            **entities,
+                            "issue_intents": [],
+                            "multi_issue_subplan": True,
+                            "requested_information": [sub_intent],
+                        },
                     ),
-                    intent=sub_intent,
-                    entities={
-                        **entities,
-                        "issue_intents": [],
-                        "multi_issue_subplan": True,
-                        "requested_information": [sub_intent],
-                    },
-                ),
-                active_state,
-                target_year=target_year,
+                    active_state,
+                    target_year=target_year,
+                )
+                for sub_intent in issue_intents
             )
-            for sub_intent in issue_intents
-        )
         categories = tuple(
             dict.fromkeys(
                 category
@@ -3055,12 +3279,9 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     elif resolved.intent == "HOI_PHUONG_THUC_XET_TUYEN":
         categories = ("phuong_thuc_xet_tuyen",)
     elif resolved.intent == "HOI_CACH_TINH_DIEM":
-        if (
-            entities.get("admission_method") == "thpt"
-            and _is_formula_request(resolved.normalized_question)
-        ):
-            # Published method formulae live in the verified method document,
-            # not in a standalone `cach_tinh_diem` category in the active corpus.
+        if _is_formula_request(resolved.normalized_question):
+            # Published score formulas live in the verified method document;
+            # there is no standalone calculation document in the active corpus.
             categories = ("phuong_thuc_xet_tuyen",)
         elif _is_admissions_bonus_request(resolved.normalized_question):
             categories = ("phuong_thuc_xet_tuyen", "cach_tinh_diem")
@@ -3139,29 +3360,17 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             else ("hoc_phi",)
         )
     elif resolved.intent == "HOI_HOC_BONG":
-        normalized = normalize_question(resolved.normalized_question)
-        asks_admission_scholarship_conditions = (
-            "hoc bong" in normalized
-            and any(
-                marker in normalized
-                for marker in ("dieu kien", "nhan hoc bong", "xet hoc bong", "xet the nao")
-            )
-            and not any(marker in normalized for marker in ("tong diem 3 mon", "cao nhat", "toi da"))
-        )
-        # The admission-scholarship policy is page text in the verified
-        # admissions-method document. Condition questions and isolated
-        # scholarship subplans search that source, while avoiding the broader
-        # enrollment-document category. Standalone broad questions retain all
-        # source categories needed for the complete scholarship catalogue.
-        categories = (
-            ("hoc_bong", "phuong_thuc_xet_tuyen")
-            if asks_admission_scholarship_conditions or entities.get("multi_issue_subplan")
-            else ("hoc_bong", "phuong_thuc_xet_tuyen", "ho_so")
-        )
+        # Scholarship names, eligibility, awards, and the refund policy are
+        # held in the approved scholarship-policy documents. The admission
+        # methods file may mention scholarships in passing; searching it for
+        # scholarship questions pulled unrelated methods and duplicated data.
+        categories = ("hoc_bong",)
     elif resolved.intent == "HOI_HO_SO":
         categories = ("ho_so",)
     elif resolved.intent == "HOI_LICH_TUYEN_SINH":
-        if len(re.findall(r"\b\d{1,2}/\d{1,2}\b", resolved.normalized_question)) >= 2:
+        if entities.get("request_type") in {"reception_hours", "reception_dates"}:
+            categories = ("ho_so", "nhap_hoc")
+        elif len(re.findall(r"\b\d{1,2}/\d{1,2}\b", resolved.normalized_question)) >= 2:
             categories = ("ho_so", "xet_tuyen_bo_sung", "lich_tuyen_sinh", "diem_trung_tuyen")
         else:
             categories = (
@@ -3185,7 +3394,9 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     else:
         categories = ()
 
-    parts = [analysis.question.strip(), f"intent:{resolved.intent}", f"year:{entities.get('year') or target_year}"]
+    parts = [str(entities.get("contextual_question") or analysis.question).strip(), f"intent:{resolved.intent}", f"year:{entities.get('year') or target_year}"]
+    if entities.get("multi_issue_subplan"):
+        parts.append(_DECOMPOSED_QUERY_LABELS.get(resolved.intent, resolved.intent))
     normalized_question = resolved.normalized_question
     if (
         resolved.intent in {"HOI_PHUONG_THUC_XET_TUYEN", "HOI_DANG_KY_XET_TUYEN", "HOI_NGUONG_DAU_VAO"}
@@ -3257,6 +3468,8 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
         subplans=subplans,
         entity_filters=entity_filters,
         query_mode=str(entities.get("query_mode") or "SINGLE_FACT"),
+        issue_question=resolved.question if entities.get("multi_issue_subplan") else "",
+        issue_entities=dict(entities) if entities.get("multi_issue_subplan") else {},
     )
 
 
@@ -3663,9 +3876,9 @@ def update_conversation_state(
     elif len(candidate_programs) > 1 and analysis.intent == "DANH_SACH_CHUONG_TRINH":
         listed_programs = tuple(candidate_programs[:_MAX_LISTED_ENTITIES])
     if last_listed_methods is not None:
-        listed_methods = _safe_str_tuple(last_listed_methods, limit=4)
+        listed_methods = _safe_str_tuple(last_listed_methods, limit=5)
     elif len(candidate_methods) > 1:
-        listed_methods = tuple(candidate_methods[:4])
+        listed_methods = tuple(candidate_methods[:5])
     target_school = str(entities.get("target_school") or TARGET_SCHOOL_UNSPECIFIED)
     if target_school in {
         TARGET_SCHOOL_DHV,
@@ -3692,7 +3905,7 @@ def update_conversation_state(
         interest=str(interest) if interest else None,
         candidate_majors=tuple(candidate_majors[:_MAX_CANDIDATES]),
         candidate_programs=tuple(candidate_programs[:_MAX_CANDIDATES]),
-        candidate_methods=tuple(candidate_methods[:4]),
+        candidate_methods=tuple(candidate_methods[:5]),
         last_listed_majors=listed_majors,
         last_listed_programs=listed_programs,
         last_listed_program_parents=listed_program_parents,

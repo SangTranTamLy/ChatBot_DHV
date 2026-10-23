@@ -355,7 +355,7 @@ class IntentAndYearSweepTests(unittest.TestCase):
             "last_listed_majors": list(majors),
             "previous_intent": "DANH_SACH_NGANH",
         }
-        analysis = analyze_question("Điểm sàn các ngành nêu trên?", state=state)
+        analysis = analyze_question("Điểm sàn của tất cả các ngành", state=state)
         self.assertEqual(analysis.entities["entity_type"], "major_list")
         self.assertEqual(analysis.intent, "HOI_DIEM_TRUNG_TUYEN")
         self.assertEqual(analysis.entities["score_type"], "admission_score")
@@ -391,6 +391,23 @@ class IntentAndYearSweepTests(unittest.TestCase):
             20,
         )
         self.assertTrue(all(major in str(answer) for major in majors))
+        self.assertIn("Điểm trúng tuyển đợt 1 năm 2026", str(answer))
+        self.assertIn("Mã xét tuyển", str(answer))
+        self.assertNotIn("Ngưỡng nhận hồ sơ của các ngành", str(answer))
+
+        standalone = analyze_question("Điểm sàn của tất cả các ngành")
+        self.assertEqual(standalone.entities["entity_type"], "major_list")
+        self.assertEqual(standalone.intent, "HOI_DIEM_TRUNG_TUYEN")
+        standalone_answer = _evidence_score_list_answer(standalone, full_table_evidence)
+        self.assertIn("theo mã xét tuyển", str(standalone_answer))
+        self.assertEqual(
+            sum(
+                1
+                for line in str(standalone_answer).splitlines()
+                if line.startswith("| Ngành") and not line.startswith("| Tên mã xét tuyển")
+            ),
+            20,
+        )
 
     def test_explicit_major_catalogue_group_is_extracted_semantically(self) -> None:
         cases = (
@@ -854,21 +871,42 @@ class IntentAndYearSweepTests(unittest.TestCase):
                     "documents": [
                         Document(
                             page_content=(
-                                "Năm 2026, DHV công bố Quỹ học bổng Hào khí Hùng Vương "
-                                "lên đến 75 tỷ đồng.\n"
-                                "Học bổng Tài năng có mức hỗ trợ từ 30% đến 100% học phí toàn khóa."
+                                "1.1 Chính sách học bổng Hào khí Hùng Vương dành cho tân sinh viên\n"
+                                "1.2 Học bổng tuyển sinh\n"
+                                "1.3 Học bổng Tài năng\n"
+                                "1.4 Học bổng Ngành Tiên phong\n"
+                                "1.5 Học bổng Đôi bạn cùng tiến\n"
+                                "1.6 Học bổng Tương lai vững bước\n"
+                                "1.7 Học bổng Biển đảo yêu thương"
                             ),
                             metadata={
-                                "title": "Phương thức và học bổng DHV 2026",
-                                "category": "phuong_thuc_xet_tuyen",
+                                "title": "Chính sách học bổng DHV 2026",
+                                "category": "hoc_bong",
                                 "record_type": "page_text",
                                 "year": 2026,
                                 "school_code": "DHV",
                                 "status": "verified",
                                 "verification_status": "verified",
-                                "source_url": "https://tuyensinh.dhv.edu.vn/",
-                                "source_file": "data/raw/phuong_thuc_xet_tuyen/V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf",
+                                "source_url": "https://dhv.edu.vn/chinh-sach-hoc-bong-dhv-2026/",
+                                "source_file": "data/raw/09_CHINH_SACH_HOC_BONG_DHV_2026.pdf",
+                                "page": 1,
                                 "chunk_id": "full-scholarship-page-context",
+                            },
+                        ),
+                        Document(
+                            page_content="3.1 Học bổng Cam kết hoàn học phí",
+                            metadata={
+                                "title": "Hỗ trợ tài chính UniBridge DHV 2026",
+                                "category": "hoc_bong",
+                                "record_type": "page_text",
+                                "year": 2026,
+                                "school_code": "DHV",
+                                "status": "verified",
+                                "verification_status": "verified",
+                                "source_url": "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026/",
+                                "source_file": "data/raw/10_HO_TRO_TAI_CHINH_UNIBRIDGE_DHV_2026.pdf",
+                                "page": 2,
+                                "chunk_id": "refund-scholarship-page-context",
                             },
                         )
                     ]
@@ -889,17 +927,21 @@ class IntentAndYearSweepTests(unittest.TestCase):
         llm = GroundedLLM()
         result = ask_chatbot(question, retriever=retriever, llm=llm)
 
-        self.assertEqual(retriever.call["categories"], ("hoc_bong", "phuong_thuc_xet_tuyen", "ho_so"))
+        self.assertEqual(retriever.call["categories"], ("hoc_bong",))
         # The verified scholarship catalogue spans more than the default
         # retrieval window; keep the bounded policy-page budget explicit.
         self.assertEqual(retriever.call["top_k"], 96)
-        self.assertIn("Quỹ học bổng Hào khí Hùng Vương", llm.prompt)
+        self.assertEqual(llm.prompt, "")
         self.assertEqual(result["status"], "ok")
-        self.assertIn("75 tỷ đồng", str(result["answer"]))
-        self.assertIn("30% đến 100%", str(result["answer"]))
+        self.assertIn("Chính sách học bổng Hào khí Hùng Vương", str(result["answer"]))
+        self.assertIn("Học bổng Cam kết hoàn học phí", str(result["answer"]))
+        self.assertEqual(str(result["answer"]).count("\n"), 8)
         self.assertEqual(
             result["sources"],
-            [{"title": "Phương thức và học bổng DHV 2026", "url": "https://tuyensinh.dhv.edu.vn/"}],
+            [
+                {"title": "Chính sách học bổng DHV 2026", "url": "https://dhv.edu.vn/chinh-sach-hoc-bong-dhv-2026/"},
+                {"title": "Hỗ trợ tài chính UniBridge DHV 2026", "url": "https://dhv.edu.vn/huong-dan-thu-tuc-nhap-hoc-dhv-2026/"},
+            ],
         )
 
     def test_school_code_can_be_read_across_wrapped_native_lines(self) -> None:

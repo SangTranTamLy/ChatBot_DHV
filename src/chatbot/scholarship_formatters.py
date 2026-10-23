@@ -56,45 +56,161 @@ def _is_scholarship_heading(line: str) -> bool:
     )
 
 
-def _prioritize_scholarship_catalog_documents(documents: list[Any]) -> list[Any]:
-    """Put the verified policy pages containing named scholarship headings first."""
-
-    def priority(item: tuple[int, Any]) -> tuple[int, int, int]:
-        position, document = item
-        metadata = getattr(document, "metadata", {}) or {}
-        if (
-            str(metadata.get("record_type") or "") == "page_text"
-            and str(metadata.get("category") or "") == "phuong_thuc_xet_tuyen"
-            and str(metadata.get("school_code") or "").upper() == "DHV"
-            and str(metadata.get("status") or "").casefold() == "verified"
-        ):
-            text = str(getattr(document, "page_content", "") or "")
-            if re.search(r"(?m)^\s*\d+\.\d+\.\s+.*học bổng", text, re.IGNORECASE):
-                try:
-                    page = int(metadata.get("page") or 0)
-                except (TypeError, ValueError):
-                    page = 99
-                try:
-                    chunk_index = int(metadata.get("chunk_index") or 0)
-                except (TypeError, ValueError):
-                    chunk_index = position
-                return 0, page, chunk_index
-        return 1, 99, position
-
-    return [document for _, document in sorted(enumerate(documents), key=priority)]
-
-
 def _is_admission_scholarship_conditions_question(analysis: QueryAnalysis) -> bool:
     normalized = normalize_question(analysis.normalized_question)
     return (
         analysis.intent == "HOI_HOC_BONG"
         and "hoc bong" in normalized
+        and (
+            "hoc bong tuyen sinh" in normalized
+            or "phuong thuc xet hoc bong" in normalized
+            or "xet hoc bong bang" in normalized
+        )
         and any(
             marker in normalized
             for marker in ("dieu kien", "nhan hoc bong", "xet hoc bong", "xet the nao")
         )
         and not any(marker in normalized for marker in ("tong diem 3 mon", "cao nhat", "toi da"))
     )
+
+
+_SCHOLARSHIP_CONDITION_MARKERS = (
+    "dieu kien",
+    "tieu chi",
+    "ai duoc",
+    "nhan duoc hoc bong",
+    "ap dung cho ai",
+)
+
+_SCHOLARSHIP_POLICY_HEADINGS = {
+    "1.1": "Chính sách học bổng Hào khí Hùng Vương dành cho tân sinh viên",
+    "1.2": "Học bổng tuyển sinh",
+    "1.3": "Học bổng Tài năng",
+    "1.4": "Học bổng Ngành Tiên phong",
+    "1.5": "Học bổng Đôi bạn cùng tiến",
+    "1.6": "Học bổng Tương lai vững bước",
+    "1.7": "Học bổng Biển đảo yêu thương",
+    "3.1": "Học bổng Cam kết hoàn học phí",
+}
+
+_SCHOLARSHIP_POLICY_QUERY_MARKERS = {
+    "1.1": ("hao khi hung vuong",),
+    "1.2": ("hoc bong tuyen sinh", "hoc bong dau vao"),
+    "1.3": ("hoc bong tai nang", "tai nang"),
+    "1.4": ("hoc bong nganh tien phong", "nganh tien phong"),
+    "1.5": ("doi ban cung tien",),
+    "1.6": ("tuong lai vung buoc", "thu khoa dau vao", "a khoa dau vao"),
+    "1.7": ("bien dao yeu thuong",),
+    "3.1": ("cam ket hoan hoc phi",),
+}
+
+
+def _is_scholarship_conditions_question(analysis: QueryAnalysis) -> bool:
+    normalized = normalize_question(analysis.normalized_question)
+    return (
+        analysis.intent == "HOI_HOC_BONG"
+        and "hoc bong" in normalized
+        and any(marker in normalized for marker in _SCHOLARSHIP_CONDITION_MARKERS)
+    )
+
+
+def _is_scholarship_overview_question(analysis: QueryAnalysis) -> bool:
+    """Recognize broad scholarship questions that need a concise policy overview."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    if (
+        analysis.intent != "HOI_HOC_BONG"
+        or "hoc bong" not in normalized
+        or _is_scholarship_conditions_question(analysis)
+        or analysis.entities.get("query_mode") in {"COUNT", "LIST", "LIST_AND_COUNT"}
+    ):
+        return False
+    if any(
+        marker in normalized
+        for markers in _SCHOLARSHIP_POLICY_QUERY_MARKERS.values()
+        for marker in markers
+    ):
+        return False
+    if any(marker in normalized for marker in (
+        "bao nhieu", "muc hoc bong", "phan tram", "toi da", "cao nhat", "tong diem", "hoc phi",
+    )):
+        return False
+    return any(marker in normalized for marker in (
+        "nhu the nao", "ra sao", "co nhung", "gom nhung gi", "chinh sach hoc bong",
+    ))
+
+
+def _scholarship_condition_policy_ids(analysis: QueryAnalysis) -> tuple[str, ...]:
+    normalized = normalize_question(analysis.normalized_question)
+    matched = tuple(
+        policy_id
+        for policy_id, markers in _SCHOLARSHIP_POLICY_QUERY_MARKERS.items()
+        if any(marker in normalized for marker in markers)
+    )
+    return matched or tuple(_SCHOLARSHIP_POLICY_HEADINGS)
+
+
+def _scholarship_policy_source_rank(metadata: Mapping[str, object], text: str) -> int | None:
+    source_file = str(metadata.get("source_file") or "").upper().replace("\\", "/")
+    title = normalize_question(str(metadata.get("title") or ""))
+    folded = normalize_question(text)
+    if "09_CHINH_SACH_HOC_BONG_DHV_2026" in source_file or (
+        "chinh sach hoc bong" in title and "unibridge" not in title
+    ):
+        return 0
+    if (
+        "10_HO_TRO_TAI_CHINH_UNIBRIDGE_DHV_2026" in source_file
+        or "unibridge" in title
+    ) and "3.1 hoc bong cam ket hoan hoc phi" in folded:
+        return 1
+    # Some verified fixtures have no source_file metadata. Require the
+    # scholarship section marker so a general admissions page cannot enter.
+    if "3.1 hoc bong cam ket hoan hoc phi" in folded:
+        return 1
+    if any(marker in folded for marker in (
+        "1.1 chinh sach hoc bong hao khi hung vuong",
+        "1.2 hoc bong tuyen sinh",
+        "1.3 hoc bong tai nang",
+    )):
+        return 0
+    return None
+
+
+def _prioritize_scholarship_catalog_documents(documents: list[Any]) -> list[Any]:
+    """Keep verified scholarship-policy pages together, in source order.
+
+    The approved scholarship policies span the dedicated scholarship file and
+    the refund-policy page in the UniBridge file. Dropping extracted table and
+    summary records here prevents duplicates and unrelated tuition/discount
+    passages from crowding the answer context.
+    """
+
+    eligible: list[tuple[int, int, int, Any]] = []
+    for position, document in enumerate(documents):
+        metadata = getattr(document, "metadata", {}) or {}
+        text = str(getattr(document, "page_content", "") or "")
+        if (
+            metadata.get("record_type") != "page_text"
+            or str(metadata.get("category") or "") != "hoc_bong"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or not _is_official_dhv_source(metadata.get("source_url"))
+        ):
+            continue
+        rank = _scholarship_policy_source_rank(metadata, text)
+        if rank is None:
+            continue
+        try:
+            page = int(metadata.get("page") or 0)
+        except (TypeError, ValueError):
+            page = 99
+        eligible.append((rank, page, position, document))
+
+    if not eligible:
+        # Preserve compatibility with a caller that supplies a narrow,
+        # verified page-only fixture without source metadata.
+        return documents
+    return [item[3] for item in sorted(eligible, key=lambda item: item[:3])]
 
 
 def _prioritize_admission_scholarship_conditions_documents(
@@ -204,7 +320,7 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
             continue
         if not (
             metadata.get("record_type") == "page_text"
-            and str(metadata.get("category") or "") in {"phuong_thuc_xet_tuyen", "ho_so"}
+            and str(metadata.get("category") or "") in {"hoc_bong", "phuong_thuc_xet_tuyen"}
             and str(metadata.get("school_code") or "").upper() == "DHV"
             and str(metadata.get("status") or "").casefold() == "verified"
             and year == target_year
@@ -214,12 +330,12 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
             continue
         for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
             line = re.sub(r"\s+", " ", raw_line).strip()
-            if not re.match(r"^\d+\.\d+\.\s+", line):
+            if not re.match(r"^\d+\.\d+\.?\s+", line):
                 continue
             folded = normalize_question(line)
             if "hoc bong" not in folded:
                 continue
-            title = re.sub(r"^\d+\.\d+\.\s*", "", line).strip(" .")
+            title = re.sub(r"^\d+\.\d+\.?\s*", "", line).strip(" .")
             key = normalize_question(title)
             if title and key not in seen:
                 seen.add(key)
@@ -232,6 +348,296 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
         f"Các đề mục/chính sách học bổng được nêu trong tài liệu tuyển sinh DHV {target_year}:\n"
         + "\n".join(f"{index}. {title}" for index, title in enumerate(headings, start=1))
     )
+
+
+def _scholarship_policy_sections(evidence: Any, target_year: int) -> dict[str, tuple[str, list[str]]]:
+    """Read only verified page text from the two approved scholarship policy files."""
+
+    eligible: list[tuple[int, int, int, Any]] = []
+    for position, chunk in enumerate(getattr(evidence, "chunks", ()) or ()):
+        metadata = getattr(chunk, "metadata", {}) or {}
+        text = str(getattr(chunk, "text", "") or "")
+        try:
+            year = int(metadata.get("year"))
+        except (TypeError, ValueError):
+            continue
+        if not (
+            metadata.get("record_type") == "page_text"
+            and str(metadata.get("category") or "") == "hoc_bong"
+            and str(metadata.get("status") or "").casefold() == "verified"
+            and str(metadata.get("school_code") or "").upper() == "DHV"
+            and year == target_year
+            and _is_official_dhv_source(metadata.get("source_url"))
+        ):
+            continue
+        rank = _scholarship_policy_source_rank(metadata, text)
+        if rank is None:
+            continue
+        try:
+            page = int(metadata.get("page") or 0)
+        except (TypeError, ValueError):
+            page = 99
+        try:
+            chunk_index = int(metadata.get("chunk_index") or position)
+        except (TypeError, ValueError):
+            chunk_index = position
+        eligible.append((rank, page, chunk_index, chunk))
+
+    sections: dict[str, tuple[str, list[str]]] = {}
+    active_source: str | None = None
+    active: str | None = None
+    for _, _, _, chunk in sorted(eligible, key=lambda item: item[:3]):
+        metadata = getattr(chunk, "metadata", {}) or {}
+        source_key = str(
+            metadata.get("source_file")
+            or metadata.get("structured_document_id")
+            or metadata.get("document_id")
+            or ""
+        )
+        if source_key != active_source:
+            active_source = source_key
+            active = None
+        for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            if not line:
+                continue
+            folded_line = normalize_question(line)
+            if folded_line == "hoc bong dhv 2026" or (
+                "dhv 2026" in folded_line
+                and any(marker in folded_line for marker in (
+                    "chinh sach hoc bong",
+                    "ho tro tai chinh unibridge",
+                ))
+            ):
+                continue
+            if re.match(r"^1\.9\.1\b", line, re.IGNORECASE):
+                active = None
+                continue
+            heading = re.match(r"^(\d+\.\d+)\.?\s+(.+)$", line)
+            if heading:
+                section_id = heading.group(1)
+                title = heading.group(2).strip()
+                if section_id in _SCHOLARSHIP_POLICY_HEADINGS or section_id == "1.9":
+                    active = section_id
+                    sections.setdefault(section_id, (title, []))
+                else:
+                    # In particular, skip the duplicated 1.8 friend-benefit
+                    # table; the conditions and percentages are in 1.5/1.9.
+                    active = None
+                continue
+            if active:
+                sections[active][1].append(line)
+    return sections
+
+
+def _join_policy_wrapped_lines(lines: list[str]) -> list[str]:
+    """Join PDF line wraps without merging bullets or numbered subheadings."""
+
+    joined: list[str] = []
+    starts_new = re.compile(
+        r"^(?:[•*\-–]|1\.2\.\d+\s+|Điểm\b|Tổng điểm\b|Công thức\b|"
+        r"Thủ khoa\b|Á khoa\b|Mức học bổng\b|Hỗ trợ\b|Áp dụng\b|"
+        r"Điều kiện\b|Nhà trường\b|Sinh viên\b|Năm 20\d{2}\b)",
+        re.IGNORECASE,
+    )
+    for raw_line in lines:
+        line = re.sub(r"\s+", " ", str(raw_line or "")).strip()
+        if not line:
+            continue
+        if not joined or starts_new.search(line):
+            joined.append(line)
+            continue
+        if re.search(r"[.!?:;)]$", joined[-1]):
+            joined.append(line)
+        else:
+            joined[-1] = f"{joined[-1]} {line}"
+    return joined
+
+
+def _scholarship_policy_details(
+    policy_id: str,
+    sections: Mapping[str, tuple[str, list[str]]],
+) -> list[str] | None:
+    section = sections.get(policy_id)
+    if section is None:
+        return None
+    body = section[1]
+    if policy_id == "1.1":
+        joined = _join_policy_wrapped_lines(body)
+        selected = [
+            line for line in joined
+            if "quỹ học bổng" in line.casefold() or "tân sinh viên" in line.casefold()
+        ]
+        return selected or None
+    if policy_id == "1.2":
+        methods: list[tuple[str, list[str]]] = []
+        method_by_title: dict[str, tuple[str, list[str]]] = {}
+        current: tuple[str, list[str]] | None = None
+        skip_marketing_paragraph = False
+        skip_overlap_continuation = False
+        for line in body:
+            match = re.match(r"^1\.2\.\d+\s+(.+)$", line)
+            if match:
+                title = match.group(1).strip()
+                key = normalize_question(title)
+                current = method_by_title.get(key)
+                if current is None:
+                    current = (title, [])
+                    method_by_title[key] = current
+                    methods.append(current)
+                skip_marketing_paragraph = False
+                skip_overlap_continuation = False
+                continue
+            if current is None:
+                continue
+            folded_line = normalize_question(line)
+            if skip_overlap_continuation:
+                if folded_line.startswith("diem thi") or folded_line.startswith("ap dung") or line.startswith(("•", "*")):
+                    skip_overlap_continuation = False
+                else:
+                    continue
+            if folded_line.startswith("ngoai ra"):
+                skip_marketing_paragraph = True
+                continue
+            if skip_marketing_paragraph:
+                continue
+            cleaned = line.lstrip("•*-– ").strip()
+            if not cleaned or cleaned.casefold() == "điều kiện:":
+                continue
+            if (
+                "danh gia nang luc" in normalize_question(current[0])
+                and normalize_question(cleaned).startswith("tong diem")
+            ):
+                # The source page split repeats the preceding method's final
+                # scholarship threshold just before the ĐGNL heading.
+                skip_overlap_continuation = True
+                continue
+            if current[1] and not re.match(
+                r"^(?:•|\*|Điểm\b|Tổng điểm\b|Công thức\b|Áp dụng\b)",
+                line,
+                re.IGNORECASE,
+            ) and not re.search(r"[.!?:;)]$", current[1][-1]):
+                current[1][-1] = f"{current[1][-1]} {cleaned}"
+            else:
+                current[1].append(cleaned)
+        for _, details in methods:
+            unique: list[str] = []
+            seen: set[str] = set()
+            for detail in details:
+                key = normalize_question(detail)
+                if key and key not in seen:
+                    seen.add(key)
+                    unique.append(detail)
+            details[:] = unique
+        if len(methods) != 4 or any(not details for _, details in methods):
+            return None
+        return [f"{title}: " + "; ".join(details) for title, details in methods]
+
+    joined = _join_policy_wrapped_lines(body)
+    joined = [
+        line for line in joined
+        if line.casefold() != "điều kiện:"
+        and not line.casefold().startswith("bảng 3.4")
+        and not (
+            "dhv 2026" in normalize_question(line)
+            and any(marker in normalize_question(line) for marker in (
+                "chinh sach hoc bong",
+                "ho tro tai chinh unibridge",
+            ))
+        )
+    ]
+    if policy_id == "1.5":
+        extra_conditions = _join_policy_wrapped_lines(sections.get("1.9", ("", []))[1])
+        joined.extend(
+            line for line in extra_conditions
+            if (
+                line.startswith(("•", "-", "–")) or "nếu thành viên" in line.casefold()
+            )
+            and "áp dụng cho nhóm tân sinh viên đăng ký và hoàn tất nhập học cùng nhau" not in line.casefold()
+            and "tân sinh viên có thể giới thiệu thêm bạn bè" not in line.casefold()
+        )
+    return joined or None
+
+
+def _evidence_scholarship_conditions_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Answer scholarship condition questions from named policy sections only."""
+
+    if not _is_scholarship_conditions_question(analysis):
+        return None
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    sections = _scholarship_policy_sections(evidence, target_year)
+    requested_ids = _scholarship_condition_policy_ids(analysis)
+    required_sections = set(requested_ids)
+    if "1.5" in required_sections:
+        required_sections.add("1.9")
+    if not required_sections.issubset(sections):
+        return None
+
+    answer = [f"Điều kiện các học bổng DHV {target_year} theo tài liệu đã duyệt:"]
+    for index, policy_id in enumerate(requested_ids, start=1):
+        details = _scholarship_policy_details(policy_id, sections)
+        if not details:
+            return None
+        heading = sections[policy_id][0] or _SCHOLARSHIP_POLICY_HEADINGS[policy_id]
+        # The source labels section 1.1 as a fund/policy overview rather than
+        # stating a separate selection test. Keep this limitation explicit.
+        if policy_id == "1.1":
+            details = [
+                "Dành cho tân sinh viên; tài liệu nêu quỹ học bổng lên đến 75 tỷ đồng nhưng không ghi tiêu chí xét riêng tại mục này."
+            ]
+        if policy_id == "3.1":
+            details.append(
+                "Tài liệu nêu cam kết việc làm nhưng không liệt kê tiêu chí việc làm cụ thể trong mục này."
+            )
+        answer.append(f"{index}. **{heading}**")
+        answer.extend(f"   - {detail.lstrip('•*-– ').strip()}" for detail in details)
+    return "\n".join(answer)
+
+
+def _evidence_scholarship_overview_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Summarize the verified scholarship program without dumping every rule."""
+
+    if not _is_scholarship_overview_question(analysis):
+        return None
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    sections = _scholarship_policy_sections(evidence, target_year)
+    if not set(_SCHOLARSHIP_POLICY_HEADINGS).issubset(sections):
+        return None
+
+    summaries: dict[str, list[str]] = {}
+    for policy_id in _SCHOLARSHIP_POLICY_HEADINGS:
+        details = _scholarship_policy_details(policy_id, sections)
+        if not details:
+            return None
+        if policy_id == "1.1":
+            selected = [next((line for line in details if "quỹ học bổng" in line.casefold()), details[0])]
+        elif policy_id == "1.2":
+            selected = [
+                "Xét qua 4 phương thức; mức hỗ trợ được nêu từ 50% đến 80% học phí chuẩn HKI, tùy phương thức và ngưỡng điểm."
+            ]
+        elif policy_id == "1.4":
+            selected = details[:3]
+        elif policy_id == "1.5":
+            selected = [details[0]]
+            eligibility = next(
+                (line for line in details[1:] if "cùng học thpt/gdtx" in normalize_question(line)),
+                None,
+            )
+            if eligibility:
+                selected.append(eligibility)
+        elif policy_id in {"1.6", "1.7", "3.1"}:
+            selected = details[:2]
+            if policy_id == "3.1":
+                selected.append("Tài liệu chưa nêu tiêu chí việc làm cụ thể để xét cam kết hoàn học phí.")
+        else:
+            selected = details[:1]
+        summaries[policy_id] = selected
+
+    answer = [f"Các chính sách học bổng DHV {target_year} (tóm tắt):"]
+    for index, policy_id in enumerate(_SCHOLARSHIP_POLICY_HEADINGS, start=1):
+        answer.append(f"{index}. **{sections[policy_id][0] or _SCHOLARSHIP_POLICY_HEADINGS[policy_id]}**")
+        answer.extend(f"   - {detail.lstrip('•*-– ').strip()}" for detail in summaries[policy_id])
+    return "\n".join(answer)
 
 
 def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -392,7 +798,7 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         return f"Theo dữ liệu tuyển sinh DHV, hiện có {count} loại/chính sách học bổng:\n" + "\n".join(
             f"- {line}" for line in selected_lines
         )
-    return "Mình tóm tắt các chính sách và điều kiện học bổng đang có trong dữ liệu DHV 2026:\n" + "\n".join(
+    return "Các chính sách và điều kiện học bổng DHV 2026 gồm:\n" + "\n".join(
         f"- {line}" for line in selected_lines
     )
 
@@ -526,7 +932,7 @@ def _evidence_admission_scholarship_conditions_answer(
     if any(not method["details"] for method in methods):
         return None
 
-    answer_lines = [f"Điều kiện học bổng tuyển sinh DHV {target_year} theo tài liệu:"]
+    answer_lines = [f"Điều kiện học bổng tuyển sinh DHV {target_year}:"]
     if intro:
         answer_lines.append(" ".join(intro))
     for method in methods:

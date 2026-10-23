@@ -392,6 +392,99 @@ class TaskFRetrievalTests(unittest.TestCase):
 
 
 class TaskFGenerationTests(unittest.TestCase):
+    def test_method_count_followup_lists_all_five_verified_methods(self) -> None:
+        llm = EchoEvidenceLLM()
+        first = ask_chatbot(
+            "Có bao nhiêu phương thức xét tuyển?",
+            retriever=_retriever(),
+            llm=llm,
+        )
+        second = ask_chatbot(
+            "Nêu rõ những phương thức xét tuyển đó là gì?",
+            retriever=_retriever(),
+            llm=llm,
+            conversation_state=first["state"],
+        )
+
+        self.assertEqual(first["status"], "ok")
+        self.assertIn("5 phương thức", str(first["answer"]))
+        self.assertEqual(second["status"], "ok")
+        self.assertEqual(second["trace"]["router"]["query_mode"], "LIST")
+        method_facts = [
+            fact
+            for fact in second["trace"]["score_facts"]
+            if fact.get("score_type") == "admission_method"
+        ]
+        self.assertEqual(
+            sorted(fact.get("method_number") for fact in method_facts),
+            [1, 2, 3, 4, 5],
+        )
+        answer = str(second["answer"])
+        for method in (
+            "kỳ thi tốt nghiệp THPT",
+            "học bạ",
+            "Đánh giá năng lực",
+            "H-SCA",
+            "tốt nghiệp trung cấp",
+        ):
+            with self.subTest(method=method):
+                self.assertIn(method.casefold(), answer.casefold())
+        self.assertEqual(llm.prompts, [])
+
+    def test_method_conditions_followup_answers_all_methods_without_treating_just_now_as_current(self) -> None:
+        llm = EchoEvidenceLLM()
+        first = ask_chatbot(
+            "Có bao nhiêu phương thức xét tuyển?",
+            retriever=_retriever(),
+            llm=llm,
+        )
+        listed = ask_chatbot(
+            "Nêu rõ những phương thức xét tuyển đó là gì?",
+            retriever=_retriever(),
+            llm=llm,
+            conversation_state=first["state"],
+        )
+        conditions = ask_chatbot(
+            "Vậy điều kiện của những phương thức đó là gì?",
+            retriever=_retriever(),
+            llm=llm,
+            conversation_state=listed["state"],
+        )
+        explicit_conditions = ask_chatbot(
+            "Điều kiện của 5 phương thức xét tuyển bạn vừa nêu lúc nãy",
+            retriever=_retriever(),
+            llm=llm,
+            conversation_state=listed["state"],
+        )
+
+        self.assertEqual(listed["state"]["last_listed_methods"], [
+            "thpt", "hoc_ba", "dgnl", "h_sca", "trung_cap",
+        ])
+        for result in (conditions, explicit_conditions):
+            trace = result["trace"]
+            self.assertEqual(result["status"], "ok", str({
+                **{
+                    key: trace.get(key)
+                    for key in ("intent", "entities", "router", "evidence_count", "evidence_boundary")
+                },
+                "selected": [
+                    item.get("content_preview")
+                    for item in trace.get("evidence_selection", {}).get("selected", [])
+                ],
+            }))
+            self.assertNotEqual(result["status"], "clarification")
+            self.assertFalse(result["trace"].get("temporal_checked", False))
+            self.assertNotIn("đã hết hạn", str(result["answer"]))
+            for method in (
+                "Thi tốt nghiệp THPT",
+                "Học bạ THPT",
+                "Đánh giá năng lực",
+                "H-SCA",
+                "Tốt nghiệp trung cấp",
+            ):
+                with self.subTest(method=method):
+                    self.assertIn(method.casefold(), str(result["answer"]).casefold())
+
     def test_method_list_followup_returns_verified_thpt_score_formula(self) -> None:
         llm = EchoEvidenceLLM()
         state: dict[str, object] = {}
@@ -427,7 +520,10 @@ class TaskFGenerationTests(unittest.TestCase):
         self.assertEqual(llm.prompts, [])
         self.assertEqual(
             second["sources"],
-            [{"title": "Phương thức xét tuyển và học bổng DHV 2026", "url": "https://tuyensinh.dhv.edu.vn/"}],
+            [{
+                "title": "Điều kiện và phương thức xét tuyển DHV 2026",
+                "url": "https://dhv.edu.vn/truong-dai-hoc-hung-vuong-tp-ho-chi-minh-cong-bo-diem-san-xet-tuyen-nam-2026-trien-khai-quy-hoc-bong-75-ty-dong/",
+            }],
         )
 
     def test_multi_issue_scholarship_retrieves_verified_policy_and_marks_partial_result(self) -> None:
@@ -448,7 +544,7 @@ class TaskFGenerationTests(unittest.TestCase):
         )
         scholarship_categories = subplans[scholarship_index]["categories"]
         self.assertIn("hoc_bong", scholarship_categories)
-        self.assertIn("phuong_thuc_xet_tuyen", scholarship_categories)
+        self.assertEqual(scholarship_categories, ["hoc_bong"])
         self.assertNotIn("ho_so", scholarship_categories)
         self.assertGreater(multi_issue["retrieved_docs_counts"][scholarship_index], 0)
         self.assertGreater(multi_issue["evidence_counts"][scholarship_index], 0)

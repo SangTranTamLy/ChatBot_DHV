@@ -6,10 +6,11 @@ from dataclasses import replace
 from typing import Any, Mapping
 
 from src.config.settings import Settings
-from src.models.local_llm import LocalLLM
+from src.models.local_llm import LocalLLM, OllamaError, OllamaUnavailableError, OllamaTimeoutError
+from src.retrieval.retriever import RetrieverEmbeddingError, VectorDatabaseError
 from src.prompts.rag_prompt import build_rag_prompt
 
-from .admission_answers import _evidence_general_registration_answer
+from .admission_answers import _evidence_enrollment_answer, _evidence_general_registration_answer
 from .answer_planner import plan_answer
 from .catalog_formatters import _candidate_values, _evidence_catalog_answer
 from .evidence import (
@@ -19,7 +20,9 @@ from .evidence import (
 )
 from .generation_guards import _validated_generation
 from .official_links import _official_links_answer
-from .output_validator import FALLBACK_ANSWER, validate_model_answer
+from .output_validator import FALLBACK_ANSWER, OLLAMA_OFFLINE_ANSWER, OLLAMA_TIMEOUT_ANSWER, VECTOR_DB_ERROR_ANSWER, validate_model_answer
+from .query_semantics import enrollment_request
+from .year_semantics import current_admission_window_answer
 from .pipeline_utils import _attach_answer_plan, _retrieve, _trace
 from .query_analysis import (
     ConversationState,
@@ -34,9 +37,16 @@ from .query_analysis import (
 from .scholarship_formatters import (
     _evidence_scholarship_answer,
     _evidence_scholarship_catalog_answer,
+    _evidence_scholarship_conditions_answer,
+    _evidence_scholarship_overview_answer,
+    _is_scholarship_conditions_question,
+    _is_scholarship_overview_question,
     _prioritize_scholarship_catalog_documents,
 )
 from .school_info_formatters import (
+    _evidence_campus_list_answer,
+    _evidence_contact_email_answer,
+    _evidence_contact_phone_answer,
     _evidence_overview_answer,
     _evidence_school_info_answer,
     _has_school_overview_request_marker,
@@ -46,7 +56,23 @@ from .school_info_formatters import (
     _overview_sources,
     _prioritize_school_overview_documents,
 )
-from .tuition_formatters import _evidence_semester_system_answer
+from .tuition_formatters import (
+    _evidence_semester_system_answer, _evidence_tuition_answer,
+    _evidence_tuition_per_credit_answer, _evidence_tuition_total_answer,
+    _evidence_optional_english_fee_answer,
+)
+
+
+def _issue_failure(exc: Exception) -> dict[str, object]:
+    if isinstance(exc, OllamaTimeoutError):
+        answer, status = OLLAMA_TIMEOUT_ANSWER, "model_timeout"
+    elif isinstance(exc, (OllamaUnavailableError, RetrieverEmbeddingError)):
+        answer, status = OLLAMA_OFFLINE_ANSWER, "ollama_offline"
+    elif isinstance(exc, VectorDatabaseError):
+        answer, status = VECTOR_DB_ERROR_ANSWER, "vector_db_error"
+    else:
+        answer, status = FALLBACK_ANSWER, "no_data"
+    return {"answer": answer, "status": status, "sources": [], "error_type": type(exc).__name__}
 
 
 def _filter_documents_for_plan(documents: list[Any], plan: Any) -> list[Any]:
@@ -128,7 +154,7 @@ def _ask_multi_issue(
     active_llm: Any | None = None
     effective_subplans: list[Any] = []
     for subplan in plan.subplans:
-        subquery = subplan.retrieval_query
+        subquery = subplan.issue_question or subplan.retrieval_query
         retrieval_subplan = subplan
         if (
             subplan.intent == "HOI_HOC_BONG"
@@ -154,9 +180,10 @@ def _ask_multi_issue(
             normalized_question=normalize_question(subquery),
             intent=subplan.intent,
             entities={
-                **analysis.entities,
+                **(subplan.issue_entities or analysis.entities),
                 "issue_intents": [],
                 "requested_information": [subplan.intent],
+                "request_type": enrollment_request(subquery),
             },
         )
         if subplan.intent == "OUT_OF_SCOPE":
@@ -204,7 +231,12 @@ def _ask_multi_issue(
             selected_evidence_counts.append(0)
             continue
 
-        documents, audit = _retrieve(retriever, subquery, retrieval_subplan)
+        issue_failure = None
+        try:
+            documents, audit = _retrieve(retriever, subquery, retrieval_subplan)
+        except (RetrieverEmbeddingError, VectorDatabaseError) as exc:
+            documents, audit = [], None
+            issue_failure = _issue_failure(exc)
         retrieval_call_count += 1
         retrieved_document_counts.append(len(documents))
         audits.append(audit.to_dict() if audit is not None else None)
@@ -288,26 +320,54 @@ def _ask_multi_issue(
                 verified_documents=selected_documents,
                 target_year=settings_obj.target_year,
             )
-        school_info_result = None
+        direct_result = current_admission_window_answer(sub_analysis.normalized_question, evidence)
+        info_answer = None
         if subplan.intent == "SCHOOL_INFO" and not overview_issue:
             info_answer = _evidence_school_info_answer(sub_analysis, evidence) or _evidence_semester_system_answer(sub_analysis, evidence)
-            if info_answer:
-                validated_info = validate_model_answer(
-                    info_answer,
-                    evidence,
-                    question=subquery,
-                    analysis=sub_analysis,
-                    target_year=settings_obj.target_year,
-                )
-                if validated_info.get("status") == "ok":
-                    school_info_result = validated_info
-                    school_info_result["sources"] = [dict(s) for s in evidence.sources]
-        scholarship_result = None
-        if subplan.intent == "HOI_HOC_BONG":
-            scholarship_answer = (
-                _evidence_scholarship_catalog_answer(sub_analysis, evidence)
-                or _evidence_scholarship_answer(sub_analysis, evidence)
+        elif subplan.intent == "HOI_CO_SO_LIEN_HE":
+            info_answer = (
+                _evidence_campus_list_answer(sub_analysis, evidence)
+                or _evidence_contact_email_answer(sub_analysis, evidence)
+                or _evidence_contact_phone_answer(sub_analysis, evidence)
             )
+        elif subplan.intent in {"HOI_HO_SO", "HOI_NHAP_HOC"}:
+            info_answer = _evidence_enrollment_answer(sub_analysis, evidence)
+        elif sub_analysis.entities.get("request_type") in {"reception_hours", "reception_dates"}:
+            info_answer = _evidence_enrollment_answer(sub_analysis, evidence)
+        elif subplan.intent == "HOI_HOC_PHI":
+            info_answer = (
+                _evidence_semester_system_answer(sub_analysis, evidence)
+                or _evidence_optional_english_fee_answer(sub_analysis, evidence)
+                or _evidence_tuition_per_credit_answer(sub_analysis, evidence)
+                or _evidence_tuition_total_answer(sub_analysis, evidence)
+                or _evidence_tuition_answer(evidence)
+            )
+        if info_answer and direct_result is None:
+            validated_info = validate_model_answer(
+                info_answer,
+                evidence,
+                question=subquery,
+                analysis=sub_analysis,
+                target_year=settings_obj.target_year,
+            )
+            if validated_info.get("status") == "ok":
+                direct_result = validated_info
+                direct_result["sources"] = [dict(s) for s in evidence.sources]
+        scholarship_result = None
+        strict_scholarship_question = subplan.intent == "HOI_HOC_BONG" and (
+            _is_scholarship_conditions_question(sub_analysis)
+            or _is_scholarship_overview_question(sub_analysis)
+            or sub_analysis.entities.get("query_mode") in {"COUNT", "LIST", "LIST_AND_COUNT"}
+        )
+        if subplan.intent == "HOI_HOC_BONG":
+            if _is_scholarship_conditions_question(sub_analysis):
+                scholarship_answer = _evidence_scholarship_conditions_answer(sub_analysis, evidence)
+            elif sub_analysis.entities.get("query_mode") in {"COUNT", "LIST", "LIST_AND_COUNT"}:
+                scholarship_answer = _evidence_scholarship_catalog_answer(sub_analysis, evidence)
+            elif _is_scholarship_overview_question(sub_analysis):
+                scholarship_answer = _evidence_scholarship_overview_answer(sub_analysis, evidence)
+            else:
+                scholarship_answer = _evidence_scholarship_answer(sub_analysis, evidence)
             if scholarship_answer:
                 scholarship_result = validate_model_answer(
                     scholarship_answer,
@@ -318,8 +378,8 @@ def _ask_multi_issue(
                 )
         if website_result is not None:
             sub_status = str(website_result.get("status") or "no_data")
-        elif school_info_result is not None:
-            sub_status = str(school_info_result.get("status") or "no_data")
+        elif direct_result is not None:
+            sub_status = str(direct_result.get("status") or "no_data")
         else:
             registration_answer = (
                 _evidence_general_registration_answer(sub_analysis, evidence)
@@ -339,6 +399,7 @@ def _ask_multi_issue(
                 )
                 or (
                     not overview_issue
+                    and not strict_scholarship_question
                     and evidence.is_usable
                     and score_evaluation.get("status") != "insufficient-data"
                 )
@@ -349,7 +410,7 @@ def _ask_multi_issue(
             evidence=evidence,
             status=sub_status,
             deterministic=(
-                school_info_result is not None
+                direct_result is not None
                 or overview_issue
                 or website_result is not None
                 or registration_answer is not None
@@ -361,8 +422,8 @@ def _ask_multi_issue(
 
         if website_result is not None:
             sub_result = dict(website_result)
-        elif school_info_result is not None:
-            sub_result = dict(school_info_result)
+        elif direct_result is not None:
+            sub_result = dict(direct_result)
         elif overview_issue:
             if validated_overview and validated_overview.get("status") == "ok":
                 sub_result = dict(validated_overview)
@@ -383,8 +444,15 @@ def _ask_multi_issue(
         elif scholarship_result is not None:
             sub_result = dict(scholarship_result)
             sub_result.pop("_validation_reason", None)
+        elif strict_scholarship_question:
+            sub_result = {
+                "answer": FALLBACK_ANSWER,
+                "sources": [],
+                "status": "no_data",
+                "evidence_boundary": "complete_scholarship_policy_evidence_missing",
+            }
         elif not evidence.is_usable or score_evaluation.get("status") == "insufficient-data":
-            sub_result: dict[str, object] = {
+            sub_result: dict[str, object] = issue_failure or {
                 "answer": FALLBACK_ANSWER,
                 "sources": [],
                 "status": "no_data",
@@ -394,39 +462,43 @@ def _ask_multi_issue(
             if catalog_result is not None:
                 sub_result = catalog_result
             else:
-                if active_llm is None:
-                    active_llm = llm or LocalLLM(settings_obj=settings_obj)
-                prompt = build_rag_prompt(
-                    subquery,
-                    evidence.context,
-                    intent=sub_analysis.intent,
-                    entities=sub_analysis.entities,
-                    conversation_state=state.to_dict(),
-                    answer_plan=sub_answer_plan,
-                    score_facts=select_relevant_score_facts(
-                        sub_analysis,
-                        evidence.score_facts,
-                    ),
-                    score_comparisons=score_comparisons,
-                    entity_relations=evidence.entity_relations,
-                )
-                sub_result = _validated_generation(
-                    active_llm=active_llm,
-                    prompt=prompt,
-                    evidence=evidence,
-                    question=subquery,
-                    analysis=sub_analysis,
-                    score_facts=select_relevant_score_facts(
-                        sub_analysis,
-                        evidence.score_facts,
-                    ),
-                    answer_plan=sub_answer_plan,
-                    score_comparisons=score_comparisons,
-                    target_year=settings_obj.target_year,
-                )
-                sub_result.pop("_validation_reason", None)
+                try:
+                    if active_llm is None:
+                        active_llm = llm or LocalLLM(settings_obj=settings_obj)
+                    prompt = build_rag_prompt(
+                        subquery,
+                        evidence.context,
+                        intent=sub_analysis.intent,
+                        entities=sub_analysis.entities,
+                        conversation_state=state.to_dict(),
+                        answer_plan=sub_answer_plan,
+                        score_facts=select_relevant_score_facts(
+                            sub_analysis,
+                            evidence.score_facts,
+                        ),
+                        score_comparisons=score_comparisons,
+                        entity_relations=evidence.entity_relations,
+                    )
+                    sub_result = _validated_generation(
+                        active_llm=active_llm,
+                        prompt=prompt,
+                        evidence=evidence,
+                        question=subquery,
+                        analysis=sub_analysis,
+                        score_facts=select_relevant_score_facts(
+                            sub_analysis,
+                            evidence.score_facts,
+                        ),
+                        answer_plan=sub_answer_plan,
+                        score_comparisons=score_comparisons,
+                        target_year=settings_obj.target_year,
+                    )
+                    sub_result.pop("_validation_reason", None)
+                except OllamaError as exc:
+                    sub_result = _issue_failure(exc)
         sub_result["answer_plan"] = sub_answer_plan.to_dict()
         sub_result["intent"] = subplan.intent
+        sub_result["request_type"] = sub_analysis.entities.get("request_type")
         sub_evidence_boundaries.append(
             str(sub_result.get("evidence_boundary"))
             if sub_result.get("evidence_boundary")
@@ -438,9 +510,26 @@ def _ask_multi_issue(
     answer_sections: list[str] = []
     for result in sub_results:
         answer = str(result.get("answer") or "").strip()
+        if result.get("status") == "no_data" and not result.get("temporal_checked"):
+            topic = {
+                "HOI_HOC_PHI": "mức học phí",
+                "HOI_HOC_BONG": "học bổng",
+                "HOI_HO_SO": "giấy tờ cần chuẩn bị",
+                "HOI_NHAP_HOC": "cách nhập học",
+                "HOI_CO_SO_LIEN_HE": "địa điểm hoặc thông tin liên hệ",
+                "HOI_LICH_TUYEN_SINH": "thời hạn bạn hỏi",
+            }.get(str(result.get("intent")), "phần bạn hỏi")
+            topic = {
+                "reception_hours": "giờ tiếp nhận hồ sơ",
+                "reception_dates": "thời gian tiếp nhận hồ sơ",
+                "enrollment_location": "địa điểm nhận hồ sơ",
+            }.get(result.get("request_type"), topic)
+            answer = f"Mình chưa có thông tin chính xác về {topic} để trả lời bạn."
         if not answer:
             continue
         label = _MULTI_ISSUE_LABELS.get(str(result.get("intent") or ""), "Thông tin liên quan")
+        label = {"reception_hours": "Giờ tiếp nhận", "reception_dates": "Thời gian tiếp nhận",
+                 "enrollment_location": "Nơi nộp hồ sơ"}.get(result.get("request_type"), label)
         answer_sections.append(f"### {label}\n{answer}")
     subplan_statuses = [str(result.get("status") or "error") for result in sub_results]
     statuses = set(subplan_statuses)
@@ -467,8 +556,23 @@ def _ask_multi_issue(
     trace["evidence_count"] = sum(selected_evidence_counts)
     trace["partial_response"] = partial_response
     trace["multi_issue"] = {
+        "issues": [
+            {
+                "issue_id": f"issue_{index}",
+                "question": subplan.issue_entities.get("issue_original_question") or subplan.issue_question or subplan.retrieval_query,
+                "intent": subplan.intent,
+                "status": result.get("status"),
+                "can_answer": result.get("status") == "ok",
+                "chunk_ids": [str(chunk.metadata.get("chunk_id") or "") for chunk in bundle.chunks],
+                "sources": result.get("sources", []),
+            }
+            for index, (subplan, result, bundle) in enumerate(
+                zip(effective_subplans, sub_results, evidence_bundles), start=1
+            )
+        ],
         "complete": complete_response,
         "partial": partial_response,
+        "temporal_checked": any(result.get("temporal_checked") for result in sub_results),
         "subplan_statuses": subplan_statuses,
         "subplans": [subplan.to_dict() for subplan in effective_subplans],
         "subqueries": [subplan.retrieval_query for subplan in plan.subplans],
@@ -496,6 +600,7 @@ def _ask_multi_issue(
         "sources": _dedupe_sources(sub_results),
         "status": status,
         "partial": partial_response,
+        "temporal_checked": trace["multi_issue"]["temporal_checked"],
         "state": next_state.to_dict(),
         "conversation_state": next_state.to_dict(),
         "trace": trace,

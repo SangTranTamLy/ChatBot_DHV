@@ -104,13 +104,61 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertIn("50%", result["answer"])
         self.assertFalse(llm.prompts)
 
+    def test_followup_lists_conditions_for_each_scholarship_without_mixing_financial_files(self) -> None:
+        result, llm = self._ask("điều kiện của những học bổng đó là gì")
+
+        answer = str(result["answer"])
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["trace"]["router"]["categories"], ["hoc_bong"])
+        self.assertIn("Điều kiện các học bổng DHV 2026", answer)
+        for policy in (
+            "Hào khí Hùng Vương",
+            "Học bổng tuyển sinh",
+            "Học bổng Tài năng",
+            "Học bổng Ngành Tiên phong",
+            "Học bổng Đôi bạn cùng tiến",
+            "Học bổng Tương lai vững bước",
+            "Học bổng Biển đảo yêu thương",
+            "Học bổng Cam kết hoàn học phí",
+        ):
+            self.assertIn(policy, answer)
+        self.assertIn("Điểm TB lớp 11 hoặc HK1 lớp 12 > 8,5", answer)
+        self.assertIn("Điểm thi > 700", answer)
+        self.assertIn("cùng tốt nghiệp 2026", answer)
+        self.assertIn("cùng nhập học tại DHV", answer)
+        self.assertNotIn("Áp dụng cho nhóm tân sinh viên đăng ký", answer)
+        self.assertNotIn("giới thiệu thêm bạn bè", answer)
+        dgnl_section = answer.split("Xét học bổng bằng điểm kỳ thi Đánh giá năng lực", 1)[1].split("\n3. ", 1)[0]
+        self.assertNotIn("6.250.000 VNĐ)", dgnl_section)
+        self.assertIn("Áp dụng với kỳ thi ĐGNL ĐHQG-HCM 2026", dgnl_section)
+        self.assertNotIn("12.500.000", answer)
+        self.assertNotIn("23.250.000", answer)
+        self.assertNotIn("DHV 2026 - Chính sách học bổng DHV 2026", answer)
+        self.assertFalse(llm.prompts)
+
+    def test_named_scholarship_conditions_are_scoped_to_that_policy(self) -> None:
+        result, llm = self._ask("Học bổng Tài năng điều kiện thế nào?")
+
+        answer = str(result["answer"])
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("30% đến 100%", answer)
+        self.assertIn("thành tích nổi bật", answer)
+        self.assertNotIn("Học bổng tuyển sinh", answer)
+        self.assertNotIn("Học bổng Đôi bạn cùng tiến", answer)
+        self.assertFalse(llm.prompts)
+
     def test_formula_does_not_turn_into_a_threshold_answer(self) -> None:
         result, _ = self._ask("Cách tính điểm xét tuyển học bạ")
 
         self.assertEqual(result["answer_plan"]["mode"], "EXPLANATION")
         self.assertIn("Cách 1", result["answer"])
         self.assertIn("Cách 2", result["answer"])
+        self.assertIn("Tổng điểm tổ hợp 03 môn", result["answer"])
+        self.assertIn("Toán hoặc Ngữ văn", result["answer"])
         self.assertNotIn("600", result["answer"])
+        self.assertNotIn("2.3 Xét kết quả kỳ thi Đánh giá năng lực", result["answer"])
+        self.assertNotIn("H-SCA", result["answer"])
+        self.assertNotIn("tốt nghiệp trung cấp nghề", result["answer"])
 
     def test_comparison_is_side_by_side_and_grounded(self) -> None:
         result, _ = self._ask("so sánh CNTT và Kỹ thuật máy tính")
