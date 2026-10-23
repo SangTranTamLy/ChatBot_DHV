@@ -17,6 +17,7 @@ import threading
 import time
 import unicodedata
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 MAX_ENTRIES = 256
@@ -36,8 +37,49 @@ def normalize_question(question: str) -> str:
     return text.rstrip(" ?.!…")
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_FINGERPRINT_TTL_SECONDS = 5.0
+_fingerprint_cache: tuple[float, str] = (0.0, "")
+
+
+def _compute_fingerprint() -> str:
+    """Dấu vân tay của code + dữ liệu đang chạy.
+
+    Câu trả lời đã cache chỉ hợp lệ khi code xử lý và kho dữ liệu (Chroma/JSON đã xử lý)
+    chưa đổi; nếu không, một câu trả lời sai từ trước khi sửa lỗi có thể được phát lại
+    tới hết TTL dù code đã được sửa.
+    """
+
+    parts: list[str] = [os.environ.get("DHV_CACHE_VERSION", "")]
+    watched = [
+        *sorted((_PROJECT_ROOT / "src").rglob("*.py")),
+        _PROJECT_ROOT / "models" / "intent_classifier.json",
+        *sorted((_PROJECT_ROOT / "chroma_db").glob("chroma.sqlite3")),
+        *sorted((_PROJECT_ROOT / "data" / "processed").rglob("*.json")),
+    ]
+    for path in watched:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        parts.append(f"{path.name}:{stat.st_mtime_ns}:{stat.st_size}")
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def data_fingerprint() -> str:
+    global _fingerprint_cache
+    now = time.monotonic()
+    stamp, value = _fingerprint_cache
+    if value and now - stamp < _FINGERPRINT_TTL_SECONDS:
+        return value
+    value = _compute_fingerprint()
+    _fingerprint_cache = (now, value)
+    return value
+
+
 def make_key(question: str) -> str:
-    return hashlib.sha256(normalize_question(question).encode("utf-8")).hexdigest()
+    material = f"{data_fingerprint()}\n{normalize_question(question)}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def is_cacheable(payload: Dict[str, Any]) -> bool:

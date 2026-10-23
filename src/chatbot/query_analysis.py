@@ -16,6 +16,7 @@ from .intent_classifier import IntentPrediction, predict_intent
 from .query_semantics import (
     enrollment_request,
     is_semester_fee_total_question,
+    is_tuition_increase_question,
     mentions_optional_english_test,
 )
 from .scope_guard import (
@@ -2482,6 +2483,12 @@ def _is_hard_out_of_scope(
     )
 
 
+_CAREER_OR_EVENT_TERMS = (
+    "viec lam", "thuc tap", "nghe nghiep", "workshop", "hoi thao", "cuoc thi",
+    "phong lab", "phong thi nghiem", "hoc bong", "hoc phi",
+)
+
+
 def _classify_intent_rules(normalized: str, entities: dict[str, object], state: ConversationState) -> str:
     # System turns are a deterministic trust-boundary branch. They must be
     # resolved before both the trained classifier and the admissions scope
@@ -2532,6 +2539,11 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         # A score inside a counselling question is context for the advice,
         # not a request to look up a standalone numeric threshold.
         return "TU_VAN_CHON_NGANH"
+    if "hoc ba" in normalized and re.search(
+        r"\blop\s+(?:nao|may|10|11|12)\b|\b3\s+nam\b|\bhoc\s+ky\s+nao\b", normalized
+    ) and not re.search(r"bao nhieu diem|diem toi thieu|diem chuan|diem san", normalized):
+        # Hỏi cách tính/điểm của năm lớp nào trong học bạ là quy tắc phương thức, không phải ngưỡng điểm.
+        return "HOI_PHUONG_THUC_XET_TUYEN"
     if _is_subject_minimum_request(normalized):
         # A requested minimum score for a subject is a threshold lookup, even
         # when the question also contains ``tổ hợp xét tuyển`` wording.
@@ -2625,9 +2637,7 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         "may nam tot nghiep", "may nam ra truong", "may nam hoc", "chuong trinh dao tao may nam",
     )):
         return "SCHOOL_INFO"
-    if ("cam ket" in normalized and "hoc phi" in normalized) or any(marker in normalized for marker in (
-        "on dinh hoc phi", "tang hoc phi", "co tang hoc phi khong",
-    )):
+    if is_tuition_increase_question(normalized) or "tang hoc phi" in normalized:
         return "HOI_HOC_PHI"
     if (
         "dong tien mat" in normalized
@@ -2803,6 +2813,28 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     return "OUT_OF_SCOPE"
 
 
+def _fallback_rule_intent(normalized: str, entities: dict[str, object]) -> str | None:
+    """Tín hiệu tuyển sinh rõ ràng mà model nhỏ hay bỏ sót.
+
+    Chỉ dùng khi cả rule lẫn model đều không quyết định được, để không rơi thẳng
+    vào OUT_OF_SCOPE khi câu hỏi nêu phương thức xét tuyển, bước sau trúng tuyển
+    hoặc hỏi DHV có (chuyên) ngành nào đó hay không.
+    """
+
+    if entities.get("admission_method"):
+        return "HOI_PHUONG_THUC_XET_TUYEN"
+    if "trung tuyen" in normalized and any(
+        term in normalized
+        for term in ("lam gi", "can lam", "buoc tiep theo", "thong bao", "xac nhan", "thu tuc")
+    ):
+        return "HOI_NHAP_HOC"
+    if re.search(r"\bco\b.*\b(?:chuyen nganh|nganh)\b.*\bkhong\b", normalized) and not any(
+        term in normalized for term in _CAREER_OR_EVENT_TERMS
+    ):
+        return "HOI_NGANH"
+    return None
+
+
 def _classify_intent(
     normalized: str,
     entities: dict[str, object],
@@ -2841,9 +2873,16 @@ def _classify_intent(
         return rule_intent, (
             prediction.confidence if prediction is not None else None
         ), "trained_model_with_safety_guard"
+    fallback_intent = _fallback_rule_intent(normalized, entities)
     if prediction is not None and prediction.intent in INTENTS:
-        if prediction.confidence >= 0.30 and prediction.margin >= 0.10:
+        if prediction.confidence >= 0.30 and prediction.margin >= 0.10 and not (
+            prediction.intent == "OUT_OF_SCOPE" and fallback_intent
+        ):
             return prediction.intent, prediction.confidence, prediction.source
+    if fallback_intent:
+        return fallback_intent, (
+            prediction.confidence if prediction is not None else None
+        ), "deterministic_fallback_rule"
     return "OUT_OF_SCOPE", (
         prediction.confidence if prediction is not None else None
     ), "deterministic_fallback"
@@ -3356,6 +3395,15 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
                 mentions_optional_english_test(resolved.normalized_question)
                 or is_semester_fee_total_question(resolved.normalized_question)
                 or "tin chi" in resolved.normalized_question
+                # Hình thức/địa điểm đóng học phí nằm trong tài liệu thủ tục nhập học.
+                or any(
+                    marker in resolved.normalized_question
+                    for marker in (
+                        "thanh toan", "dong tien", "nop tien", "tien mat",
+                        "chuyen khoan", "hinh thuc dong", "dong hoc phi",
+                        "nop hoc phi", "unizone",
+                    )
+                )
             )
             else ("hoc_phi",)
         )

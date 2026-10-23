@@ -717,8 +717,12 @@ def _named_unit_relation_missing_evidence(analysis: QueryAnalysis, evidence: Any
         unit_end = unit_start + len(requested_unit)
         relation_suffix = normalized[unit_end:]
     else:
+        # ``khoa`` cũng là một phần của "á khoa", "thủ khoa", "chuyên khoa", "khoa học"...
+        # nên chỉ coi là đơn vị khi không đi sau/trước các từ đó.
         match = re.search(
-            r"\b(khoa|vien|trung tam)\s+(.+?)(?=\s+(?:co|hop tac|nghien cuu|phu trach|ho tro|mang luoi|la|thuc hien|trai rong|gom|thuoc|hoat dong|nham)\b|[?,.]|$)",
+            r"(?<!\ba )(?<!\bthu )(?<!\bchuyen )(?<!\bdai hoc )"
+            r"\b(khoa|vien|trung tam)\s+(?!(?:hoc|tai|cua|dhv|nao|nam|nay|do|dau)\b)"
+            r"(.+?)(?=\s+(?:co|hop tac|nghien cuu|phu trach|ho tro|mang luoi|la|thuc hien|trai rong|gom|thuoc|hoat dong|nham)\b|[?,.]|$)",
             normalized,
         )
         if not match:

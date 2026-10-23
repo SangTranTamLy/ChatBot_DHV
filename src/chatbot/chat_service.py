@@ -7,6 +7,8 @@ Matches the architectural pattern of VietLabor AI (app/chat_service.py).
 """
 from __future__ import annotations
 
+import threading
+
 import logging
 import time
 import unicodedata
@@ -157,18 +159,22 @@ class ChatService:
 
 
 _default_service: ChatService | None = None
+_default_service_lock = threading.Lock()
 
 
 def get_chat_service() -> ChatService:
-    """Khởi tạo trễ dịch vụ mặc định để việc import UI không tốn nhiều tài nguyên."""
+    """Khởi tạo trễ dịch vụ mặc định (an toàn khi nhiều phiên Streamlit gọi đồng thời)."""
     global _default_service
     if _default_service is None:
-        _default_service = ChatService()
-        try:
-            from .warmup import start_background_warmup
-            start_background_warmup()
-        except Exception:
-            pass
+        with _default_service_lock:
+            if _default_service is None:
+                service = ChatService()
+                try:
+                    from .warmup import start_background_warmup
+                    start_background_warmup()
+                except Exception:
+                    pass
+                _default_service = service
     return _default_service
 
 

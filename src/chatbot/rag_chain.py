@@ -101,6 +101,7 @@ from .query_decomposer import _try_pre_rag_decomposition
 from .scholarship_formatters import (
     _evidence_scholarship_answer,
     _evidence_scholarship_catalog_answer,
+    _evidence_scholarship_tier_answer,
     _evidence_scholarship_conditions_answer,
     _evidence_scholarship_overview_answer,
     _is_scholarship_conditions_question,
@@ -560,6 +561,8 @@ def ask_chatbot(
     )
     if (
         score_evaluation.get("status") == "insufficient-data"
+        # Câu hỏi quy tắc phương thức (vd. học bạ lấy điểm lớp nào) không cần dữ liệu điểm số.
+        and analysis.intent != "HOI_PHUONG_THUC_XET_TUYEN"
         and not structured_lookup_answer
         and not deadline_only_lookup
         and not admission_rule_answer
@@ -821,7 +824,10 @@ def ask_chatbot(
             or _evidence_tuition_answer(evidence)
         )
     elif analysis.intent == "HOI_HOC_BONG":
-        if _is_scholarship_conditions_question(analysis):
+        tier_answer = _evidence_scholarship_tier_answer(analysis, evidence)
+        if tier_answer:
+            direct_evidence_answer = tier_answer
+        elif _is_scholarship_conditions_question(analysis):
             direct_evidence_answer = _evidence_scholarship_conditions_answer(analysis, evidence)
         elif analysis.entities.get("query_mode") in {"COUNT", "LIST", "LIST_AND_COUNT"}:
             direct_evidence_answer = _evidence_scholarship_catalog_answer(analysis, evidence)

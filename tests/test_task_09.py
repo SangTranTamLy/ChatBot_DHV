@@ -777,7 +777,7 @@ class Task09RoutingTests(unittest.TestCase):
                 raise AssertionError("verified scholarship formatting must be deterministic")
 
         result = ask_chatbot(
-            "DHV có học bổng nào?",
+            "Quỹ học bổng của DHV năm 2026 là bao nhiêu?",
             retriever=ScholarshipRetriever(),
             llm=NeverCalledLLM(),
         )

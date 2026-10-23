@@ -90,3 +90,14 @@ def is_semester_fee_total_question(question: str) -> bool:
 
 def should_include_optional_english_fee(question: str) -> bool:
     return mentions_optional_english_test(question) and not excludes_optional_english_test(question)
+
+
+def is_tuition_increase_question(question: str) -> bool:
+    """Hỏi học phí có tăng/ổn định không, với mọi cách diễn đạt (``có tăng hay k``...)."""
+    folded = normalize_semantic_text(question)
+    if "hoc phi" not in folded:
+        return False
+    # ``tầng`` cũng bị bỏ dấu thành ``tang``; câu hỏi tầng/lầu là hỏi địa điểm.
+    if re.search(r"\btang (?:may|\d)|\blau\b", folded):
+        return False
+    return bool(re.search(r"\b(?:tang|on dinh|giu nguyen|cam ket)\b", folded))

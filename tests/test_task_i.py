@@ -117,13 +117,13 @@ class TaskISystemRouterTests(unittest.TestCase):
             [subplan.categories for subplan in plan.subplans],
             [
                 ("hoc_phi",),
-                ("hoc_bong", "phuong_thuc_xet_tuyen"),
+                ("hoc_bong",),
                 ("nganh_dao_tao",),
             ],
         )
         self.assertEqual(
             plan.categories,
-            ("hoc_phi", "hoc_bong", "phuong_thuc_xet_tuyen", "nganh_dao_tao"),
+            ("hoc_phi", "hoc_bong", "nganh_dao_tao"),
         )
 
 

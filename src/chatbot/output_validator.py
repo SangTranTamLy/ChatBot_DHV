@@ -14,6 +14,7 @@ from .query_semantics import (
     enrollment_request,
     excludes_optional_english_test,
     is_semester_fee_total_question,
+    is_tuition_increase_question,
     mentions_optional_english_test,
     should_include_optional_english_fee,
 )
@@ -57,6 +58,49 @@ VECTOR_DB_ERROR_ANSWER = (
 ERROR_ANSWER = "Mình gặp trục trặc khi trả lời câu này. Bạn thử lại sau một chút nhé."
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)>]+", re.IGNORECASE)
+
+# Model đôi khi chép lại tên thẻ/biến trong prompt ("Theo thông tin từ CONTEXT, ...").
+# Đó là chi tiết nội bộ, không được hiển thị cho người dùng.
+_PROMPT_TAG_RE = re.compile(
+    r"</?\s*(?:CONTEXT|ENTITIES|INTENT|QUESTION|EVIDENCE|ANSWER_PLAN)\s*>",
+    re.IGNORECASE,
+)
+_PROMPT_REFERENCE_CLAUSE_RE = re.compile(
+    r"(?:^|(?<=[.!?\n]))[ \t]*"
+    r"(?:(?:theo|dựa\s+(?:trên|vào)|căn\s+cứ\s+(?:vào|theo)|từ|như\s+trong|như)\s+)"
+    r"(?:(?:các\s+)?(?:thông\s+tin|dữ\s+liệu|nội\s+dung|tài\s+liệu)\s+)?"
+    r"(?:(?:trong|từ|ở|của)\s+)?(?:the\s+)?(?:CONTEXT|ngữ\s+cảnh(?:\s+được\s+cung\s+cấp)?)"
+    r"\s*[,:;-]?\s*",
+    re.IGNORECASE,
+)
+_PROMPT_LEAK_RE = re.compile(r"\bCONTEXT\b|ngữ\s+cảnh\s+được\s+cung\s+cấp", re.IGNORECASE)
+
+
+def _strip_prompt_references(text: str) -> str:
+    """Bỏ phần dẫn nguồn kiểu 'Theo CONTEXT,' và viết hoa lại đầu câu."""
+
+    cleaned = _PROMPT_TAG_RE.sub("", text)
+
+    def _drop_clause(match: re.Match[str]) -> str:
+        return match.group(0)[: len(match.group(0)) - len(match.group(0).lstrip(" \t"))]
+
+    previous = None
+    while previous != cleaned:
+        previous = cleaned
+        cleaned = _PROMPT_REFERENCE_CLAUSE_RE.sub(_drop_clause, cleaned, count=1)
+    # Viết hoa chữ cái đầu của câu vừa bị cắt tiền tố.
+    cleaned = re.sub(
+        r"(^|[.!?]\s+|\n)([a-zà-ỹ])",
+        lambda m: m.group(1) + m.group(2).upper(),
+        cleaned,
+    )
+    return cleaned
+
+
+def has_prompt_leak(answer: str) -> bool:
+    """True nếu câu trả lời vẫn nhắc tới tên thẻ/biến nội bộ của prompt."""
+
+    return bool(isinstance(answer, str) and _PROMPT_LEAK_RE.search(answer))
 _MARKDOWN_LINK_RE = re.compile(
     r"\[([^\]]+)\]\(\s*.*?\)(?=[.,!?;:\s]|$)", re.IGNORECASE
 )
@@ -155,6 +199,10 @@ def validate_model_answer(
     )
     if _is_model_fallback(answer) or not answer:
         return _failed("model_fallback")
+    if has_prompt_leak(answer):
+        # Phần dẫn nguồn đơn giản đã được cắt ở sanitize_answer; còn sót nghĩa là
+        # câu trả lời đang nói về prompt thay vì nội dung tuyển sinh.
+        return _failed("prompt_leak")
     contract_failure = _answer_contract_failure(answer, evidence, question, analysis)
     if contract_failure:
         return _failed(contract_failure)
@@ -235,7 +283,7 @@ def sanitize_answer(answer: str, *, allowed_urls: tuple[str, ...] = ()) -> str:
 
     if not isinstance(answer, str):
         return ""
-    cleaned = answer
+    cleaned = _strip_prompt_references(answer)
     preserved: list[tuple[str, str]] = []
     for index, url in enumerate(sorted(set(allowed_urls), key=len, reverse=True)):
         if not url:
@@ -1008,6 +1056,8 @@ def _advisory_fit_failure(
 def _has_required_labeled_amount(answer: str, evidence: EvidenceBundle, question: str) -> bool:
     folded_q = _fold_text(question)
     if "hoc phi" not in folded_q:
+        return True
+    if is_tuition_increase_question(folded_q):
         return True
     if any(marker in folded_q for marker in (
         "ngan hang", "chuyen khoan", "thanh toan", "dong o dau", "phuong thuc", "tai khoan",

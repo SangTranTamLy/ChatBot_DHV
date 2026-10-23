@@ -12,6 +12,7 @@ from .query_analysis import QueryAnalysis, normalize_question
 from .query_semantics import (
     excludes_optional_english_test,
     is_semester_fee_total_question,
+    is_tuition_increase_question,
     mentions_optional_english_test,
     should_include_optional_english_fee,
 )
@@ -248,8 +249,8 @@ def _evidence_semester_system_answer(analysis: QueryAnalysis, evidence: Any) -> 
         )
 
     # 5. Hỏi cam kết học phí, học phí có tăng không
-    if ("cam ket" in normalized and "hoc phi" in normalized) or any(marker in normalized for marker in (
-        "cam ket hoc phi", "co tang khong", "tang hoc phi", "on dinh hoc phi", "khong tang hoc phi", "co tang hoc phi khong",
+    if is_tuition_increase_question(normalized) or any(marker in normalized for marker in (
+        "co tang khong", "tang hoc phi",
     )):
         return (
             "Trường Đại học Hùng Vương TP.HCM (DHV) cam kết **học phí ổn định, không tăng trong suốt 4 năm đào tạo** cho sinh viên, giúp sinh viên và gia đình hoàn toàn an tâm lập kế hoạch tài chính."

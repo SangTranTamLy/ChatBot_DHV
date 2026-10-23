@@ -68,17 +68,19 @@ if [ ! -f .env ]; then cp .env.example .env; fi
 
 Mỗi lần mở Terminal mới để làm việc, kích hoạt lại môi trường bằng `source .venv/bin/activate` trong thư mục project.
 
+Nếu muốn dùng embedding qua Ollama thay cho Sentence Transformers, đặt `EMBEDDING_BACKEND=ollama` và `EMBEDDING_MODEL=nomic-embed-text` trong `.env`, tải thêm `ollama pull nomic-embed-text`, rồi tạo lại vector store với `--reset`.
+
 ## Ollama
 
-Trên Windows, Ollama có thể đã chạy nền. Nếu chưa chạy, mở terminal riêng và chạy:
+Ollama có thể đã chạy nền. Nếu chưa chạy, mở terminal riêng và chạy:
 
-```powershell
+```bash
 ollama serve
 ```
 
-Ở terminal khác, kiểm tra/tải model:
+Ở terminal khác, kiểm tra/tải model (ví dụ):
 
-```powershell
+```bash
 ollama list
 ollama pull qwen2.5:7b-instruct-q4_0
 ```
@@ -103,6 +105,13 @@ Các file nguồn gồm PDF trong `data/raw/` và `data/raw/manifest.json`. `dat
 ```shell
 python -m src.ingestion.prepare_processed_from_raw
 python -m src.ingestion.build_vector_db --all-years --reset
+```
+
+Trên macOS, kích hoạt `.venv` rồi tạo dữ liệu lần đầu:
+
+```bash
+python -m src.ingestion.prepare_processed_from_raw
+python -m src.ingestion.build_vector_db --year 2026 --reset
 ```
 
 **Lưu ý:** lệnh trích xuất mặc định làm mới thư mục JSON đầu ra. `--reset` ở lệnh xây Chroma sẽ đặt lại vector store được cấu hình trong `.env`. Chỉ chạy khi chủ động tái tạo dữ liệu; không cần chạy lại mỗi lần mở chatbot.
@@ -134,6 +143,8 @@ Từ thư mục gốc, sau khi môi trường và dữ liệu đã sẵn sàng:
 ```shell
 streamlit run app.py
 ```
+
+Trên macOS, kích hoạt `.venv` rồi chạy `streamlit run app.py`.
 
 Mở địa chỉ được Streamlit hiển thị, mặc định là <http://localhost:8501>.
 

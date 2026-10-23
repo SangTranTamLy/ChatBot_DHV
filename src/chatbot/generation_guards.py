@@ -23,6 +23,7 @@ from .tuition_formatters import _evidence_semester_system_answer
 
 _RETRYABLE_VALIDATION_REASONS = frozenset(
     {
+        "prompt_leak",
         "missing_threshold_mapping",
         "wrong_threshold_mapping",
         "missing_admission_score",
@@ -104,7 +105,8 @@ def _retry_prompt(
                 relation_instruction += " Mã ngành hợp lệ của ngành cha: " + ", ".join(sorted(set(allowed_codes))) + "."
     return (
         f"{prompt}\n\nBẢN NHÁP CẦN KIỂM TRA:\n{draft[:2000]}\n\n"
-        "Hãy tạo lại câu trả lời chỉ từ CONTEXT. Checklist mapping bắt buộc: "
+        "Hãy tạo lại câu trả lời chỉ từ CONTEXT và không nhắc tới từ CONTEXT hay "
+        "'ngữ cảnh' trong câu trả lời. Checklist mapping bắt buộc: "
         f"{checklist}. Phải nêu đủ từng mapping trong checklist, giữ nguyên dấu '-' nếu có, "
         "không thêm số và không kết luận đậu/trượt."
         + amount_instruction

@@ -306,6 +306,9 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
     )
     if analysis.intent != "HOI_HOC_BONG" or not asks_for_list:
         return None
+    if re.search(r"\b(?:thu khoa|a khoa)\b", normalized):
+        # Câu hỏi về một danh hiệu cụ thể: không trả danh mục đề mục chung.
+        return None
 
     headings: list[str] = []
     seen: set[str] = set()
@@ -736,6 +739,9 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
             return "Theo điều kiện học bổng DHV xét theo tổng điểm 3 môn:\n" + "\n".join(
                 f"- {line.lstrip('• ').strip()}" for line in score_rule_lines
             )
+    tier_answer = _scholarship_named_tier_answer(normalized_question, lines)
+    if tier_answer:
+        return tier_answer
     if any(marker in normalized_question for marker in ("toi da", "cao nhat", "muc cao nhat")):
         percentage_lines: list[tuple[float, str]] = []
         for line in lines:
@@ -801,6 +807,61 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     return "Các chính sách và điều kiện học bổng DHV 2026 gồm:\n" + "\n".join(
         f"- {line}" for line in selected_lines
     )
+
+
+def _evidence_scholarship_tier_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Điểm vào công khai cho câu hỏi mức học bổng theo danh hiệu (Thủ khoa/Á khoa/100%)."""
+
+    if analysis.intent != "HOI_HOC_BONG":
+        return None
+    return _scholarship_named_tier_answer(
+        normalize_question(analysis.normalized_question),
+        _evidence_text_lines(evidence),
+    )
+
+
+def _scholarship_named_tier_answer(normalized_question: str, lines: list[str]) -> str | None:
+    """Trả lời các câu hỏi mức học bổng gắn với danh hiệu (Thủ khoa/Á khoa) hoặc mức 100%."""
+
+    asks_thu_khoa = bool(re.search(r"\bthu khoa\b", normalized_question))
+    asks_a_khoa = bool(re.search(r"\ba khoa\b", normalized_question))
+    asks_full = bool(re.search(r"\b100\s*%|\btoan phan\b|\bfull\b|\bmien toan bo\b", normalized_question))
+    if not (asks_thu_khoa or asks_a_khoa or asks_full):
+        return None
+
+    def pick(marker: str) -> str | None:
+        for line in lines:
+            folded = normalize_question(line)
+            if folded.startswith(marker) and re.search(r"\d+\s*%", line):
+                return line.lstrip("• ").strip()
+        return None
+
+    thu_khoa = pick("thu khoa")
+    a_khoa = pick("a khoa")
+    talent = next(
+        (
+            line.lstrip("• ").strip()
+            for line in lines
+            if normalize_question(line).startswith("muc hoc bong")
+            and re.search(r"\d+\s*%\s*den\s*100\s*%", normalize_question(line))
+        ),
+        None,
+    )
+    if talent:
+        talent = re.split(r",\s*dành cho", talent, maxsplit=1)[0].rstrip(" .")
+    parts: list[str] = []
+    if asks_thu_khoa and thu_khoa:
+        parts.append(thu_khoa)
+    if asks_a_khoa and a_khoa:
+        parts.append(a_khoa)
+    if asks_full and not (asks_thu_khoa or asks_a_khoa):
+        if thu_khoa:
+            parts.append(thu_khoa)
+        if talent:
+            parts.append(f"Học bổng Tài năng: {talent[0].lower() + talent[1:]}")
+    if not parts:
+        return None
+    return "Theo chính sách học bổng DHV 2026:\n" + "\n".join(f"- {part}" for part in parts)
 
 
 def _evidence_admission_scholarship_conditions_answer(
