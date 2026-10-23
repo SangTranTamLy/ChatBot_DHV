@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from src.config.settings import settings
 from .evidence_utils import (
@@ -161,7 +162,7 @@ def _evidence_overview_answer(
         target_year=target_year,
     )
     if intro_sentences:
-        return "Thông tin khái quát về DHV theo tài liệu đã xác minh:\n" + "\n".join(
+        return "Một vài thông tin về DHV:\n" + "\n".join(
             f"- {sentence}" for sentence in intro_sentences
         )
     sentences = _evidence_sentences(evidence)
@@ -270,7 +271,7 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
                         unique_milestones.append(m_clean)
                 if len(unique_milestones) > 1:
                     bullet_lines = "\n".join(f"- {m}" for m in unique_milestones)
-                    return f"Theo tài liệu đã xác minh của DHV, các mốc lịch sử chính của trường gồm:\n{bullet_lines}"
+                    return f"Các mốc lịch sử chính của DHV gồm:\n{bullet_lines}"
                 candidates = unique_milestones
             else:
                 candidates = matching("cho phep thanh lap", "doi ten thanh", "thanh lap truong")
@@ -326,7 +327,7 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
             if any(normalize_question(label) in normalize_question(item) for item in paragraphs)
         ]
         if len(actual_groups) == 5:
-            return "Theo tài liệu đã xác minh của DHV, cơ cấu tổ chức gồm:\n" + "\n".join(
+            return "Cơ cấu tổ chức của DHV gồm:\n" + "\n".join(
                 f"- {label}" for label in actual_groups
             )
     elif any(marker in normalized for marker in (
@@ -451,7 +452,7 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         collective_start = re.search(r"Các khoa của DHV", answer, re.IGNORECASE)
         if collective_start:
             answer = answer[collective_start.start() :]
-    return f"Theo tài liệu đã xác minh của DHV: {answer}"
+    return f"{answer}"
 
 
 def _evidence_directory_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -504,9 +505,154 @@ def _evidence_campus_list_answer(analysis: QueryAnalysis, evidence: Any) -> str 
             campuses.setdefault(number, re.sub(r"\s+", " ", match.group(1)).strip())
     if not campuses:
         return None
-    return "Các cơ sở của DHV theo tài liệu đã xác minh:\n" + "\n".join(
+    return "DHV có các cơ sở sau:\n" + "\n".join(
         f"- {campuses[number]}" for number in sorted(campuses)
     )
+
+
+def _evidence_contact_overview_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Render a broad school-contact request from the verified contact document."""
+    question = normalize_question(analysis.normalized_question)
+    if not any(marker in question for marker in (
+        "thong tin lien he", "cac kenh theo doi", "kenh theo doi cua truong",
+        "lien he cua truong", "lien he dhv",
+    )):
+        return None
+
+    chunks = [
+        chunk for chunk in (getattr(evidence, "chunks", ()) or ())
+        if chunk.metadata.get("category") in {"co_so_lien_he", "thong_tin_truong"}
+    ]
+    if not chunks:
+        return None
+    text = "\n".join(str(chunk.text or "") for chunk in chunks)
+    sections: list[str] = []
+
+    emails = list(dict.fromkeys(re.findall(
+        r"[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}", text,
+    )))
+    if emails:
+        sections.append("**Email:** " + " · ".join(emails))
+
+    phone = re.search(
+        r"(?:Tổng đài tư vấn tuyển sinh|Hotline|Tổng đài)\s*:\s*(0\d(?:[ .()-]*\d){8,9})",
+        text,
+        re.IGNORECASE,
+    )
+    if phone:
+        sections.append(
+            "**Tổng đài tư vấn tuyển sinh:** "
+            + re.sub(r"\s+", " ", phone.group(1)).strip()
+        )
+
+    if not sections:
+        return None
+    return "**Thông tin liên hệ DHV**\n\n" + "\n\n".join(sections)
+
+
+def _evidence_social_channels_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Render verified official web and social links for a channel question."""
+
+    from .query_analysis import _is_social_channel_question
+
+    question = normalize_question(analysis.normalized_question)
+    if analysis.intent != "HOI_CO_SO_LIEN_HE" or not _is_social_channel_question(question):
+        return None
+
+    channel_line = re.compile(
+        r"^\s*(TikTok|Zalo|YouTube|Facebook)\s*:\s*(https?://\S+)\s*$",
+        re.IGNORECASE,
+    )
+    channels: dict[str, str] = {}
+    school_website: str | None = None
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        if chunk.metadata.get("category") != "co_so_lien_he":
+            continue
+        candidate_url = str(chunk.metadata.get("source_url") or "").strip()
+        parsed_url = urlparse(candidate_url)
+        host = (parsed_url.hostname or "").lower().rstrip(".")
+        if (
+            parsed_url.scheme.lower() == "https"
+            and host in {"dhv.edu.vn", "www.dhv.edu.vn"}
+            and parsed_url.path in {"", "/"}
+            and not parsed_url.username
+        ):
+            school_website = candidate_url
+        for line in str(chunk.text or "").splitlines():
+            match = channel_line.match(line)
+            if match:
+                label = next(
+                    known for known in ("TikTok", "Zalo", "YouTube", "Facebook")
+                    if known.casefold() == match.group(1).casefold()
+                )
+                channels.setdefault(label, match.group(2).rstrip(".,;"))
+
+    if not channels:
+        return None
+    ordered_labels = ("Facebook", "TikTok", "YouTube", "Zalo")
+    links: list[str] = []
+    if school_website:
+        website_host = (urlparse(school_website).hostname or "dhv.edu.vn").removeprefix("www.")
+        links.append(f"- **Website DHV:** [{website_host}]({school_website})")
+    for label in ordered_labels:
+        url = channels.get(label)
+        if not url:
+            continue
+        parsed_url = urlparse(url)
+        path = parsed_url.path.strip("/")
+        if label in {"TikTok", "YouTube"}:
+            account_name = path.split("/")[0] or parsed_url.netloc
+        elif label == "Facebook":
+            account_name = path.split("/")[0] or parsed_url.netloc
+        else:
+            account_name = "/".join(part for part in (parsed_url.netloc, path) if part)
+        links.append(f"- **{label}:** [{account_name}]({url})")
+    return (
+        "Bạn có thể theo dõi thông tin chính thức của DHV tại các kênh sau:\n\n"
+        + "\n".join(links)
+    )
+
+
+def _evidence_contact_phone_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    question = analysis.normalized_question
+    if not any(term in question for term in ("hotline", "tong dai", "so dien thoai")):
+        return None
+    asks_advisor = bool(re.search(r"tu van vien", question))
+    asks_academic_unit = "khoa" in question or ("vien" in question and not asks_advisor)
+    if asks_academic_unit:
+        return None
+    numbers: list[str] = []
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        lines = chunk.text.splitlines()
+        if asks_advisor and chunk.metadata.get("category") == "ho_so":
+            advisor_numbers: list[str] = []
+            for index, line in enumerate(lines):
+                if "tu van vien" not in normalize_question(line):
+                    continue
+                text = line if re.search(r"\d", line) else " ".join(lines[index:index + 2])
+                for match in re.finditer(r"(?<!\d)0\d(?:[ .()-]*\d){8,9}(?!\d)", text):
+                    number = match.group().strip()
+                    if number not in advisor_numbers:
+                        advisor_numbers.append(number)
+            if advisor_numbers:
+                return "Số điện thoại tư vấn viên nhập học DHV: " + ", ".join(advisor_numbers) + "."
+            continue
+        if chunk.metadata.get("category") not in {"thong_tin_truong", "co_so_lien_he"}:
+            continue
+        for index, line in enumerate(lines):
+            if not re.search(r"\b(?:tong dai|hotline)\b", normalize_question(line)):
+                continue
+            text = line if re.search(r"\d", line) else " ".join(lines[index:index + 2])
+            for match in re.finditer(r"(?<!\d)0\d(?:[ .()-]*\d){8,9}(?!\d)", text):
+                number = match.group().strip()
+                if number not in numbers:
+                    numbers.append(number)
+    if asks_advisor and numbers:
+        return (
+            "Tài liệu DHV hiện chưa nêu số điện thoại riêng của tư vấn viên nhập học. "
+            "Bạn có thể liên hệ tổng đài tư vấn tuyển sinh: " + ", ".join(numbers) + "."
+        )
+    return "Tổng đài tư vấn tuyển sinh DHV: " + ", ".join(numbers) + "." if numbers else None
 
 
 def _evidence_contact_email_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -519,10 +665,14 @@ def _evidence_contact_email_answer(analysis: QueryAnalysis, evidence: Any) -> st
     if not emails:
         return None
     prefix = ""
-    if re.search(r"\b(?:khoa|vien)\b", analysis.normalized_question):
+    asks_advisor = "tu van vien" in analysis.normalized_question
+    asks_academic_unit = "khoa" in analysis.normalized_question or (
+        "vien" in analysis.normalized_question and not asks_advisor
+    )
+    if asks_academic_unit:
         if any(email.casefold() not in {"info@dhv.edu.vn", "media@dhv.edu.vn"} for email in emails):
             return None
-        prefix = "Dữ liệu được truy xuất chưa xác nhận email riêng của khoa/viện bạn hỏi. "
+        prefix = "Mình chưa có email riêng của khoa/viện bạn hỏi. "
     return prefix + "Email liên hệ chung của DHV: " + ", ".join(emails) + "."
 
 

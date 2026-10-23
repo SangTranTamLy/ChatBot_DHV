@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import unittest
 from collections import Counter
+from unittest.mock import patch
 
-from src.chatbot.evidence import build_evidence
+from src.chatbot.catalog_formatters import _evidence_catalog_answer
+from src.chatbot.evidence import EvidenceBundle, build_evidence
 from src.chatbot.output_validator import validate_model_answer
 from src.chatbot.rag_chain import ask_chatbot
-from src.chatbot.query_analysis import analyze_question
+from src.chatbot.query_analysis import ConversationState, analyze_question
 
 from tests.test_task_f import (
     DHV_PROGRAM_PARENTS_2026,
@@ -47,6 +49,40 @@ class TaskGIntentTests(unittest.TestCase):
         analysis = analyze_question("Liệt kê tất cả các ngành của trường")
         self.assertEqual(analysis.intent, "DANH_SACH_NGANH")
         self.assertIsNone(analysis.entities["catalog_operation"])
+
+    def test_major_list_uses_verified_catalog_when_retrieval_returns_only_three_rows(self) -> None:
+        rows = [(f"Ngành {index:02d}", f"{index:07d}") for index in range(1, 21)]
+        evidence = EvidenceBundle(
+            chunks=(),
+            context="",
+            sources=({"title": "Partial result", "url": "https://tuyensinh.dhv.edu.vn/"},),
+            score_facts=tuple(
+                {
+                    "major_name": name,
+                    "major_code": code,
+                    "score_type": "major_catalog",
+                    "category": "nganh_dao_tao",
+                }
+                for name, code in rows[:3]
+            ),
+        )
+
+        with patch(
+            "src.chatbot.catalog_formatters._verified_major_catalog",
+            return_value=(rows, {"title": "Verified catalog", "url": "https://tuyensinh.dhv.edu.vn/"}),
+        ):
+            result = _evidence_catalog_answer(
+                analyze_question("DHV có những ngành đào tạo nào?"),
+                evidence,
+                ConversationState(),
+            )
+
+        self.assertIsNotNone(result)
+        answer = str(result["answer"])
+        listed_rows = [line for line in answer.splitlines() if line[:1].isdigit()]
+        self.assertEqual(len(listed_rows), 20)
+        self.assertIn("Ngành 20 — mã ngành 0000020", answer)
+        self.assertEqual(result["sources"][0]["title"], "Verified catalog")
 
     def test_same_name_major_and_program_keep_their_semantics(self) -> None:
         for major, program in (

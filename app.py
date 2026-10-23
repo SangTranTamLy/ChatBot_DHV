@@ -6,116 +6,33 @@ Giao diện này chỉ có một điểm giao tiếp duy nhất với backend: `
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
+from datetime import date, datetime, timedelta
+from html import escape
+from pathlib import Path
 import re
 from typing import Any
 
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.chatbot.chat_service import ask_chatbot
-from src.chatbot.query_analysis import ConversationState
+from src.ui_auth import init_auth, logout, open_auth, render_auth_dialog
 
 
 load_dotenv()
 
-from src.chatbot.warmup import start_background_warmup, wait_for_warmup
-
-# Pre-warm SentenceTransformer and ChromaDB in daemon background thread immediately
-start_background_warmup()
-
 st.set_page_config(
     page_title="Chatbot tuyển sinh DHV",
     page_icon=":material/school:",
-    layout="centered",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 
 def _inject_chat_styles() -> None:
-    """Giữ tin nhắn phẳng; chỉ bảng được nhóm trong container có khung."""
-
-    st.html(
-        """
-        <style>
-        [data-testid="stChatMessage"] {
-            width: 100%;
-            padding: 0.42rem 0;
-            gap: 0.55rem;
-            background: transparent;
-            border: none;
-            box-shadow: none;
-        }
-        [data-testid="stChatMessage"] > [data-testid="stChatMessageContent"] {
-            max-width: 84%;
-            min-width: 0;
-            padding: 0.2rem 0;
-            border: none;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
-            overflow-wrap: anywhere;
-        }
-        [data-testid="stChatMessage"]:has(> [data-testid="stChatMessageContent"][aria-label*="user"]) {
-            flex-direction: row;
-        }
-        [data-testid="stChatMessageContent"][aria-label*="user"] {
-            max-width: 72%;
-            margin-left: auto;
-            padding: 0.2rem 0;
-            border: none;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
-        }
-        [data-testid="stChatMessageContent"][aria-label*="assistant"] {
-            padding: 0.2rem 0;
-            border: none;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] {
-            line-height: 1.62;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p:last-child {
-            margin-bottom: 0;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] ul,
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] ol {
-            margin-top: 0.35rem;
-            margin-bottom: 0.35rem;
-            padding-left: 1.25rem;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] li {
-            margin: 0.28rem 0;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] table {
-            display: block;
-            max-width: 100%;
-            overflow-x: auto;
-            white-space: nowrap;
-            border-collapse: collapse;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] th,
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] td {
-            padding: 0.55rem 0.75rem;
-            border: 1px solid #d9e2ec;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] th {
-            background: #f5f7fa;
-            font-weight: 600;
-        }
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] h1,
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] h2,
-        [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] h3 {
-            margin-top: 0.25rem;
-            margin-bottom: 0.55rem;
-        }
-        [data-testid="stChatMessage"] + [data-testid="stCaptionContainer"] {
-            margin-left: 2.8rem;
-        }
-        </style>
-        """
-    )
+    """Apply the DHV chat layout without rendering user content as HTML."""
+    css = Path(__file__).parent / "assets" / "chat.css"
+    st.html("<style>" + css.read_text(encoding="utf-8") + "</style>")
 
 
 DISCLAIMER = (
@@ -129,11 +46,11 @@ PRIVACY_REMINDER = (
 )
 GENERIC_ERROR_ANSWER = "Xin lỗi, tôi chưa thể xử lý câu hỏi này lúc này. Bạn vui lòng thử lại sau."
 STARTER_QUESTIONS = {
-    "Chỉ tiêu tuyển sinh": "Chỉ tiêu tuyển sinh DHV năm 2026 là bao nhiêu?",
-    "Học phí": "Học phí DHV năm 2026 là bao nhiêu?",
-    "Điểm chuẩn 2026": "Điểm trúng tuyển DHV năm 2026 theo các phương thức là bao nhiêu?",
-    "Cách thức nộp hồ sơ": "Đăng ký xét tuyển DHV năm 2026 như thế nào?",
+    "Ngành đào tạo": (":material/menu_book:", "DHV có những ngành đào tạo nào?"),
+    "Học phí & học bổng": (":material/payments:", "Học phí và học bổng DHV năm 2026 như thế nào?"),
+    "Hồ sơ nhập học": (":material/description:", "Hồ sơ nhập học DHV cần những giấy tờ gì?"),
 }
+
 
 KNOWN_STATUSES = frozenset(
     {"ok", "clarification", "no_data", "out_of_scope", "ollama_offline", "vector_db_error", "error"}
@@ -164,10 +81,48 @@ def _is_direct_website_result(result: Mapping[str, Any]) -> bool:
     return isinstance(entities, Mapping) and bool(entities.get("website_request"))
 
 
+def _is_verified_contact_channel_result(result: Mapping[str, Any]) -> bool:
+    """Allow social URLs only for a successful answer backed by the contact file."""
+    if result.get("status") != "ok":
+        return False
+    trace = result.get("trace")
+    if not isinstance(trace, Mapping) or trace.get("intent") != "HOI_CO_SO_LIEN_HE":
+        return False
+    selection = trace.get("evidence_selection")
+    if not isinstance(selection, Mapping):
+        return False
+    selected = selection.get("selected")
+    return isinstance(selected, list) and any(
+        isinstance(item, Mapping)
+        and item.get("selected") is True
+        and item.get("category") == "co_so_lien_he"
+        for item in selected
+    )
+
+
 def _init_session_state() -> None:
     """Khởi tạo toàn bộ trạng thái chat của người dùng tại một nơi."""
 
+    user = st.session_state.get("auth_user")
+    owner = user["email"].strip().casefold() if user else None
+    sessions = st.session_state.setdefault("account_chat_sessions", {})
+    chat_keys = ("messages", "chats", "active_chat", "next_chat", "conversation_state", "state")
+    previous_owner = st.session_state.get("chat_owner")
+    if "chat_owner" in st.session_state and previous_owner != owner:
+        if previous_owner:
+            sessions[previous_owner] = {key: deepcopy(st.session_state[key])
+                                        for key in chat_keys if key in st.session_state}
+        for key in (*chat_keys, "chat_input"):
+            st.session_state.pop(key, None)
+        if owner in sessions:
+            st.session_state.update(deepcopy(sessions[owner]))
+    st.session_state.chat_owner = owner
     st.session_state.setdefault("messages", [])
+    st.session_state.setdefault("chats", {})
+    if not owner:
+        st.session_state.chats = {}
+    st.session_state.setdefault("active_chat", 0)
+    st.session_state.setdefault("next_chat", 0)
     initial_state = ConversationState().to_dict()
     st.session_state.setdefault("conversation_state", dict(initial_state))
     # Giữ đồng bộ cả hai tên biến dùng cho service để các câu trả lời làm rõ (clarification)
@@ -189,10 +144,11 @@ def _normalise_result(result: object) -> dict[str, object]:
 
     answer = result.get("answer")
     allow_direct_website_url = _is_direct_website_result(result)
+    allow_contact_channel_urls = _is_verified_contact_channel_result(result)
     if not isinstance(answer, str) or not answer.strip():
         answer = GENERIC_ERROR_ANSWER
     else:
-        if not allow_direct_website_url:
+        if not (allow_direct_website_url or allow_contact_channel_urls):
             answer = _strip_display_urls(answer)
         if not answer:
             answer = GENERIC_ERROR_ANSWER
@@ -203,6 +159,8 @@ def _normalise_result(result: object) -> dict[str, object]:
     }
     if allow_direct_website_url:
         normalised["allow_direct_website_url"] = True
+    if allow_contact_channel_urls:
+        normalised["allow_contact_channel_urls"] = True
     return normalised
 
 
@@ -214,6 +172,7 @@ def _ask_question(question: str) -> dict[str, object]:
         result = ask_chatbot(
             question,
             conversation_state=st.session_state.get("conversation_state"),
+            conversation_history=st.session_state.get("messages", []),
         )
         next_state = None
         if isinstance(result, Mapping):
@@ -232,6 +191,40 @@ def _ask_question(question: str) -> dict[str, object]:
 
 
 _TABLE_SEPARATOR_RE = re.compile(r"^:?-{3,}:?$")
+_MAJOR_LIST_ROW_RE = re.compile(
+    r"^\s*(\d+)[.)]\s+(.+?)\s+[—–-]\s+mã ngành\s+(\d{7})\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _format_major_list_table(answer: str) -> str:
+    """Present existing name/code lists as tables without changing stored answers."""
+    lines = answer.splitlines()
+    output: list[str] = []
+    index = 0
+    while index < len(lines):
+        if not _MAJOR_LIST_ROW_RE.fullmatch(lines[index]):
+            output.append(lines[index])
+            index += 1
+            continue
+        end = index
+        rows = []
+        while end < len(lines):
+            match = _MAJOR_LIST_ROW_RE.fullmatch(lines[end])
+            if match:
+                rows.append(match.groups())
+            elif lines[end].strip():
+                break
+            end += 1
+        if len(rows) < 2:
+            output.extend(lines[index:end])
+        else:
+            output.extend(["", "| STT | Ngành đào tạo | Mã ngành |", "| ---: | --- | --- |"])
+            output.extend(f"| {number} | {name.replace('|', '&#124;')} | {code} |"
+                          for number, name, code in rows)
+            output.append("")
+        index = end
+    return "\n".join(output)
 
 
 def _is_markdown_table_separator(line: str) -> bool:
@@ -267,25 +260,24 @@ def _split_markdown_table(answer: str) -> tuple[str, str | None, str]:
 def _render_answer_markdown(answer: str) -> None:
     """Render text directly and isolate a Markdown table when one is present."""
 
-    before, table, after = _split_markdown_table(answer)
+    before, table, after = _split_markdown_table(_format_major_list_table(answer))
     if before:
         st.markdown(before, unsafe_allow_html=False)
     if table:
-        with st.container(border=True):
-            st.markdown(table, unsafe_allow_html=False)
+        st.markdown(table, unsafe_allow_html=False)
     if after:
         st.markdown(after, unsafe_allow_html=False)
 
 
 def _render_assistant_content(message: Mapping[str, Any]) -> None:
-    """Hiển thị mọi trạng thái assistant bằng nội dung phẳng, riêng bảng có khung."""
+    """Hiển thị nội dung trả lời an toàn bên trong khung tin nhắn."""
 
     answer = str(
         message.get("content")
         or message.get("answer")
         or GENERIC_ERROR_ANSWER
     )
-    if not message.get("allow_direct_website_url"):
+    if not (message.get("allow_direct_website_url") or message.get("allow_contact_channel_urls")):
         answer = _strip_display_urls(answer)
     if not answer:
         answer = GENERIC_ERROR_ANSWER
@@ -312,23 +304,111 @@ def _render_chat_history() -> None:
                 _render_assistant_content(message)
 
 
-def _render_welcome() -> None:
-    """Hiển thị màn hình chào mừng khi cuộc hội thoại chưa có tin nhắn."""
-
+def _render_welcome() -> str | None:
+    """Show conversation starters only while the current chat is empty."""
     if st.session_state.messages:
-        return
-
-    with st.chat_message("assistant", avatar=":material/school:"):
-        st.markdown(
-            "Xin chào! Tôi là ChatBot DHV – Trợ lý Tuyển sinh Trường Đại học Hùng Vương TP.HCM.\n\n"
-            "Tôi có thể giải đáp nhanh cho bạn về:\n\n"
-            "- Phương thức & điều kiện xét tuyển\n"
-            "- Chỉ tiêu & ngành đào tạo\n"
-            "- Hồ sơ, lịch trình & thủ tục nhập học\n\n"
-            "Bạn đang cần hỗ trợ nội dung nào?",
-            unsafe_allow_html=False,
+        return None
+    with st.container(key="welcome"):
+        st.markdown(":material/school:")
+        user = st.session_state.auth_user
+        first_name = user["name"].split()[-1] if user else "bạn"
+        st.html(
+            '<h1 class="dhv-greeting">'
+            f'<span>Chào {escape(first_name)},</span>'
+            '<span>mình có thể giúp gì?</span></h1>'
         )
-        st.caption(DISCLAIMER)
+        st.caption("Cùng tìm hiểu hành trình trở thành sinh viên DHV.")
+    with st.container(key="starters"):
+        st.markdown("**Bạn có thể bắt đầu với**")
+        for index, (label, (icon, question)) in enumerate(STARTER_QUESTIONS.items()):
+            with st.container(key=f"starter_row_{index}", horizontal=True, vertical_alignment="center"):
+                if st.button(question, icon=icon, key=f"starter_{index}",
+                             type="tertiary", width="stretch"):
+                    return question
+                st.markdown(":material/arrow_forward:")
+        st.caption("Hoặc đặt câu hỏi theo cách của bạn.")
+    return None
+
+
+def _save_current_chat() -> None:
+    """Keep conversations local to this browser session, with their own context."""
+    if st.session_state.auth_user and st.session_state.messages:
+        st.session_state.chats[st.session_state.active_chat] = {
+            "messages": deepcopy(st.session_state.messages),
+            "conversation_state": deepcopy(st.session_state.conversation_state),
+            "updated_at": st.session_state.chats.get(st.session_state.active_chat, {}).get("updated_at"),
+        }
+
+
+def _new_chat() -> None:
+    _save_current_chat()
+    st.session_state.next_chat += 1
+    st.session_state.active_chat = st.session_state.next_chat
+    st.session_state.messages = []
+    state = ConversationState().to_dict()
+    st.session_state.conversation_state = state
+    st.session_state.state = dict(state)
+
+
+def _open_chat(chat_id: int) -> None:
+    if not st.session_state.auth_user:
+        return
+    _save_current_chat()
+    saved = st.session_state.chats[chat_id]
+    st.session_state.active_chat = chat_id
+    st.session_state.messages = deepcopy(saved["messages"])
+    st.session_state.conversation_state = deepcopy(saved["conversation_state"])
+    st.session_state.state = deepcopy(saved["conversation_state"])
+
+
+def _render_sidebar() -> None:
+    with st.sidebar:
+        with st.container(key="brand"):
+            st.markdown("## :material/school: DHV")
+            st.caption("TƯ VẤN TUYỂN SINH")
+        st.button("Cuộc trò chuyện mới", icon=":material/add:", type="primary",
+                  width="stretch", key="new_chat", on_click=_new_chat)
+        _save_current_chat()
+        with st.container(key="history_list"):
+            st.caption("LỊCH SỬ TRÒ CHUYỆN")
+            groups = {"Hôm nay": [], "Hôm qua": [], "Trước đó": []}
+            for chat_id, chat in st.session_state.chats.items():
+                stamp = chat.get("updated_at")
+                day = date.fromisoformat(stamp[:10]) if stamp else None
+                group = "Hôm nay" if day == date.today() else "Hôm qua" if day == date.today() - timedelta(days=1) else "Trước đó"
+                groups[group].append((chat_id, chat))
+            for group, chats in groups.items():
+                if not chats:
+                    continue
+                st.caption(group)
+                for chat_id, chat in sorted(chats, key=lambda item: item[1].get("updated_at") or "", reverse=True):
+                    title = next((row["content"] for row in chat["messages"] if row.get("role") == "user"), "Cuộc trò chuyện")
+                    with st.container(key=f"history_row_{'active' if chat_id == st.session_state.active_chat else 'saved'}_{chat_id}"):
+                        st.button(title[:80], icon=":material/chat_bubble_outline:", type="tertiary",
+                                  help=title, width="stretch", key=f"history_{chat_id}", on_click=_open_chat, args=(chat_id,))
+            if not st.session_state.auth_user:
+                st.caption("Bạn có thể trò chuyện ngay. Đăng nhập để lưu lịch sử.")
+            elif not st.session_state.chats:
+                st.caption("Các cuộc trò chuyện đã lưu sẽ xuất hiện ở đây.")
+        with st.container(key="sidebar_footer"):
+            with st.expander("Trợ giúp", icon=":material/help_outline:"):
+                st.caption("Chọn một chủ đề hoặc nhập câu hỏi để bắt đầu. Lịch sử chỉ được giữ trong phiên đang mở.")
+                st.caption(DISCLAIMER)
+                st.caption(PRIVACY_REMINDER)
+            if st.session_state.auth_user:
+                name = st.session_state.auth_user["name"]
+                initials = "".join(part[0] for part in name.split()[-2:]).upper()
+                with st.container(key="account_row"):
+                    avatar, identity, menu = st.columns([0.2, 0.62, 0.18], gap="small", vertical_alignment="center")
+                    with avatar:
+                        st.html(f'<div class="dhv-account-avatar" aria-hidden="true">{escape(initials)}</div>')
+                    with identity:
+                        st.text(name)
+                        st.caption("Tài khoản cá nhân")
+                    with menu:
+                        with st.popover("Tùy chọn tài khoản", key="account_menu", type="tertiary"):
+                            st.button("Đăng xuất", icon=":material/logout:", key="logout", on_click=logout, width="stretch")
+
 
 def _record_and_render_exchange(question: str) -> None:
     """Lưu trữ và hiển thị một lượt hỏi đáp, bao gồm xử lý lỗi service an toàn."""
@@ -349,43 +429,55 @@ def _record_and_render_exchange(question: str) -> None:
     }
     if result.get("allow_direct_website_url"):
         message["allow_direct_website_url"] = True
+    if result.get("allow_contact_channel_urls"):
+        message["allow_contact_channel_urls"] = True
     st.session_state.messages.append(message)
+    if st.session_state.auth_user:
+        _save_current_chat()
+        st.session_state.chats[st.session_state.active_chat]["updated_at"] = datetime.now().isoformat(timespec="seconds")
 
 
-_init_session_state()
 _inject_chat_styles()
+init_auth()
+if st.session_state.pop("auth_login_notice", False):
+    st.toast("Đăng nhập thành công.", icon=":material/check_circle:", duration=4)
 
-st.title("CHATBOT TƯ VẤN TUYỂN SINH DHV", icon=":material/school:")
-st.caption("Trợ lý tra cứu thông tin tuyển sinh Trường Đại học Hùng Vương TP.HCM")
+from src.chatbot.chat_service import ask_chatbot
+from src.chatbot.query_analysis import ConversationState
+from src.chatbot.warmup import start_background_warmup, wait_for_warmup
 
-with st.sidebar:
-    st.subheader("Lưu ý")
-    st.info(PRIVACY_REMINDER, icon=":material/lock:")
-    st.caption("Phạm vi: tuyển sinh DHV, ưu tiên dữ liệu đã kiểm chứng năm 2026.")
+start_background_warmup()
+_init_session_state()
+_render_sidebar()
+
+with st.container(key="topbar", horizontal=True, vertical_alignment="center", horizontal_alignment="distribute"):
+    st.markdown(":material/school: **Trợ lý tuyển sinh DHV**")
+    if st.session_state.auth_user:
+        st.caption("Trường Đại học Hùng Vương TP.HCM")
+    else:
+        st.button("Đăng nhập", icon=":material/person:", key="open_login", on_click=open_auth)
 
 typed_question = st.chat_input(
-    "Nhập câu hỏi về tuyển sinh DHV...",
+    "Nhắn tin cho trợ lý DHV…",
     key="chat_input",
+    submit_mode="disable",
 )
 has_typed_question = isinstance(typed_question, str) and bool(typed_question.strip())
 
-selected_starter = None
-if not st.session_state.messages and not has_typed_question:
-    selected_starter = st.pills(
-        "Bạn có thể hỏi",
-        options=list(STARTER_QUESTIONS),
-        selection_mode="single",
-        key="starter_question",
-        label_visibility="collapsed",
-        wrap=True,
-    )
-    if not selected_starter:
-        _render_welcome()
-
+selected_starter = _render_welcome() if not has_typed_question else None
 _render_chat_history()
 
 if has_typed_question:
     _record_and_render_exchange(typed_question.strip())
-elif selected_starter in STARTER_QUESTIONS:
-    _record_and_render_exchange(STARTER_QUESTIONS[selected_starter])
+    _save_current_chat()
     st.rerun()
+elif selected_starter:
+    _record_and_render_exchange(selected_starter)
+    _save_current_chat()
+    st.rerun()
+
+with st.container(key="chat_note"):
+    st.caption("Thông tin tư vấn mang tính tham khảo. Bạn có thể kiểm tra lại qua kênh tuyển sinh chính thức của trường.")
+
+if st.session_state.auth_view and not st.session_state.auth_user:
+    render_auth_dialog()

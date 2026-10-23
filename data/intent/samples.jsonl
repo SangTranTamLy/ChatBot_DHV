@@ -178,3 +178,33 @@
 {"id":"oos_08","text":"Kể cho tôi một câu chuyện về ngành du lịch","intent":"OUT_OF_SCOPE"}
 {"id":"oos_09","text":"Viết thư xin việc qua email","intent":"OUT_OF_SCOPE"}
 {"id":"oos_10","text":"Công thức nấu bún thế nào?","intent":"OUT_OF_SCOPE"}
+{"id": "focus_hoi_ho_so_1", "intent": "HOI_HO_SO", "text": "Nhập học thì em phải mang những giấy tờ nào?"}
+{"id": "focus_hoi_ho_so_2", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học cần bản gốc hay bản sao?"}
+{"id": "focus_hoi_ho_so_3", "intent": "HOI_HO_SO", "text": "Em cần chuẩn bị gì trong bộ hồ sơ nhập học?"}
+{"id": "focus_hoi_ho_so_4", "intent": "HOI_HO_SO", "text": "Cần mang học bạ khi làm hồ sơ nhập học không?"}
+{"id": "focus_hoi_ho_so_5", "intent": "HOI_HO_SO", "text": "Giấy tờ nhập học có cần công chứng không?"}
+{"id": "focus_hoi_nhap_hoc_1", "intent": "HOI_NHAP_HOC", "text": "Nộp hồ sơ lúc nào trong ngày?"}
+{"id": "focus_hoi_nhap_hoc_2", "intent": "HOI_NHAP_HOC", "text": "Trường nhận hồ sơ nhập học vào giờ nào?"}
+{"id": "focus_hoi_nhap_hoc_3", "intent": "HOI_NHAP_HOC", "text": "Chủ nhật em đến nộp hồ sơ nhập học được không?"}
+{"id": "focus_hoi_nhap_hoc_4", "intent": "HOI_NHAP_HOC", "text": "Em nộp hồ sơ nhập học qua mạng được không?"}
+{"id": "focus_hoi_nhap_hoc_5", "intent": "HOI_NHAP_HOC", "text": "Nộp hồ sơ nhập học ở địa chỉ nào vậy?"}
+{"id": "focus_hoi_lich_tuyen_sinh_1", "intent": "HOI_LICH_TUYEN_SINH", "text": "Hạn cuối nộp hồ sơ nhập học là ngày nào?"}
+{"id": "focus_hoi_lich_tuyen_sinh_2", "intent": "HOI_LICH_TUYEN_SINH", "text": "Thời gian xác nhận nhập học trên cổng Bộ khi nào?"}
+{"id": "focus_hoi_lich_tuyen_sinh_3", "intent": "HOI_LICH_TUYEN_SINH", "text": "Năm nay lịch đăng ký xét tuyển ra sao?"}
+{"id": "focus_hoi_lich_tuyen_sinh_4", "intent": "HOI_LICH_TUYEN_SINH", "text": "Đợt nhập học kéo dài đến ngày nào?"}
+{"id": "focus_hoi_lich_tuyen_sinh_5", "intent": "HOI_LICH_TUYEN_SINH", "text": "Khi nào kết thúc đăng ký xét tuyển chính thức?"}
+{"id": "focus_hoi_co_so_lien_he_1", "intent": "HOI_CO_SO_LIEN_HE", "text": "Cho em xin hotline tuyển sinh của DHV"}
+{"id": "focus_hoi_co_so_lien_he_2", "intent": "HOI_CO_SO_LIEN_HE", "text": "Email hỗ trợ của trường là gì vậy?"}
+{"id": "focus_hoi_co_so_lien_he_3", "intent": "HOI_CO_SO_LIEN_HE", "text": "Trường có tất cả những cơ sở nào?"}
+{"id": "focus_hoi_co_so_lien_he_4", "intent": "HOI_CO_SO_LIEN_HE", "text": "Em muốn tìm fanpage chính thức của trường"}
+{"id": "focus_hoi_co_so_lien_he_5", "intent": "HOI_CO_SO_LIEN_HE", "text": "Số điện thoại phòng tuyển sinh DHV là số nào?"}
+{"id": "focus_hoi_hoc_phi_1", "intent": "HOI_HOC_PHI", "text": "Học phí một tín chỉ hiện là bao nhiêu?"}
+{"id": "focus_hoi_hoc_phi_2", "intent": "HOI_HOC_PHI", "text": "Tổng tiền nhập học có gồm kiểm tra tiếng Anh không?"}
+{"id": "focus_hoi_hoc_phi_3", "intent": "HOI_HOC_PHI", "text": "Học phí HKI chưa trừ học bổng bao nhiêu?"}
+{"id": "focus_hoi_hoc_phi_4", "intent": "HOI_HOC_PHI", "text": "Nhập học phải đóng những khoản tiền nào?"}
+{"id": "focus_hoi_hoc_phi_5", "intent": "HOI_HOC_PHI", "text": "Mức học phí năm 2024 của trường bao nhiêu?"}
+{"id": "focus_hoi_hoc_bong_1", "intent": "HOI_HOC_BONG", "text": "Điều kiện để được học bổng đầu vào là gì?"}
+{"id": "focus_hoi_hoc_bong_2", "intent": "HOI_HOC_BONG", "text": "Có được nhận hai học bổng cùng lúc không?"}
+{"id": "focus_hoi_hoc_bong_3", "intent": "HOI_HOC_BONG", "text": "Học bổng nhóm bạn được giảm vào học kỳ nào?"}
+{"id": "focus_hoi_hoc_bong_4", "intent": "HOI_HOC_BONG", "text": "Em cần hồ sơ gì để xin miễn giảm học phí?"}
+{"id": "focus_hoi_hoc_bong_5", "intent": "HOI_HOC_BONG", "text": "Chương trình UniBridge hỗ trợ như thế nào?"}

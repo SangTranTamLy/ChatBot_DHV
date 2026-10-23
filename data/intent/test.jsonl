@@ -10,22 +10,28 @@
 {"id": "dschuong_07", "intent": "DANH_SACH_CHUONG_TRINH", "text": "Ngành CNTT có những chương trình nào?"}
 {"id": "dsnganh_08", "intent": "DANH_SACH_NGANH", "text": "Liệt kê ngành học năm 2026"}
 {"id": "dsnganh_10", "intent": "DANH_SACH_NGANH", "text": "DHV có bao nhiêu ngành đào tạo?"}
-{"id": "hocbong_02", "intent": "HOI_HOC_BONG", "text": "Điều kiện nhận học bổng tuyển sinh"}
-{"id": "hocbong_07", "intent": "HOI_HOC_BONG", "text": "Học bổng dành cho tân sinh viên"}
-{"id": "hocphi_05", "intent": "HOI_HOC_PHI", "text": "Học phí học kỳ một"}
-{"id": "hocphi_08", "intent": "HOI_HOC_PHI", "text": "Mức thu học phí học kỳ I"}
-{"id": "hoso_05", "intent": "HOI_HO_SO", "text": "Đăng ký nhập học cần hồ sơ gì?"}
-{"id": "hoso_10", "intent": "HOI_HO_SO", "text": "Giấy tờ làm thủ tục nhập học"}
-{"id": "lich_03", "intent": "HOI_LICH_TUYEN_SINH", "text": "Hạn xét tuyển khi nào?"}
-{"id": "lich_04", "intent": "HOI_LICH_TUYEN_SINH", "text": "Thời gian tuyển sinh DHV"}
-{"id": "lienhe_06", "intent": "HOI_CO_SO_LIEN_HE", "text": "Hotline tư vấn tuyển sinh là bao nhiêu?"}
+{"id": "focus_hoi_co_so_lien_he_2", "intent": "HOI_CO_SO_LIEN_HE", "text": "Email hỗ trợ của trường là gì vậy?"}
+{"id": "focus_hoi_ho_so_1", "intent": "HOI_HO_SO", "text": "Nhập học thì em phải mang những giấy tờ nào?"}
+{"id": "focus_hoi_hoc_bong_2", "intent": "HOI_HOC_BONG", "text": "Có được nhận hai học bổng cùng lúc không?"}
+{"id": "focus_hoi_hoc_phi_5", "intent": "HOI_HOC_PHI", "text": "Mức học phí năm 2024 của trường bao nhiêu?"}
+{"id": "focus_hoi_lich_tuyen_sinh_1", "intent": "HOI_LICH_TUYEN_SINH", "text": "Hạn cuối nộp hồ sơ nhập học là ngày nào?"}
+{"id": "focus_hoi_lich_tuyen_sinh_5", "intent": "HOI_LICH_TUYEN_SINH", "text": "Khi nào kết thúc đăng ký xét tuyển chính thức?"}
+{"id": "focus_hoi_nhap_hoc_5", "intent": "HOI_NHAP_HOC", "text": "Nộp hồ sơ nhập học ở địa chỉ nào vậy?"}
+{"id": "hocbong_08", "intent": "HOI_HOC_BONG", "text": "Thông tin học bổng DHV"}
+{"id": "hocbong_10", "intent": "HOI_HOC_BONG", "text": "Học bổng đầu vào DHV"}
+{"id": "hocphi_06", "intent": "HOI_HOC_PHI", "text": "Học phí một kỳ tại DHV"}
+{"id": "hocphi_07", "intent": "HOI_HOC_PHI", "text": "Năm 2026 học phí bao nhiêu tiền?"}
+{"id": "hoso_08", "intent": "HOI_HO_SO", "text": "Thủ tục và hồ sơ cần nộp"}
+{"id": "hoso_09", "intent": "HOI_HO_SO", "text": "Hồ sơ để xác nhận nhập học"}
+{"id": "lich_02", "intent": "HOI_LICH_TUYEN_SINH", "text": "Các mốc xét tuyển của trường"}
 {"id": "lienhe_08", "intent": "HOI_CO_SO_LIEN_HE", "text": "Cho tôi web tuyển sinh của trường"}
+{"id": "lienhe_10", "intent": "HOI_CO_SO_LIEN_HE", "text": "Đường dẫn trang tuyển sinh chính thức DHV"}
 {"id": "nganh_05", "intent": "HOI_NGANH", "text": "Thông tin về ngành Luật Kinh tế"}
 {"id": "nganh_07", "intent": "HOI_NGANH", "text": "Ngành nào có mã ngành 7480201?"}
 {"id": "nguong_02", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn CNTT năm 2026"}
 {"id": "nguong_03", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngưỡng đảm bảo chất lượng ngành Luật"}
 {"id": "nhaphoc_01", "intent": "HOI_NHAP_HOC", "text": "Xác nhận nhập học DHV ở đâu?"}
-{"id": "nhaphoc_02", "intent": "HOI_NHAP_HOC", "text": "Hướng dẫn nhập học trực tuyến"}
+{"id": "nhaphoc_03", "intent": "HOI_NHAP_HOC", "text": "Cách xác nhận nhập học"}
 {"id": "oos_07", "intent": "OUT_OF_SCOPE", "text": "Tôi muốn hỏi tuyển sinh của một trường khác"}
 {"id": "oos_09", "intent": "OUT_OF_SCOPE", "text": "Viết thư xin việc qua email"}
 {"id": "phuongthuc_06", "intent": "HOI_PHUONG_THUC_XET_TUYEN", "text": "DHV có các phương thức tuyển sinh nào?"}

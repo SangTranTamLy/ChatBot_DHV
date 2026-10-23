@@ -481,6 +481,131 @@ def _catalog_programs(
     return programs
 
 
+def _major_catalog_from_layout_tables(
+    pages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Recover a full major catalogue from split/merged PDF table columns.
+
+    Some DHV tables have merged cells. The PDF layout reader can place a major
+    name in either the unnamed first column or the labelled major column, and
+    may put the associated code on a later visual row. In that layout, pairing
+    cells from a single extracted row silently drops most majors. Read the
+    ordered major-name column and ordered seven-digit codes independently,
+    then pair them only when the source's declared catalogue count confirms
+    the complete mapping.
+    """
+
+    table_pages: set[int] = set()
+    names: list[str] = []
+    programs_by_name: dict[str, list[dict[str, Any]]] = {}
+    active_major = ""
+
+    for page in pages:
+        page_number = int(page.get("page", page.get("page_number", 1)) or 1)
+        for table in page.get("tables", []) or []:
+            if not isinstance(table, Mapping):
+                continue
+            raw_headers = table.get("headers")
+            if not isinstance(raw_headers, list):
+                continue
+            headers = [_table_header_text(value) for value in raw_headers]
+            major_index = _table_column(headers, "ten nganh")
+            program_index = _table_column(headers, "chuong trinh")
+            if major_index is None or program_index is None:
+                continue
+            table_pages.add(page_number)
+
+            for row in table.get("rows", []) or []:
+                if not isinstance(row, Mapping):
+                    continue
+                values = _table_values(row)
+                label = ""
+                for column_index in dict.fromkeys((0, major_index)):
+                    if column_index >= len(values):
+                        continue
+                    candidate = " ".join(values[column_index].split()).strip(" •*-")
+                    if (
+                        candidate
+                        and not _MAJOR_CODE_RE.fullmatch(candidate)
+                        and len(candidate.split()) <= 12
+                    ):
+                        label = candidate
+                        break
+                if label:
+                    active_major = label
+                    if label not in programs_by_name:
+                        names.append(label)
+                        programs_by_name[label] = []
+
+                if not active_major:
+                    continue
+                # The extracted table may shift a merged program column one
+                # cell left on some rows. Collect only those two adjacent
+                # columns, and deduplicate while preserving document order.
+                for column_index in dict.fromkeys((program_index - 1, program_index)):
+                    if not 0 <= column_index < len(values):
+                        continue
+                    for program_name in _program_names_from_cell(values[column_index]):
+                        program_name = program_name.strip(" •*-")
+                        if not program_name or program_name in {
+                            item["program_name"] for item in programs_by_name[active_major]
+                        }:
+                            continue
+                        programs_by_name[active_major].append(
+                            {
+                                "program_name": program_name,
+                                "parent_major": active_major,
+                                "page": page_number,
+                            }
+                        )
+
+    if not names or not table_pages:
+        return []
+
+    lines = _all_lines(pages)
+    code_positions = [
+        index
+        for index, (page_number, line) in enumerate(lines)
+        if page_number in table_pages and _MAJOR_CODE_RE.fullmatch(line)
+    ]
+    codes = [lines[index][1] for index in code_positions]
+    all_text = " ".join(str(page.get("text", "")) for page in pages)
+    declared_count_match = re.search(
+        r"\b(\d{1,3})\s+nganh(?: hoc)?\s+voi\s+hon\s+\d{1,3}\s+chuong trinh\b",
+        _fold_label(all_text),
+    )
+    declared_count = int(declared_count_match.group(1)) if declared_count_match else None
+    if (
+        len(names) != len(codes)
+        or len(set(names)) != len(names)
+        or len(set(codes)) != len(codes)
+        or (declared_count is not None and len(names) != declared_count)
+    ):
+        return []
+
+    records: list[dict[str, Any]] = []
+    for index, (major_name, major_code) in enumerate(zip(names, codes), start=1):
+        code_position = code_positions[index - 1]
+        page_number = _page_for_line(lines, code_position)
+        record: dict[str, Any] = {
+            "record_type": "major",
+            "record_id": f"major_{index:03d}",
+            "fact_category": "nganh_dao_tao",
+            "major_name": major_name,
+            "major_code": major_code,
+            "programs": [
+                {**program, "parent_major_code": major_code}
+                for program in programs_by_name.get(major_name, [])
+            ],
+            "program_count": len(programs_by_name.get(major_name, [])),
+            "page": page_number,
+        }
+        records.append(record)
+
+    _append_major_catalog_summary(records)
+    return records
+
+
 def parse_major_catalog(
     pages: list[dict[str, Any]],
     *,
@@ -550,7 +675,43 @@ def parse_major_catalog(
                 }
         table_records.append(record)
 
+    all_text = " ".join(str(page.get("text", "")) for page in pages)
+    declared_count_match = re.search(
+        r"\b(\d{1,3})\s+nganh(?: hoc)?\s+voi\s+hon\s+\d{1,3}\s+chuong trinh\b",
+        _fold_label(all_text),
+    )
+    declared_count = int(declared_count_match.group(1)) if declared_count_match else None
+    layout_records = _major_catalog_from_layout_tables(pages)
+    if table_records and (
+        (declared_count is not None and len(table_records) == declared_count)
+        or (
+            declared_count is None
+            and (not layout_records or len(table_records) >= len(layout_records))
+        )
+    ):
+        # Keep the row-level threshold fields when the direct table parse is
+        # already complete; the layout fallback exists for split-cell tables.
+        _append_major_catalog_summary(table_records)
+        return table_records
+    if layout_records:
+        return layout_records
+
+    has_catalog_layout = any(
+        _table_column(headers, "ten nganh") is not None
+        and _table_column(headers, "chuong trinh") is not None
+        for _page_number, _table, headers, _values in _iter_table_rows(pages)
+    )
+    if declared_count_match and has_catalog_layout:
+        # If the layout-based reconstruction cannot verify the advertised
+        # number of rows, keep the partial parse out of the index entirely.
+        return []
+
     if table_records:
+        if declared_count is not None and len(table_records) != declared_count:
+            # Do not manufacture a "complete" summary from a partial table
+            # parse. A later rebuild can safely omit these records until the
+            # layout reader can verify every name/code pair.
+            return []
         _append_major_catalog_summary(table_records)
         return table_records
 

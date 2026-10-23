@@ -22,6 +22,61 @@ def record(identity, kind, text, **metadata):
 
 
 class StructuredLookupTests(unittest.TestCase):
+    def test_all_major_score_followup_expands_past_semantic_top_k(self):
+        majors = [f"Ngành {index:02d}" for index in range(1, 21)]
+        documents = [
+            record(
+                f"major-{index:02d}",
+                "admission_score",
+                f"Điểm trúng tuyển {major}: 15 điểm.",
+                major_name=major,
+                major_code=f"{index:07d}",
+                method="thpt",
+            )
+            for index, major in enumerate(majors, start=1)
+        ]
+        query = (
+            "Điểm sàn của tất cả các ngành intent:HOI_DIEM_TRUNG_TUYEN "
+            "score_type:admission_score "
+            + " ".join(f"candidate_majors:{major}" for major in majors)
+        )
+
+        ranked, _ = _rank_hybrid_candidates_with_audit(
+            query,
+            documents,
+            documents[:3],
+            {},
+            2026,
+            4,
+            categories=("diem_trung_tuyen",),
+            entity_filters={"candidate_majors": majors},
+        )
+
+        self.assertEqual(len(ranked), 20)
+        self.assertEqual(
+            {document.metadata["major_name"] for document in ranked},
+            set(majors),
+        )
+
+    def test_equivalent_ampersand_and_vietnamese_entity_names_match(self):
+        wanted = record("tourism", "admission_score", "Điểm trúng tuyển Quản trị Dịch vụ Du lịch và Lữ hành: 18.",
+                        major_name="Quản trị Dịch vụ Du lịch và Lữ hành", method="hoc_ba")
+        ranked, _ = _rank_hybrid_candidates_with_audit(
+            "Điểm chuẩn ngành Du lịch theo học bạ?", [wanted], [wanted], {}, 2026, 4,
+            categories=("diem_trung_tuyen",), entity_filters={"major_name": "Quản trị Dịch vụ Du lịch & Lữ hành"},
+        )
+        self.assertEqual(ranked, [wanted])
+    def test_reception_hours_do_not_select_paperwork(self):
+        hours = record("hours", "page_text", "DHV tiếp nhận nhập học 06:00 – 18:00", category="ho_so")
+        paper = record("paper", "enrollment_document", "Hồ sơ nhập học: Học bạ THPT.", category="ho_so")
+        self.assertEqual(lookup_structured_documents("Nhận hồ sơ nhập học vào khung giờ nào?", [paper, hours]), [hours])
+
+    def test_general_method_query_abstains_but_explicit_number_matches(self):
+        first = record("first", "admission_method", "Phương thức 1", method_number=1)
+        third = record("third", "admission_method", "Phương thức 3", method_number=3)
+        self.assertEqual(lookup_structured_documents("Phương thức xét tuyển", [first, third]), [])
+        self.assertEqual(lookup_structured_documents("Phương thức xét tuyển 3 là gì?", [first, third]), [third])
+
     def test_exact_code_and_method_win_over_repeated_keywords(self):
         wanted = record("wanted", "admission_score", "Ngành 7480201: kết quả theo phương thức công bố.",
                         major_code="7480201", major_name="Công nghệ thông tin", method="thpt", value=15)
@@ -51,8 +106,8 @@ class StructuredLookupTests(unittest.TestCase):
                           major_code="7480201", method=method) for method in ("hoc_ba", "thpt", "dgnl")]
         self.assertEqual(lookup_structured_documents("Điểm chuẩn 7480201 theo THPT?", records), [records[1]])
         self.assertEqual(lookup_structured_documents("Điểm chuẩn 7480201 theo học bạ THPT?", records), [records[0]])
-        # Merely mentioning high school is not a request for the exam method.
-        self.assertEqual(len(lookup_structured_documents("Điểm chuẩn cho học sinh THPT?", records)), 3)
+        # A broad question with no named major must keep BM25/vector overview evidence.
+        self.assertEqual(lookup_structured_documents("Điểm chuẩn cho học sinh THPT?", records), [])
 
     def test_enrollment_location_is_distinct_from_all_campuses_and_history(self):
         intake = record("intake", "page_text", "Địa điểm nhập học:\nCơ sở 1: Địa chỉ A\nCơ sở 2: Địa chỉ B",

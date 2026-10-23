@@ -270,6 +270,40 @@ class AdmissionConditionEvidenceAnswerTests(unittest.TestCase):
         for label in ("Thi tốt nghiệp THPT", "Học bạ THPT", "ĐGNL", "H-SCA", "Tốt nghiệp trung cấp"):
             self.assertIn(label, answer)
 
+    def test_method_conditions_support_numbered_2026_source_headings(self) -> None:
+        text = (
+            "2 Các phương thức xét tuyển năm 2026\n"
+            "2.1 Xét kết quả kỳ thi tốt nghiệp THPT năm 2026\n"
+            "Thí sinh đăng ký dựa trên tổng điểm 03 môn thi tốt nghiệp THPT.\n"
+            "2.2 Xét tuyển kết quả học tập THPT (học bạ)\n"
+            "Xét điểm trung bình kết quả học tập của 03 năm THPT.\n"
+            "2.3 Xét kết quả kỳ thi Đánh giá năng lực\n"
+            "Sử dụng kết quả kỳ thi Đánh giá năng lực năm 2026 từ 600 điểm trở lên.\n"
+            "2.4 Xét kết quả bài thi Đánh giá năng lực chuyên biệt (H-SCA)\n"
+            "Kết hợp kết quả H-SCA với kết quả học tập THPT.\n"
+            "2.5 Xét tuyển đối với thí sinh tốt nghiệp trung cấp\n"
+            "Tốt nghiệp trung cấp nghề cùng nhóm ngành và hoàn thành chương trình văn hóa THPT.\n"
+        )
+        metadata = dict(self.evidence.chunks[0].metadata)
+        numbered_evidence = EvidenceBundle(
+            chunks=(EvidenceChunk(text=text, metadata=metadata),),
+            context=text,
+            sources=self.evidence.sources,
+        )
+        analysis = analyze_question("Điều kiện của 5 phương thức xét tuyển DHV là gì?")
+        answer = _evidence_eligibility_answer(analysis, numbered_evidence)
+
+        self.assertIsNotNone(answer)
+        for detail in (
+            "tổng điểm 03 môn thi tốt nghiệp THPT",
+            "03 năm THPT",
+            "600 điểm trở lên",
+            "kết quả học tập THPT",
+            "tốt nghiệp trung cấp nghề cùng nhóm ngành",
+        ):
+            with self.subTest(detail=detail):
+                self.assertIn(detail.casefold(), answer.casefold())
+
     def test_method_details_keep_repeated_bullet_endings_and_do_not_misattribute(self) -> None:
         details = _method_details_from_evidence(self.evidence, target_year=2026)
         self.assertIn("Ngữ văn + 02 môn", details[1])

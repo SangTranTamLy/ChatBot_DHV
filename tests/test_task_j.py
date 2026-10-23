@@ -62,7 +62,7 @@ class ScoreIntentRegressionTests(unittest.TestCase):
                 "HOI_CACH_TINH_DIEM",
                 None,
                 "hoc_ba",
-                ("cach_tinh_diem",),
+                ("phuong_thuc_xet_tuyen",),
             ),
             (
                 "Điểm xét tuyển học bạ ngành Luật bao nhiêu?",

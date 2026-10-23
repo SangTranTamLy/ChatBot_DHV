@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from src.config.settings import settings
+from src.ingestion.structured_json import is_official_dhv_url, load_structured_json
 from .evidence import select_program_relations
 from .evidence_utils import _evidence_sentences
 from .query_analysis import ConversationState, QueryAnalysis, normalize_question
@@ -208,7 +210,7 @@ def _advisory_evidence_clarification(
             f"Đây là chương trình thuộc ngành {parent}{code_text}."
         )
     if candidate_majors or candidate_programs:
-        lines.append("Theo dữ liệu DHV đã được kiểm chứng, các lựa chọn được nhắc đến gồm:")
+        lines.append("Bạn có thể cân nhắc các lựa chọn sau:")
     for major in candidate_majors:
         major_text = str(major).strip()
         if not major_text:
@@ -362,6 +364,79 @@ def _major_rows_from_evidence(evidence: Any) -> list[tuple[str, str]]:
     return rows
 
 
+def _verified_major_catalog(
+    target_year: object,
+) -> tuple[list[tuple[str, str]], dict[str, str]] | None:
+    """Load the complete, verified major list from its one owning source file."""
+
+    try:
+        year = int(target_year)
+    except (TypeError, ValueError):
+        year = int(settings.target_year)
+    category_dir = Path(settings.processed_data_dir) / "nganh_dao_tao"
+    for path in sorted(category_dir.glob("*.json")):
+        try:
+            document = load_structured_json(path)
+        except (OSError, ValueError):
+            continue
+        source = document.get("source") or {}
+        if (
+            document.get("category") != "nganh_dao_tao"
+            or document.get("data_role") != "catalog"
+            or document.get("year") != year
+            or source.get("status") != "verified"
+            or str(source.get("school_code") or "").upper() != "DHV"
+            or not is_official_dhv_url(source.get("source_url"))
+        ):
+            continue
+
+        records = document.get("records") or []
+        majors = [
+            record
+            for record in records
+            if isinstance(record, dict) and record.get("record_type") == "major"
+        ]
+        summary = next(
+            (
+                record
+                for record in records
+                if isinstance(record, dict) and record.get("record_type") == "major_catalog_summary"
+            ),
+            {},
+        )
+        source_text = normalize_question(
+            " ".join(
+                str(page.get("text") or "")
+                for page in document.get("pages", [])
+                if isinstance(page, dict)
+            )
+        )
+        declared_count_match = re.search(
+            r"\b(\d{1,3})\s+nganh(?: hoc)?\s+voi\s+hon\s+\d{1,3}\s+chuong trinh\b",
+            source_text,
+        )
+        rows = [
+            (str(record.get("major_name") or "").strip(), str(record.get("major_code") or "").strip())
+            for record in majors
+        ]
+        if (
+            not rows
+            or len(rows) != summary.get("major_count")
+            or (
+                declared_count_match
+                and len(rows) != int(declared_count_match.group(1))
+            )
+            or any(not name or not re.fullmatch(r"\d{7}", code) for name, code in rows)
+            or len({normalize_question(name) for name, _ in rows}) != len(rows)
+            or len({code for _, code in rows}) != len(rows)
+        ):
+            continue
+
+        url = str(source.get("source_url") or "").strip()
+        return rows, {"title": str(document.get("title") or "Danh mục ngành DHV"), "url": url}
+    return None
+
+
 _MAJOR_GROUP_LABELS = {
     "economics": "kinh tế",
     "languages": "ngôn ngữ",
@@ -439,8 +514,14 @@ def _method_details_from_evidence(
             or metadata.get("document_id")
             or ""
         )
+        # Some OCR/legacy structured records contain the two literal characters
+        # ``\\n`` instead of real line breaks. Split those before parsing method
+        # headings and bullets, otherwise the học-bạ section absorbs later
+        # methods and its two calculation options are lost.
+        raw_text = str(getattr(chunk, "text", "") or "")
+        raw_text = raw_text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
         lines: list[str] = []
-        for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
+        for raw_line in raw_text.splitlines():
             line = re.sub(r"\s+", " ", raw_line).strip()
             folded = normalize_question(line)
             if (
@@ -539,15 +620,22 @@ def _method_details_from_evidence(
             continue
         end = len(lines)
         for index in range(anchor + 1, len(lines)):
-            if re.match(r"^\d+(?:\.\d+)+\.?\s+", normalize_question(lines[index])):
+            # The uploaded 2026 source numbers the method headings as 2.1–2.5.
+            # Stop only at a nested section such as 2.6.1, not at the first
+            # method heading; older source editions use a.–e. headings below.
+            if re.match(r"^\d+(?:\.\d+){2,}\.?\s+", normalize_question(lines[index])):
                 end = index
                 break
         section_lines = lines[anchor + 1:end]
         headings: list[tuple[int, int]] = []
         for index, line in enumerate(section_lines):
-            match = re.match(r"^([a-e])(?:\.|\s)+xet\b", normalize_question(line))
-            if match:
-                headings.append((index, ord(match.group(1)) - ord("a") + 1))
+            folded = normalize_question(line)
+            letter_heading = re.match(r"^([a-e])(?:\.|\s)+xet\b", folded)
+            numbered_heading = re.match(r"^\d+\.([1-5])\.?\s+xet\b", folded)
+            if letter_heading:
+                headings.append((index, ord(letter_heading.group(1)) - ord("a") + 1))
+            elif numbered_heading:
+                headings.append((index, int(numbered_heading.group(1))))
         details: dict[int, str] = {}
         for position, (start, method_number) in enumerate(headings):
             stop = headings[position + 1][0] if position + 1 < len(headings) else len(section_lines)
@@ -586,6 +674,14 @@ def _evidence_catalog_answer(
 
     major_rows = _major_rows_from_evidence(evidence)
     if analysis.intent == "DANH_SACH_NGANH":
+        verified_catalog = _verified_major_catalog(
+            analysis.entities.get("year") or settings.target_year
+        )
+        if verified_catalog is not None:
+            major_rows, catalog_source = verified_catalog
+            catalog_sources = [catalog_source]
+        else:
+            catalog_sources = [dict(source) for source in evidence.sources]
         major_group = str(analysis.entities.get("major_group") or "")
         if major_group:
             major_rows = [
@@ -637,10 +733,10 @@ def _evidence_catalog_answer(
                 entries = ", ".join(f"{major} ({code})" for major, code in major_rows)
                 return {
                     "answer": (
-                        f"Theo danh mục ngành DHV đã xác minh, nhóm {group_label} có "
+                        f"Nhóm {group_label} có "
                         f"{len(major_rows)} ngành: {entries}."
                     ),
-                    "sources": [dict(source) for source in evidence.sources],
+                    "sources": catalog_sources,
                     "status": "ok",
                 }
             for sentence in _evidence_sentences(evidence):
@@ -678,7 +774,7 @@ def _evidence_catalog_answer(
                         )
                     return {
                         "answer": answer_text,
-                        "sources": [dict(source) for source in evidence.sources],
+                        "sources": catalog_sources,
                         "status": "ok",
                     }
             # PDF line wrapping can split the overview statistic across
@@ -731,7 +827,7 @@ def _evidence_catalog_answer(
                         )
                     return {
                         "answer": answer_text,
-                        "sources": [dict(source) for source in evidence.sources],
+                        "sources": catalog_sources,
                         "status": "ok",
                     }
             normalized_q = normalize_question(analysis.normalized_question)
@@ -759,7 +855,7 @@ def _evidence_catalog_answer(
                 )
             return {
                 "answer": answer_text,
-                "sources": [dict(source) for source in evidence.sources],
+                "sources": catalog_sources,
                 "status": "ok",
             }
         correction = ""
@@ -773,7 +869,7 @@ def _evidence_catalog_answer(
         )
         if group_label:
             correction = (
-                f"Theo danh mục ngành DHV đã xác minh, nhóm {group_label} có "
+                f"Nhóm {group_label} có "
                 f"{len(major_rows)} ngành theo mã ngành:\n"
             )
         elif is_list_correction:
@@ -793,7 +889,7 @@ def _evidence_catalog_answer(
         ]
         return {
             "answer": correction + "\n".join(lines),
-            "sources": [dict(source) for source in evidence.sources],
+            "sources": catalog_sources,
             "status": "ok",
         }
 
@@ -818,10 +914,10 @@ def _evidence_catalog_answer(
                 for index, (program, parent, code) in enumerate(program_rows, start=1)
             ]
         if operation == "COUNT":
-            answer = f"{scope} có {count} chương trình đào tạo được xác nhận trong dữ liệu DHV."
+            answer = f"{scope} có {count} chương trình đào tạo."
         elif operation == "LIST_AND_COUNT":
             answer = (
-                f"{scope} có {count} chương trình đào tạo được xác nhận trong dữ liệu DHV:\n"
+                f"{scope} có {count} chương trình đào tạo:\n"
                 + "\n".join(lines)
             )
         else:
@@ -865,9 +961,10 @@ def _evidence_catalog_answer(
         methods.sort(key=lambda x: (x[0] or 99, x[1]))
         unique_methods = []
         seen = set()
-        for _, text in methods:
-            if text not in seen:
-                seen.add(text)
+        for number, text in methods:
+            key = number if number else text
+            if key not in seen:
+                seen.add(key)
                 unique_methods.append(text)
         count = len(unique_methods)
         cleaned_methods = [
@@ -894,7 +991,7 @@ def _evidence_catalog_answer(
                 for index, text in enumerate(cleaned_methods, start=1)
             ]
             answer = (
-                f"Hiện tại DHV có {count} phương thức xét tuyển chính. Chi tiết theo tài liệu đã xác minh:\n"
+                f"Hiện tại DHV có {count} phương thức xét tuyển chính:\n"
                 + "\n".join(detailed_lines)
             )
             return {
@@ -945,7 +1042,7 @@ def _evidence_program_relation_answer(analysis: QueryAnalysis, evidence: Any) ->
         None,
     )
     code_text = f" (mã ngành {parent_code})" if parent_code else ""
-    return f"Có. {program} là chương trình thuộc ngành {parent}{code_text}, theo danh mục DHV đã xác minh."
+    return f"Có. {program} là chương trình thuộc ngành {parent}{code_text}."
 
 
 def _source_ordered_documents(documents: list[Any]) -> list[Any]:

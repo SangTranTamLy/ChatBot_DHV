@@ -16,11 +16,15 @@ ROOT = Path(__file__).resolve().parents[1]
 class ContactRetriever:
     def __init__(self):
         self.documents = []
-        for category in ("thong_tin_truong", "ho_so"):
+        for category in ("thong_tin_truong", "ho_so", "co_so_lien_he"):
             for path in (ROOT / "data/processed" / category).glob("*.json"):
                 data = json.loads(path.read_text(encoding="utf-8"))
                 for page in data["pages"]:
-                    if page["page"] not in ({7} if category == "thong_tin_truong" else {2, 3}):
+                    if category == "co_so_lien_he":
+                        allowed_pages = {1}
+                    else:
+                        allowed_pages = {7} if category == "thong_tin_truong" else {2, 3}
+                    if page["page"] not in allowed_pages:
                         continue
                     self.documents.append(Document(page_content=page["text"], metadata={
                         "category": category, "year": data["year"],
@@ -43,6 +47,56 @@ class AnswerLLM:
 
 
 class RuntimeContactTests(unittest.TestCase):
+    def test_broad_contact_answer_contains_only_phone_and_email(self):
+        class NeverCalledLLM:
+            def generate(self, prompt):
+                raise AssertionError("A broad contact answer must use the verified contact record")
+
+        result = ask_chatbot(
+            "Thông tin liên hệ của trường là gì?",
+            retriever=ContactRetriever(), llm=NeverCalledLLM(),
+        )
+        answer = result["answer"]
+        self.assertEqual(result["status"], "ok")
+        for expected in (
+            "info@dhv.edu.vn", "media@dhv.edu.vn", "0287 1000 888",
+        ):
+            self.assertIn(expected, answer)
+        for irrelevant_contact_detail in (
+            "Cơ sở", "Kênh theo dõi", "TikTok", "Zalo", "YouTube", "Facebook",
+            "194 Lê Đức Thọ", "736 Nguyễn Trãi", "37 Kinh Dương Vương",
+            "https://www.tiktok.com/", "https://dhv.edu.vn/",
+        ):
+            self.assertNotIn(irrelevant_contact_detail, answer)
+
+    def test_social_follow_question_returns_only_verified_social_channels(self):
+        class NeverCalledLLM:
+            def generate(self, prompt):
+                raise AssertionError("Social channels must come from the verified contact record")
+
+        for question in (
+            "Tôi theo dõi ở đâu để biết thêm thông tin?",
+            "Những kênh mạng xã hội của trường là gì?",
+        ):
+            with self.subTest(question=question):
+                result = ask_chatbot(question, retriever=ContactRetriever(), llm=NeverCalledLLM())
+                answer = result["answer"]
+                self.assertEqual(result["status"], "ok")
+                self.assertEqual(result["trace"]["intent"], "HOI_CO_SO_LIEN_HE")
+                self.assertIn("Bạn có thể theo dõi thông tin chính thức của DHV", answer)
+                self.assertIn("**Website DHV:** [dhv.edu.vn](https://dhv.edu.vn/)", answer)
+                for channel, account, url in (
+                    ("Facebook", "hungvuonguni", "https://www.facebook.com/hungvuonguni"),
+                    ("TikTok", "@dhv.official", "https://www.tiktok.com/@dhv.official"),
+                    ("YouTube", "@hungvuonguni", "https://www.youtube.com/@hungvuonguni"),
+                    ("Zalo", "zalo.me/1822829687649866202", "https://zalo.me/1822829687649866202"),
+                ):
+                    self.assertIn(f"**{channel}:** [{account}]({url})", answer)
+                for unrelated_detail in (
+                    "info@dhv.edu.vn", "0287 1000 888", "Cơ sở 1", "194 Lê Đức Thọ",
+                ):
+                    self.assertNotIn(unrelated_detail, answer)
+
     def test_campus_question_after_enrollment_uses_campus_list_without_generation(self):
         class NeverCalledLLM:
             def generate(self, prompt):
@@ -79,6 +133,10 @@ class RuntimeContactTests(unittest.TestCase):
                 self.assertEqual(result["status"], "ok")
                 self.assertGreater(result["trace"]["evidence_count"], 0)
                 self.assertTrue(result["sources"])
+                if question.startswith("Số điện thoại tư vấn viên"):
+                    self.assertIn("chưa nêu số điện thoại riêng", result["answer"])
+                    self.assertIn("0287 1000 888", result["answer"])
+                    self.assertNotIn("0848189507", result["answer"])
 
     def test_faculty_email_is_not_inferred_from_school_email(self):
         result = ask_chatbot(
@@ -86,7 +144,7 @@ class RuntimeContactTests(unittest.TestCase):
             retriever=ContactRetriever(), llm=AnswerLLM("Email của khoa là tec@dhv.edu.vn."),
         )
         self.assertEqual(result["status"], "ok")
-        self.assertIn("chưa xác nhận email riêng", result["answer"])
+        self.assertIn("chưa có email riêng", result["answer"])
         self.assertIn("Email liên hệ chung", result["answer"])
         self.assertNotIn("tec@dhv.edu.vn", result["answer"])
 

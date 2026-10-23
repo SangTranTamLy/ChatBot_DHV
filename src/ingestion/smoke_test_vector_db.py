@@ -19,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 SMOKE_QUERIES: tuple[tuple[str, str], ...] = (
     ("Học phí DHV 2026", "hoc_phi"),
     ("Học bổng DHV 2026", "hoc_bong"),
-    ("Nhập học DHV 2026", "nhap_hoc"),
+    ("Nhập học DHV 2026", "ho_so"),
     ("Thông tin trường DHV 2026", "thong_tin_truong"),
 )
 

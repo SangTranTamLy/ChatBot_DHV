@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from langchain_core.documents import Document
 
@@ -61,6 +62,24 @@ class FixtureRetriever:
 
 
 class RuntimeEnrollmentTests(unittest.TestCase):
+    def test_rejected_enrollment_evidence_is_not_retried_or_sent_to_model(self) -> None:
+        document = _enrollment_document("enrollment_location", "Cơ sở 1: 194 Lê Đức Thọ.")
+
+        class NeverCalled:
+            def generate(self, prompt):
+                raise AssertionError("Rejected structured evidence must remain rejected")
+
+        with patch("src.chatbot.rag_chain.validate_model_answer", return_value={
+            "answer": "Chưa đủ bằng chứng", "sources": [], "status": "no_data",
+            "_validation_reason": "ungrounded",
+        }) as validator:
+            result = ask_chatbot("Nộp hồ sơ nhập học ở cơ sở nào?",
+                                 retriever=FixtureRetriever([document]), llm=NeverCalled())
+        self.assertEqual(result["status"], "no_data")
+        self.assertEqual(result["sources"], [])
+        self.assertEqual(result["trace"]["validator"]["reason"], "ungrounded")
+        self.assertEqual(validator.call_count, 1)
+
     def test_enrollment_submission_location_is_one_question(self) -> None:
         for question in (
             "nộp hồ sơ nhập học ở cơ sở nào",

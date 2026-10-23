@@ -8,10 +8,12 @@ from langchain_core.documents import Document
 
 from src.chatbot.intent_classifier import (
     DEFAULT_MODEL_PATH,
+    DEFAULT_DATASET_PATH,
     DEFAULT_TEST_PATH,
     DEFAULT_TRAIN_PATH,
     load_model,
     load_records,
+    stratified_split,
 )
 from src.chatbot.rag_chain import ask_chatbot
 from src.chatbot.query_analysis import INTENTS, analyze_question
@@ -138,8 +140,9 @@ class IntentDatasetTests(unittest.TestCase):
         test_ids = {row["id"] for row in test}
 
         self.assertTrue(DEFAULT_MODEL_PATH.exists())
-        self.assertEqual(len(train), 144)
-        self.assertEqual(len(test), 36)
+        expected_train, expected_test = stratified_split(load_records(DEFAULT_DATASET_PATH))
+        self.assertEqual(train, expected_train)
+        self.assertEqual(test, expected_test)
         self.assertEqual(len(train) / (len(train) + len(test)), 0.8)
         self.assertEqual(train_ids & test_ids, set())
         self.assertEqual({row["intent"] for row in train} | {row["intent"] for row in test}, set(INTENTS))
@@ -380,7 +383,7 @@ class ScopeRegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "no_data")
-        self.assertIn("chưa tìm thấy", result["answer"])
+        self.assertIn("chưa có thông tin chính xác", result["answer"])
 
     def test_empty_local_model_response_becomes_no_data(self) -> None:
         result = ask_chatbot(
@@ -390,7 +393,7 @@ class ScopeRegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "no_data")
-        self.assertIn("chưa tìm thấy", result["answer"])
+        self.assertIn("chưa có thông tin chính xác", result["answer"])
 
 
 if __name__ == "__main__":

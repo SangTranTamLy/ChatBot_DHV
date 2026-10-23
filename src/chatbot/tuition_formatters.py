@@ -185,13 +185,13 @@ def _evidence_optional_english_fee_answer(analysis: QueryAnalysis, evidence: Any
                 return (
                     "Không thể kết luận rằng tất cả thí sinh đều phải đóng khoản này. "
                     "Bảng phí ghi khoản kiểm tra năng lực tiếng Anh là "
-                    f"{amount.group(1)} đồng (nếu có); tài liệu được truy xuất không nêu thêm điều kiện áp dụng."
+                    f"{amount.group(1)} đồng (nếu có); mình chưa có thông tin cụ thể hơn về điều kiện áp dụng."
                 )
     if optional_row_found:
         return (
             "Không thể kết luận rằng tất cả thí sinh đều phải đóng khoản này. "
             "Bảng phí ghi khoản kiểm tra năng lực tiếng Anh là khoản phí phát sinh nếu có; "
-            "tài liệu được truy xuất không nêu thêm điều kiện áp dụng."
+            "mình chưa có thông tin cụ thể hơn về điều kiện áp dụng."
         )
     return None
 

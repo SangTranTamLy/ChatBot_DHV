@@ -30,6 +30,7 @@ from src.ingestion.structured_json import (
     load_structured_json,
     parse_admission_methods,
     parse_enrollment_documents,
+    parse_major_catalog,
     validate_structured_document,
 )
 
@@ -62,6 +63,68 @@ class StructuredJSONPipelineTests(unittest.TestCase):
                     token["confidence"] = confidence
                 tokens.append(token)
         return tokens
+
+    def test_merged_major_catalog_table_keeps_all_twenty_major_code_pairs(self) -> None:
+        expected = (
+            ("Quản trị kinh doanh", "7340101"),
+            ("Kinh tế quốc tế", "7310106"),
+            ("Marketing", "7340115"),
+            ("Thương mại điện tử", "7340122"),
+            ("Tài chính ngân hàng", "7340201"),
+            ("Kế toán", "7340301"),
+            ("Công nghệ tài chính", "7340205"),
+            ("Kỹ thuật máy tính", "7480106"),
+            ("Công nghệ thông tin", "7480201"),
+            ("Trí tuệ nhân tạo", "7480107"),
+            ("Ngôn ngữ Anh", "7220201"),
+            ("Ngôn ngữ Nhật", "7220209"),
+            ("Ngôn ngữ Trung Quốc", "7220204"),
+            ("Ngôn ngữ Hàn Quốc", "7220210"),
+            ("Quản trị Khách sạn", "7810201"),
+            ("Quản trị Dịch vụ Du lịch & Lữ hành", "7810103"),
+            ("Luật", "7380101"),
+            ("Luật Kinh tế", "7380107"),
+            ("Quản lý bệnh viện", "7720802"),
+            ("Tâm lý học", "7310401"),
+        )
+        headers = ["", "TÊN NGÀNH", "", "", "CHƯƠNG TRÌNH ĐÀO TẠO", "", "", "MÃ NGÀNH"]
+        rows = []
+        for index, (major_name, _code) in enumerate(expected):
+            values = ["", "", "", "", "", "", "", ""]
+            values[0 if index % 2 == 0 else 1] = major_name
+            rows.append({"row_index": index + 1, "values": values})
+        page = {
+            "page": 1,
+            "page_number": 1,
+            "text": "DHV đào tạo 20 ngành học với hơn 50 chương trình\n"
+            + "\n".join(code for _, code in expected),
+            "tables": [{"headers": headers, "rows": rows}],
+        }
+
+        records = parse_major_catalog([page], include_thresholds=False)
+        majors = [record for record in records if record["record_type"] == "major"]
+        summary = next(record for record in records if record["record_type"] == "major_catalog_summary")
+
+        self.assertEqual([(record["major_name"], record["major_code"]) for record in majors], list(expected))
+        self.assertEqual(summary["major_count"], 20)
+
+    def test_partial_major_table_is_not_summarized_as_complete(self) -> None:
+        page = {
+            "page": 1,
+            "page_number": 1,
+            "text": "DHV đào tạo 20 ngành học với hơn 50 chương trình\n7310106\n7480107",
+            "tables": [
+                {
+                    "headers": ["", "TÊN NGÀNH", "", "", "CHƯƠNG TRÌNH ĐÀO TẠO", "", "", "MÃ NGÀNH"],
+                    "rows": [
+                        {"row_index": 1, "values": ["Kinh tế quốc tế", "", "", "", "", "", "", ""]},
+                        {"row_index": 2, "values": ["Trí tuệ nhân tạo", "", "", "", "", "", "", ""]},
+                    ],
+                }
+            ],
+        }
+
+        self.assertEqual(parse_major_catalog([page], include_thresholds=False), [])
 
     def test_url_hyphen_line_wrap_is_repaired_without_changing_prose(self) -> None:
         text = _clean_text("URL: https://example.edu/file/name- value; tuyển sinh - đợt 2")

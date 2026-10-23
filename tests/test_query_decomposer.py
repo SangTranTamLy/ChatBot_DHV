@@ -233,7 +233,7 @@ class QueryDecomposerTests(unittest.TestCase):
         )
         self.assertIn("không bỏ sót ý độc lập nào", prompt)
         self.assertIn("không dùng evidence của một ý để suy ra ý khác", prompt)
-        self.assertIn("nói rõ phần còn thiếu thông tin đã xác minh", prompt)
+        self.assertIn("nói rõ phần còn thiếu bằng lời tự nhiên", prompt)
         self.assertIn("Không tạo, đoán hoặc chép URL/markdown link", prompt)
         self.assertIn("Không thêm thông tin quảng bá", prompt)
 

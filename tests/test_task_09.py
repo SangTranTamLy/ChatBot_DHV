@@ -29,7 +29,8 @@ def _verified_school_manifest_entry() -> dict[str, object]:
         if item.get("category") == "thong_tin_truong"
         and item.get("year") == 2026
         and item.get("verified") is True
-        and item.get("verification_status") == "verified"
+        and item.get("verification_status", item.get("status")) == "verified"
+        and item.get("data_role") == "gioi_thieu_triet_ly_va_lich_su"
         and item.get("source_url")
     ]
     if not candidates:
@@ -40,7 +41,10 @@ def _verified_school_manifest_entry() -> dict[str, object]:
 SCHOOL_SOURCE = _verified_school_manifest_entry()
 RAW_SCHOOL_PDF = PROJECT_ROOT / str(SCHOOL_SOURCE["raw_file"])
 SCHOOL_RAW_RELATIVE = Path(str(SCHOOL_SOURCE["raw_file"])).relative_to("data/raw")
-PROCESSED_SCHOOL_JSON = PROJECT_ROOT / "data" / "processed" / SCHOOL_RAW_RELATIVE.with_suffix(".json")
+PROCESSED_SCHOOL_JSON = (
+    PROJECT_ROOT / "data" / "processed" / str(SCHOOL_SOURCE["category"])
+    / SCHOOL_RAW_RELATIVE.with_suffix(".json").name
+)
 
 
 class Task09DataTests(unittest.TestCase):
@@ -53,7 +57,7 @@ class Task09DataTests(unittest.TestCase):
         entry = next(item for item in manifest["documents"] if item["document_id"] == SCHOOL_SOURCE["document_id"])
         self.assertEqual(entry["category"], "thong_tin_truong")
         self.assertEqual(entry["year"], 2026)
-        self.assertEqual(entry["verification_status"], "verified")
+        self.assertEqual(entry.get("verification_status", entry.get("status")), "verified")
         self.assertGreaterEqual(len(entry["source_urls"]), 1)
         document = json.loads(PROCESSED_SCHOOL_JSON.read_text(encoding="utf-8"))
         self.assertEqual(document["category"], "thong_tin_truong")
@@ -83,7 +87,7 @@ class Task09DataTests(unittest.TestCase):
         self.assertEqual(len(raw_pages), len(document["pages"]))
         processed_text = "\n".join(page.get("text", "") for page in document["pages"])
         self.assertIn("1995", processed_text)
-        self.assertIn("HỢP TÁC", processed_text)
+        self.assertIn("hợp tác", processed_text.casefold())
         self.assertEqual(document["document_id"], SCHOOL_SOURCE["document_id"])
         self.assertEqual(document["source"]["source_url"], SCHOOL_SOURCE["source_url"])
 

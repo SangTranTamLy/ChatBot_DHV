@@ -181,7 +181,7 @@ def _trace(
         "evidence_count": 0,
         "scope": {
             "in_scope": is_in_scope(
-                analysis.question,
+                str(analysis.entities.get("contextual_question") or analysis.question),
                 has_admissions_entity=has_admissions_entity,
                 target_school=analysis.entities.get("target_school"),
                 has_verified_school_info=bool(analysis.entities.get("verified_school_info_scope")),

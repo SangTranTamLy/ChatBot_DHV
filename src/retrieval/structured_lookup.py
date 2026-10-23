@@ -17,13 +17,18 @@ from langchain_core.documents import Document
 
 
 def _fold(value: object) -> str:
-    text = unicodedata.normalize("NFKD", str(value or "").lower().replace("đ", "d"))
+    text = unicodedata.normalize("NFKD", str(value or "").lower().replace("đ", "d").replace("&", " va "))
     return re.sub(r"\s+", " ", "".join(c for c in text if not unicodedata.combining(c))).strip()
 
 
 def _requested_kinds(query: str) -> tuple[str, ...]:
+    from src.chatbot.query_semantics import enrollment_request
+
     # Ignore router annotations: an intent label is not a user request.
     query = _fold(query.partition("intent:")[0])
+    request = enrollment_request(query)
+    if request in {"reception_hours", "reception_dates", "submission_mode"}:
+        return (request,)
     location = any(x in query for x in ("co so", "dia diem", "dia chi", "o dau", "noi nao"))
     if location and any(x in query for x in ("nop ho so", "nhap hoc")):
         return ("enrollment_location",)
@@ -56,10 +61,17 @@ def _document_kinds(document: Document) -> set[str]:
     metadata = document.metadata
     kind = str(metadata.get("record_type") or "")
     kinds = {kind} if kind else set()
+    if kind == "application_threshold":
+        kinds.add("admission_threshold")
     # Campus/contact facts are not yet separate JSON records. Index only
     # explicit labelled source lines, never infer an address from a mention
     # in a historical paragraph. Keep the full original document as evidence.
     text = _fold(document.page_content)
+    if metadata.get("category") in {"ho_so", "nhap_hoc"}:
+        if "tiep nhan nhap hoc" in text and re.search(r"\b\d{1,2}:\d{2}\b", text):
+            kinds.update(("reception_hours", "reception_dates"))
+        if any(x in text for x in ("nhap hoc truc tuyen", "he thong unizone")):
+            kinds.add("submission_mode")
     if re.search(r"\bco so\s*\d+\s*[:–-]", text):
         if metadata.get("category") in {"ho_so", "nhap_hoc", "xet_tuyen_bo_sung"} and any(
             x in text for x in ("tiep nhan ho so", "nop ho so", "dia diem nhap hoc", "nhap hoc truc tiep")
@@ -91,13 +103,25 @@ def lookup_structured_documents(
     kinds = _requested_kinds(query)
     if not kinds:
         return []
+    filters = entity_filters or {}
+    body = _fold(query.partition("intent:")[0])
+    has_entity = any(filters.get(k) for k in (
+        "major_name", "major_code", "parent_major", "program_name", "candidate_majors", "candidate_programs"
+    )) or bool(re.search(r"\b\d{7}\b", body))
+    if set(kinds) & {"admission_score", "admission_threshold"} and not has_entity:
+        return []
+    method_number = re.search(r"\bphuong thuc(?: xet tuyen)?(?: thu)?\s*(\d+)\b", body)
+    if kinds == ("admission_method",) and not method_number and not any(
+        x in body for x in ("hoc ba", "thpt", "dgnl", "danh gia nang luc", "h-sca", "trung cap")
+    ):
+        return []
     documents = list(documents)
     rows: list[tuple[int, str, str, str]] = []
     for index, document in enumerate(documents):
         metadata = document.metadata
         for kind in _document_kinds(document):
             rows.append((index, "kind", kind, str(metadata.get("chunk_id") or index)))
-        for key in ("major_name", "major_code", "parent_major", "parent_major_code", "program_name", "method"):
+        for key in ("major_name", "major_code", "parent_major", "parent_major_code", "program_name", "method", "method_number"):
             if metadata.get(key) is not None:
                 rows.append((index, key, _fold(metadata[key]), ""))
         try:
@@ -107,7 +131,6 @@ def lookup_structured_documents(
         if isinstance(programs, list):
             rows.extend((index, "program_name", _fold(name), "") for name in programs if isinstance(name, str))
 
-    filters = entity_filters or {}
     methods = filters.get("admission_method") or filters.get("candidate_methods")
     if not methods and set(kinds) & {"admission_score", "admission_threshold", "admission_method"}:
         body = _fold(query.partition("intent:")[0])
@@ -126,6 +149,7 @@ def lookup_structured_documents(
         (("major_name", "parent_major"), filters.get("major_name") or filters.get("parent_major") or filters.get("candidate_majors")),
         (("program_name",), filters.get("program_name") or filters.get("candidate_programs")),
         (("method",), methods),
+        (("method_number",), [method_number.group(1)] if method_number and kinds == ("admission_method",) else None),
     )
     for fields, values in groups:
         if not values:

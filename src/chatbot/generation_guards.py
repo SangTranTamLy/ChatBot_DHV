@@ -46,6 +46,7 @@ _RETRYABLE_VALIDATION_REASONS = frozenset(
         "method_mismatch",
         "institution_mismatch",
         "official_status_claim",
+        "requested_information_mismatch",
     }
 )
 

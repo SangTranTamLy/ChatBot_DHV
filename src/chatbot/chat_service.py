@@ -24,6 +24,7 @@ from .answer_cache import (
 from .conversational import detect_smalltalk
 from .query_analysis import ConversationState
 from .rag_chain import ask_chatbot as _ask_chatbot
+from .history_context import bounded_history, resolve_history_question
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +73,16 @@ class ChatService:
         *,
         conversation_state: ConversationState | Mapping[str, object] | None = None,
         bypass_cache: bool = False,
+        conversation_history: object = None,
     ) -> dict[str, object]:
         """Executes RAG inference and maps output to clean UI response schema."""
         t0 = time.perf_counter()
         norm_q = unicodedata.normalize("NFC", question or "").strip()
         state = ConversationState.from_value(conversation_state, default_year=self.settings.target_year)
+        history = bounded_history(conversation_history, norm_q)
         has_history = bool(
+            history
+            or
             state.current_major
             or state.current_program
             or state.previous_intent
@@ -112,13 +117,24 @@ class ChatService:
                 return cached
 
         # Stage 1: Fallback to full grounded RAG pipeline
+        resolution = resolve_history_question(norm_q, history, settings_obj=self.settings, llm=self.llm)
+        if resolution.clarification:
+            return {"answer": resolution.clarification, "status": "clarification", "sources": [],
+                    "state": state.to_dict(), "conversation_state": state.to_dict(), "cache_hit": False,
+                    "trace": {"history_resolution": {"method": resolution.method, "messages_used": len(history)}},
+                    "latency_ms": (time.perf_counter() - t0) * 1000}
         payload = _ask_chatbot(
-            norm_q,
+            resolution.question,
             retriever=self.retriever,
             llm=self.llm,
             settings_obj=self.settings,
             conversation_state=state,
         )
+        if history:
+            payload.setdefault("trace", {})["history_resolution"] = {
+                "method": resolution.method, "messages_used": len(history),
+                "original_question": norm_q, "resolved_question": resolution.question,
+            }
         payload.setdefault("cache_hit", False)
         payload.setdefault("latency_ms", (time.perf_counter() - t0) * 1000)
 
@@ -133,9 +149,11 @@ class ChatService:
         *,
         conversation_state: ConversationState | Mapping[str, object] | None = None,
         bypass_cache: bool = False,
+        conversation_history: object = None,
     ) -> dict[str, object]:
         """Bí danh tương thích cho các hàm gọi sử dụng tên phương thức của dịch vụ."""
-        return self.ask(question, conversation_state=conversation_state, bypass_cache=bypass_cache)
+        return self.ask(question, conversation_state=conversation_state, bypass_cache=bypass_cache,
+                        conversation_history=conversation_history)
 
 
 _default_service: ChatService | None = None
@@ -159,12 +177,14 @@ def ask_chatbot(
     *,
     conversation_state: ConversationState | Mapping[str, object] | None = None,
     bypass_cache: bool = False,
+    conversation_history: object = None,
 ) -> dict[str, object]:
     """API công khai được sử dụng bởi giao diện (UI) và các script đơn giản."""
     return get_chat_service().ask(
         question,
         conversation_state=conversation_state,
         bypass_cache=bypass_cache,
+        conversation_history=conversation_history,
     )
 
 

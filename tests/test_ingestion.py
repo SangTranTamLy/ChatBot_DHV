@@ -263,6 +263,26 @@ class IngestionTests(unittest.TestCase):
         for chunk in chunks:
             self.assertFalse("Học phí là" in chunk.page_content and "Học bổng hỗ trợ" in chunk.page_content)
 
+    def test_splitter_ids_are_unique_across_records_from_the_same_source(self) -> None:
+        metadata = {
+            "title": "DHV 2026",
+            "source_url": "https://example.test/source",
+            "source_file": "data/raw/example.pdf",
+            "structured_document_id": "example",
+        }
+        documents = [
+            Document(
+                page_content=f"# DHV 2026\n\nNội dung bản ghi {record_id}.",
+                metadata={**metadata, "structured_record_id": record_id},
+            )
+            for record_id in ("record_001", "record_002")
+        ]
+
+        chunks = split_documents(documents)
+
+        self.assertEqual(len(chunks), 2)
+        self.assertEqual(len({chunk.metadata["chunk_id"] for chunk in chunks}), 2)
+
     def test_build_persists_chroma_and_smoke_query_keeps_source_metadata(self) -> None:
         embeddings = KeywordEmbeddings()
         with tempfile.TemporaryDirectory() as temp_dir:

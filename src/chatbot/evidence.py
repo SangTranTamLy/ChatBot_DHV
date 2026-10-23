@@ -154,8 +154,15 @@ def build_evidence(
     seen_chunks: set[str] = set()
     remaining = limit
     for document in documents:
-        text = _clean_context_text(document.page_content or "")
         metadata = dict(document.metadata or {})
+        # Official social profile URLs are answer data in the dedicated
+        # verified contact record, while embedded URLs in other documents
+        # remain excluded from model context.
+        preserve_contact_links = metadata.get("category") == "co_so_lien_he"
+        text = _clean_context_text(
+            document.page_content or "",
+            preserve_urls=preserve_contact_links,
+        )
         if metadata.get("status") != "verified":
             continue
         if not text:
@@ -303,6 +310,21 @@ def _intent_content_filter_reason(document: Document, intent: str | None) -> str
     return "intent_content_mismatch"
 
 
+def _request_content_filter_reason(document: Document, entities: Mapping[str, object] | None) -> str | None:
+    request = (entities or {}).get("request_type")
+    text = _fold_text(document.page_content)
+    kind = str(document.metadata.get("record_type") or "")
+    if request == "documents":
+        if kind and kind not in {"enrollment_document", "application_document", "page_text", "document_text"}:
+            return "requested_documents_mismatch"
+        if not any(x in text for x in ("hoc ba", "can cuoc", "giay chung nhan", "thu moi nhap hoc", "giay to")):
+            return "requested_documents_mismatch"
+    elif request in {"reception_hours", "reception_dates"}:
+        if "tiep nhan nhap hoc" not in text or not re.search(r"\b\d{1,2}:\d{2}\b", text):
+            return "requested_reception_time_mismatch"
+    return None
+
+
 def _entity_row_subset(text: str, entity_values: tuple[str, ...]) -> str:
     """Lấy nguyên row ngành/chương trình thay vì nguyên bảng rộng vào prompt."""
 
@@ -379,6 +401,8 @@ def select_evidence_documents(
         )
         if reason is None:
             reason = _intent_content_filter_reason(document, intent)
+        if reason is None:
+            reason = _request_content_filter_reason(document, entities)
         base = {
             "rank": rank,
             "chunk_id": metadata.get("chunk_id"),
@@ -571,11 +595,18 @@ def _extract_structured_facts(
 ) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, str], ...]]:
     """Tách biệt các ánh xạ điểm số và quan hệ ngành/chương trình khỏi văn xuôi (prose)."""
 
+    materialized_chunks = tuple(chunks)
+    has_structured_catalog_programs = any(
+        str(chunk.metadata.get("category") or "") == "nganh_dao_tao"
+        and str(chunk.metadata.get("record_type") or "") == "major"
+        and bool(chunk.metadata.get("program_names"))
+        for chunk in materialized_chunks
+    )
     facts: list[dict[str, object]] = []
     relations: list[dict[str, str]] = []
     seen_facts: set[tuple[object, ...]] = set()
     seen_relations: set[tuple[str, str]] = set()
-    for chunk in chunks:
+    for chunk in materialized_chunks:
         metadata = chunk.metadata
         category = str(chunk.metadata.get("category") or "")
         data_role = str(chunk.metadata.get("data_role") or "").strip().casefold()
@@ -701,7 +732,7 @@ def _extract_structured_facts(
                 for fact in row_facts
                 if _remember_fact(seen_facts, fact)
             )
-            for relation in row_relations:
+            for relation in (() if has_structured_catalog_programs else row_relations):
                 identity = (relation["parent_major"], relation["program_name"])
                 if identity not in seen_relations:
                     seen_relations.add(identity)
@@ -1080,9 +1111,10 @@ def _valid_http_url(value: object) -> str:
     return url
 
 
-def _clean_context_text(text: str) -> str:
+def _clean_context_text(text: str, *, preserve_urls: bool = False) -> str:
     lines = []
-    for line in _URL_RE.sub("", text).splitlines():
+    cleaned = text if preserve_urls else _URL_RE.sub("", text)
+    for line in cleaned.splitlines():
         if _SOURCE_LINE_RE.match(line):
             continue
         if line.strip():
@@ -1093,7 +1125,7 @@ def _clean_context_text(text: str) -> str:
 def _fold_text(value: object) -> str:
     folded = unicodedata.normalize("NFKD", str(value or ""))
     folded = "".join(character for character in folded if not unicodedata.combining(character))
-    return re.sub(r"\s+", " ", folded.lower().replace("đ", "d")).strip()
+    return re.sub(r"\s+", " ", folded.lower().replace("đ", "d").replace("&", " va ")).strip()
 
 
 __all__ = [

@@ -11,6 +11,7 @@ from src.config.settings import settings
 
 from .evidence import EvidenceBundle
 from .query_semantics import (
+    enrollment_request,
     excludes_optional_english_test,
     is_semester_fee_total_question,
     mentions_optional_english_test,
@@ -20,9 +21,8 @@ from .year_semantics import extract_requested_year
 
 
 FALLBACK_ANSWER = (
-    "Tôi chưa biết câu trả lời này vì hiện chưa tìm thấy thông tin trong dữ liệu "
-    "tuyển sinh DHV đã được kiểm chứng. Bạn vui lòng tham khảo thông tin chính "
-    "thức từ Trường Đại học Hùng Vương TP.HCM."
+    "Mình chưa có thông tin chính xác để trả lời câu này. "
+    "Bạn có thể hỏi bộ phận tuyển sinh DHV để được hướng dẫn cụ thể nhé."
 )
 OUT_OF_SCOPE_ANSWER = (
     "Tôi không thể trả lời câu hỏi này vì nội dung không nằm trong phạm vi tuyển sinh "
@@ -30,14 +30,14 @@ OUT_OF_SCOPE_ANSWER = (
     "tuyển sinh của trường."
 )
 EXTERNAL_SCHOOL_ANSWER = (
-    "Mình hiện chỉ sử dụng dữ liệu chính thức của Trường Đại học Hùng Vương "
-    "TP.HCM, nên không thể xác nhận thông tin tuyển sinh của trường khác. "
+    "Mình hỗ trợ tuyển sinh Trường Đại học Hùng Vương TP.HCM, "
+    "nên chưa thể trả lời chính xác về trường khác. "
     "Mình có thể hỗ trợ bạn về điểm chuẩn, học phí, học bổng, hồ sơ hoặc "
     "ngành đào tạo của Trường Đại học Hùng Vương TP.HCM."
 )
 MIXED_SCHOOL_ANSWER = (
-    "Mình có dữ liệu chính thức của Trường Đại học Hùng Vương TP.HCM, nhưng "
-    "không có dữ liệu đã xác minh của trường còn lại để thực hiện so sánh đầy đủ."
+    "Mình có thể hỗ trợ bạn về DHV, nhưng chưa đủ thông tin về trường còn lại "
+    "để so sánh chính xác."
 )
 AMBIGUOUS_SCHOOL_ANSWER = (
     "Bạn đang hỏi Trường Đại học Hùng Vương TP.HCM phải không? "
@@ -48,12 +48,13 @@ CLARIFICATION_ANSWER = (
     "xét tuyển bổ sung?"
 )
 OLLAMA_OFFLINE_ANSWER = (
-    "Hiện tại dịch vụ trả lời cục bộ chưa sẵn sàng. Bạn vui lòng thử lại sau."
+    "Hiện mình chưa thể trả lời được. Bạn thử lại sau một chút nhé."
 )
+OLLAMA_TIMEOUT_ANSWER = "Mình chưa trả lời kịp phần này. Bạn thử lại sau một chút nhé."
 VECTOR_DB_ERROR_ANSWER = (
-    "Hiện tại kho dữ liệu tuyển sinh DHV chưa sẵn sàng. Bạn vui lòng thử lại sau."
+    "Hiện mình chưa tra cứu được thông tin tuyển sinh. Bạn thử lại sau một chút nhé."
 )
-ERROR_ANSWER = "Xin lỗi, tôi chưa thể xử lý câu hỏi này lúc này. Bạn vui lòng thử lại sau."
+ERROR_ANSWER = "Mình gặp trục trặc khi trả lời câu này. Bạn thử lại sau một chút nhé."
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)>]+", re.IGNORECASE)
 _MARKDOWN_LINK_RE = re.compile(
@@ -148,7 +149,10 @@ def validate_model_answer(
     evidence_failure = _evidence_contract_failure(evidence, target_year=expected_year)
     if evidence_failure:
         return _failed(evidence_failure)
-    answer = sanitize_answer(raw_answer)
+    answer = sanitize_answer(
+        raw_answer,
+        allowed_urls=_verified_contact_channel_urls(evidence),
+    )
     if _is_model_fallback(answer) or not answer:
         return _failed("model_fallback")
     contract_failure = _answer_contract_failure(answer, evidence, question, analysis)
@@ -226,16 +230,71 @@ def _school_scope_boundary_failure(analysis: Mapping[str, object] | Any | None) 
     return ""
 
 
-def sanitize_answer(answer: str) -> str:
-    """Loại bỏ các liên kết/URL trích dẫn mà model có thể đã bỏ qua trong prompt."""
+def sanitize_answer(answer: str, *, allowed_urls: tuple[str, ...] = ()) -> str:
+    """Strip unverified URLs while preserving exact verified contact links."""
 
     if not isinstance(answer, str):
         return ""
-    cleaned = _MARKDOWN_LINK_RE.sub(r"\1", answer)
+    cleaned = answer
+    preserved: list[tuple[str, str]] = []
+    for index, url in enumerate(sorted(set(allowed_urls), key=len, reverse=True)):
+        if not url:
+            continue
+        link_index = 0
+        verified_markdown_link = re.compile(
+            r"\[[^\]]+\]\(\s*" + re.escape(url) + r"\s*\)",
+            re.IGNORECASE,
+        )
+
+        def protect_verified_link(match: re.Match[str]) -> str:
+            nonlocal link_index
+            token = f"DHVCONTACTURLTOKEN{index}LINK{link_index}END"
+            link_index += 1
+            preserved.append((token, match.group(0)))
+            return token
+
+        cleaned = verified_markdown_link.sub(protect_verified_link, cleaned)
+        if url in cleaned:
+            plain_token = f"DHVCONTACTPLAINURLTOKEN{index}END"
+            cleaned = cleaned.replace(url, plain_token)
+            preserved.append((plain_token, url))
+    cleaned = _MARKDOWN_LINK_RE.sub(r"\1", cleaned)
     cleaned = _URL_RE.sub("", cleaned)
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    for token, url in preserved:
+        cleaned = cleaned.replace(token, url)
     return cleaned.strip()
+
+
+def _verified_contact_channel_urls(evidence: EvidenceBundle) -> tuple[str, ...]:
+    """Return official homepage and social URLs present in verified contact evidence."""
+    channel_line = re.compile(
+        r"^\s*(?:TikTok|Zalo|YouTube|Facebook)\s*:\s*(https?://\S+)\s*$",
+        re.IGNORECASE,
+    )
+    urls: list[str] = []
+    for chunk in evidence.chunks:
+        if chunk.metadata.get("category") != "co_so_lien_he":
+            continue
+        source_url = str(chunk.metadata.get("source_url") or "").strip()
+        parsed_source = urlparse(source_url)
+        source_host = (parsed_source.hostname or "").lower().rstrip(".")
+        if (
+            parsed_source.scheme.lower() == "https"
+            and source_host in {"dhv.edu.vn", "www.dhv.edu.vn"}
+            and parsed_source.path in {"", "/"}
+            and not parsed_source.username
+            and source_url not in urls
+        ):
+            urls.append(source_url)
+        for line in chunk.text.splitlines():
+            match = channel_line.match(line)
+            if match:
+                url = match.group(1).rstrip(".,;")
+                if url not in urls:
+                    urls.append(url)
+    return tuple(urls)
 
 
 def _official_dhv_url(value: object) -> bool:
@@ -284,6 +343,23 @@ def _answer_contract_failure(
 
     if _claims_official_status(answer):
         return "official_status_claim"
+
+    request = enrollment_request(question)
+    folded_answer = _fold_text(answer)
+    if request in {"documents", "reception_hours"} and re.search(
+        r"(?:hoc phi|hoc bong|ho tro nhap hoc)[^\n]{0,70}\d[\d.,]*\s*(?:dong|vnd)\b", folded_answer
+    ):
+        return "requested_information_mismatch"
+    if request == "documents" and not any(x in folded_answer for x in (
+        "hoc ba", "can cuoc", "cccd", "giay chung nhan", "thu moi nhap hoc", "giay to",
+    )):
+        return "requested_information_mismatch"
+    if request == "reception_hours":
+        weekend = any(x in _fold_text(question) for x in ("thu bay", "chu nhat", "ngay le"))
+        if not re.search(r"\b\d{1,2}(?::\d{2}|\s*gio)\b", folded_answer) and not (
+            weekend and any(x in folded_answer for x in ("thu bay", "chu nhat", "ngay le"))
+        ):
+            return "requested_information_mismatch"
 
     entities = _analysis_entities(analysis)
     evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
@@ -614,6 +690,8 @@ def _has_unsupported_named_entity(
 
 def _is_model_fallback(answer: str) -> bool:
     normalized = _fold_text(answer)
+    if normalized.startswith(("minh chua co thong tin", "minh chua du thong tin", "minh chua xac nhan duoc")):
+        return True
     return any(
         marker in normalized
         for marker in (
@@ -1308,7 +1386,7 @@ def _next_sentence_boundary(text: str, start: int) -> int:
 def _fold_text(text: str) -> str:
     folded = unicodedata.normalize("NFKD", text or "")
     folded = "".join(character for character in folded if not unicodedata.combining(character))
-    folded = folded.lower().replace("đ", "d")
+    folded = folded.lower().replace("đ", "d").replace("&", " va ")
     folded = folded.translate(str.maketrans({char: " " for char in '"“”‘’\'`'}))
     return re.sub(r"\s+", " ", folded).strip()
 

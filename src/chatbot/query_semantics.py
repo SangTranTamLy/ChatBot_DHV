@@ -13,6 +13,32 @@ def normalize_semantic_text(value: str) -> str:
     return re.sub(r"\s+", " ", folded).strip()
 
 
+def enrollment_request(question: str) -> str:
+    """Identify the requested enrollment fact, independently of the broad intent."""
+    text = normalize_semantic_text(question.partition("intent:")[0])
+    if "dang ky xet tuyen" in text and re.search(r"\b(?:han|lich)\b|\bkhi nao\b|\bngay nao\b", text):
+        return "deadline"
+    if not any(x in text for x in ("ho so", "giay to", "nhap hoc", "tiep nhan tan sinh vien")):
+        return ""
+    if "xet tuyen" in text and "nhap hoc" not in text:
+        return ""
+    if "xac nhan" in text:
+        return ""
+    if any(x in text for x in ("khung gio", "may gio", "gio nao", "luc nao trong ngay", "gio lam viec", "gio tiep nhan", "gio nhan", "thu bay", "chu nhat", "ngay le")):
+        return "reception_hours"
+    if any(x in text for x in ("han nop", "han nhan", "den ngay", "den khi", "khi nao", "ngay nao", "bao gio", "thoi gian")):
+        return "reception_dates" if "nhap hoc" in text or "tan sinh vien" in text else "deadline"
+    if any(x in text for x in ("o dau", "dia chi", "co so nao", "dia diem", "noi nao")):
+        return "enrollment_location"
+    if any(x in text for x in ("online", "truc tuyen", "hinh thuc", "cach nop")):
+        return "submission_mode"
+    if any(x in text for x in ("hoc phi", "hoc bong", "le phi", "phi nhap hoc", "hoc lieu", "dong tien", "uu dai", "diem")):
+        return ""
+    if "ho so" in text or "giay to" in text or ("thu tuc" in text and any(x in text for x in ("can chuan bi", "can gi", "gom"))):
+        return "documents"
+    return ""
+
+
 def mentions_optional_english_test(question: str) -> bool:
     folded = normalize_semantic_text(question)
     return any(

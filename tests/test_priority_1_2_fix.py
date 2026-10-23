@@ -68,6 +68,14 @@ class ExternalSchoolBoundaryTests(unittest.TestCase):
         self.assertEqual(result["status"], "no_data")
         self.assertEqual(result["_validation_reason"], "unsupported_contact_channel")
 
+    def test_sanitizer_keeps_only_exact_verified_contact_markdown_links(self) -> None:
+        verified_url = "https://www.tiktok.com/@dhv.official"
+        answer = sanitize_answer(
+            f"**Kênh chính thức:** [TikTok]({verified_url}) · [Facebook](https://evil.example/page)",
+            allowed_urls=(verified_url,),
+        )
+        self.assertEqual(answer, f"**Kênh chính thức:** [TikTok]({verified_url}) · Facebook")
+
     def test_generic_external_school_matrix_never_retrieves(self) -> None:
         questions = (
             "Điểm chuẩn trường đại học khác?",

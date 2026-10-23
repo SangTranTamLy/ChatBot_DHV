@@ -130,12 +130,12 @@ TOPIC_CASES = (
     (
         "Công thức điểm xét tuyển học bạ tính thế nào?",
         "HOI_CACH_TINH_DIEM",
-        "cach_tinh_diem",
+        "phuong_thuc_xet_tuyen",
     ),
     (
         "quy doi diem xet tuyen ra sao?",
         "HOI_CACH_TINH_DIEM",
-        "cach_tinh_diem",
+        "phuong_thuc_xet_tuyen",
     ),
     (
         "Cổng đăng ký xét tuyển DHV ở đâu?",
@@ -207,7 +207,7 @@ class TaskCTests(unittest.TestCase):
             ),
             (
                 TOPIC_CASES[2][0],
-                "cach_tinh_diem",
+                "phuong_thuc_xet_tuyen",
                 "Điểm xét tuyển = Toán hoặc Ngữ văn + (Trung bình cả năm THPT × 2).",
             ),
             (
@@ -309,7 +309,7 @@ class TaskCTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("0287 1000 888", result["answer"])
         self.assertNotIn("0909 999 999", result["answer"])
-        self.assertEqual(len(llm.prompts), 2)
+        self.assertEqual(llm.prompts, [])
 
     def test_fact_only_validator_rejects_unverified_date_and_retries(self) -> None:
         category = "dang_ky_xet_tuyen"
@@ -492,7 +492,7 @@ class TaskCTests(unittest.TestCase):
         result = ask_chatbot("Học bổng DHV 2026", retriever=RecordingRetriever([]), llm=RecordingLLM("x"))
 
         self.assertEqual(result["status"], "no_data")
-        self.assertIn("chưa tìm thấy", result["answer"])
+        self.assertIn("chưa có thông tin chính xác", result["answer"])
         self.assertEqual(result["sources"], [])
 
     def test_ollama_offline_is_classified_without_traceback(self) -> None:

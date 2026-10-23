@@ -4,3 +4,23 @@ gatherUsageStats = false
 [server]
 headless = false
 fileWatcherType = "none"
+enableStaticServing = true
+
+[theme]
+base = "light"
+primaryColor = "#db1032"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f7f8fa"
+textColor = "#10264d"
+borderColor = "#e0e5ed"
+font = "sans-serif"
+baseRadius = "0.75rem"
+buttonRadius = "0.75rem"
+showSidebarBorder = true
+
+[theme.sidebar]
+primaryColor = "#db1032"
+backgroundColor = "#10264d"
+secondaryBackgroundColor = "#19365f"
+textColor = "#ffffff"
+borderColor = "#345071"

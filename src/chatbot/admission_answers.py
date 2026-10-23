@@ -7,6 +7,7 @@ from typing import Any, Mapping
 from urllib.parse import urlparse
 
 from src.config.settings import settings
+from .query_semantics import enrollment_request
 from .catalog_formatters import _method_details_from_evidence
 from .evidence_utils import (
     _bullet_content_lines,
@@ -209,7 +210,7 @@ def _evidence_date_comparison_answer(analysis: QueryAnalysis, evidence: Any) -> 
         return f"{int(item[0])}/{int(item[1]):02d}/{year}"
 
     return (
-        "Không, đây là hai mốc khác nhau theo tài liệu DHV:\n"
+        "Không, đây là hai mốc khác nhau:\n"
         f"- {label(benefit_milestone)}: {benefit_milestone[2][0].strip()}\n"
         f"- {label(deadline_milestone)}: "
         + " ".join(sentence.strip() for sentence in deadline_milestone[2])
@@ -337,7 +338,14 @@ def _requested_admission_method_number(analysis: QueryAnalysis) -> int | None:
 def _asks_for_each_admission_method(normalized: str) -> bool:
     asks_all = any(
         marker in normalized
-        for marker in ("tung phuong thuc", "moi phuong thuc", "cac phuong thuc", "tat ca phuong thuc")
+        for marker in (
+            "tung phuong thuc",
+            "moi phuong thuc",
+            "cac phuong thuc",
+            "nhung phuong thuc",
+            "tat ca phuong thuc",
+            "5 phuong thuc",
+        )
     )
     asks_conditions = any(
         marker in normalized
@@ -365,7 +373,7 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     }
     if _asks_for_each_admission_method(normalized):
         if all(number in method_details for number in range(1, 6)):
-            return "Điều kiện/mô tả theo từng phương thức trong tài liệu DHV 2026:\n" + "\n".join(
+            return "Điều kiện theo từng phương thức xét tuyển DHV 2026:\n" + "\n".join(
                 f"{number}. {labels[number]}: {method_details[number]}"
                 for number in range(1, 6)
             )
@@ -396,7 +404,7 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     if not general or not law_intro or len(law_conditions) < 2:
         return None
 
-    answer_lines = ["Điều kiện chung theo tài liệu tuyển sinh DHV:"]
+    answer_lines = ["Điều kiện chung để xét tuyển vào DHV:"]
     answer_lines.extend(f"- {item}" for item in general)
     answer_lines.append("Riêng đối với ngành Luật và Luật Kinh tế, thí sinh cần đáp ứng đồng thời:")
     answer_lines.extend(f"- {item.split('. ', 1)[-1]}" for item in law_conditions[:2])
@@ -634,6 +642,7 @@ def _evidence_required_document_answer(analysis: QueryAnalysis, evidence: Any) -
     if not requested:
         return None
     alias, label = requested
+    supported = False
     for chunk in getattr(evidence, "chunks", ()) or ():
         chunk_text = str(getattr(chunk, "text", "") or "")
         folded = normalize_question(chunk_text)
@@ -643,6 +652,9 @@ def _evidence_required_document_answer(analysis: QueryAnalysis, evidence: Any) -
             continue
         if any(marker in folded for marker in ("khong can mang", "khong phai mang", "khong yeu cau")):
             return None
+        supported = True
+    if not supported:
+        return None
     source_line = next(
         (
             re.sub(r"^Hồ sơ nhập học\s*:\s*", "", line.lstrip("• ").strip(), flags=re.IGNORECASE).rstrip(" .")
@@ -666,6 +678,17 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
 
     normalized = normalize_question(analysis.normalized_question)
     chunks = tuple(getattr(evidence, "chunks", ()) or ())
+    request = enrollment_request(normalized)
+    if request in {"reception_hours", "reception_dates"}:
+        lines = _evidence_text_lines(evidence)
+        matches = []
+        for index, line in enumerate(lines):
+            if "tiep nhan nhap hoc" not in normalize_question(line) or not re.search(r"\b\d{1,2}:\d{2}\b", line):
+                continue
+            matches.append(line)
+            if index + 1 < len(lines) and any(x in normalize_question(lines[index + 1]) for x in ("thu bay", "chu nhat", "ngay le")):
+                matches.append(lines[index + 1])
+        return "DHV tiếp nhận nhập học vào các khung thời gian sau:\n" + "\n".join(dict.fromkeys(matches)) if matches else None
 
     def text_for(chunk: Any) -> str:
         return str(getattr(chunk, "text", "") or "").strip()
@@ -684,6 +707,121 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                 seen.add(key)
                 result.append(cleaned)
         return result
+
+    provided: set[str] = set()
+    if any(marker in normalized for marker in ("con thieu", "gi nua", "con lai", "bo sung", "can them")):
+        owned = re.search(r"(?<!chua )(?<!khong )(?:da )?co\s+(.+?)(?:\broi\b|\bcan\b|\bcon thieu\b)", normalized)
+        if owned:
+            owned_text = re.split(r"\b(?:nhung|chua|khong)\b", owned.group(1), maxsplit=1)[0]
+            for aliases in (("hoc ba",), ("can cuoc", "cccd"), ("thu moi", "tin nhan zalo"), ("giay chung nhan ket qua thi",)):
+                if any(re.search(rf"\b{re.escape(alias)}\b", owned_text) for alias in aliases):
+                    provided.add(aliases[0])
+
+    named_document_condition = any(
+        alias in normalized
+        for alias in (
+            "hoc ba", "can cuoc", "cccd", "thu moi", "tin nhan zalo",
+            "giay chung nhan ket qua thi", "giay khai sinh", "giay kham suc khoe",
+        )
+    ) and any(marker in normalized for marker in ("cong chung", "ban goc", "co can", "can mang", "mang theo"))
+
+    # The approved 2026 corpus stores the checklist as one verified
+    # ``document_text`` record (not legacy ``enrollment_document`` records).
+    # Read only the dedicated checklist source and its explicit bullet list;
+    # otherwise a generic question such as "Hồ sơ cần gì?" falls through to
+    # the language model, which can echo the whole procedure document.
+    if request == "documents":
+        checklist_lines: list[str] = []
+        checklist_note = ""
+        for chunk in chunks:
+            metadata = metadata_for(chunk)
+            try:
+                chunk_year = int(metadata.get("year"))
+            except (TypeError, ValueError):
+                continue
+            title = normalize_question(str(metadata.get("title") or ""))
+            if not (
+                metadata.get("status") == "verified"
+                and str(metadata.get("school_code") or "").upper() == "DHV"
+                and chunk_year == int(analysis.entities.get("year") or 2026)
+                and str(metadata.get("category") or "") == "ho_so"
+                and "ho so can chuan bi khi nhap hoc" in title
+            ):
+                continue
+            in_checklist = False
+            for raw_line in text_for(chunk).splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                folded = normalize_question(line)
+                if not line:
+                    continue
+                if "vui long mang theo" in folded and "giay to sau" in folded:
+                    in_checklist = True
+                    continue
+                if folded.startswith("luu y"):
+                    if "ban goc" in folded and "khong can cong chung" in folded:
+                        checklist_note = "Lưu ý: mang bản gốc để đối chiếu, không cần công chứng."
+                    in_checklist = False
+                    continue
+                if in_checklist and re.match(r"^[•*–-]\s*", line):
+                    checklist_lines.append(re.sub(r"^[•*–-]\s*", "", line).rstrip(" ."))
+        checklist_lines = unique(checklist_lines)
+        if named_document_condition and checklist_lines:
+            requested_aliases = (
+                ("giay chung nhan ket qua thi",),
+                ("hoc ba",),
+                ("can cuoc cong dan", "can cuoc", "cccd"),
+                ("giay khai sinh",),
+                ("giay kham suc khoe",),
+            )
+            requested_item = next(
+                (aliases for aliases in requested_aliases if any(alias in normalized for alias in aliases)),
+                (),
+            )
+            matched_item = next(
+                (
+                    line for line in checklist_lines
+                    if any(alias in normalize_question(line) for alias in requested_item)
+                ),
+                None,
+            ) if requested_item else None
+            if matched_item:
+                if "cong chung" in normalized and "khong can cong chung" in normalize_question(checklist_note):
+                    return f"Với {matched_item.rstrip(' .')}, bạn mang bản gốc để đối chiếu, không cần công chứng."
+                return f"Có. {matched_item.rstrip(' .')} nằm trong danh sách giấy tờ cần chuẩn bị khi nhập học."
+            if requested_item:
+                return None
+        if provided:
+            checklist_lines = [
+                line for line in checklist_lines
+                if not any(
+                    re.search(rf"\b{re.escape(alias)}\b", normalize_question(line))
+                    for item in provided
+                    for alias in (item, "cccd" if item == "can cuoc" else item)
+                )
+            ]
+        if checklist_lines and not named_document_condition:
+            operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
+            if operation == "COUNT":
+                answer = f"Hồ sơ nhập học DHV {analysis.entities.get('year') or 2026} cần chuẩn bị {len(checklist_lines)} loại giấy tờ."
+            elif operation == "LIST_AND_COUNT":
+                answer = (
+                    f"Hồ sơ nhập học DHV {analysis.entities.get('year') or 2026} cần chuẩn bị "
+                    f"{len(checklist_lines)} loại giấy tờ:\n"
+                    + "\n".join(f"- {line}" for line in checklist_lines)
+                )
+            else:
+                heading = "Bạn cần bổ sung các giấy tờ sau:" if provided else "Hồ sơ nhập học DHV 2026 cần chuẩn bị:"
+                answer = heading + "\n" + "\n".join(
+                    f"- {line}" for line in checklist_lines
+                )
+            if checklist_note:
+                answer += "\n" + checklist_note
+            return answer
+        if provided:
+            answer = "Theo danh sách đã kiểm tra, bạn đã có các giấy tờ được nêu."
+            if checklist_note:
+                answer += " " + checklist_note
+            return answer
 
     if "uu dai cao nhat" in normalized and any(
         marker in normalized for marker in ("hoan tat xac nhan", "xac nhan truoc moc", "xac nhan truoc ngay")
@@ -713,7 +851,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                         f"trước ngày {date_match.group(0)} để hưởng mức ưu đãi cao nhất."
                     )
 
-    if "nop ho so nhap hoc" in normalized and any(
+    if ("nop ho so" in normalized or request == "enrollment_location") and "dong tien" not in normalized and "xet tuyen" not in normalized and any(
         marker in normalized for marker in ("co so nao", "o dau", "dia chi nao")
     ):
         locations = unique([
@@ -727,7 +865,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
             )
         return None
 
-    document_answer = _evidence_required_document_answer(analysis, evidence)
+    document_answer = None if provided else _evidence_required_document_answer(analysis, evidence)
     if document_answer:
         return document_answer
 
@@ -757,7 +895,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
         )
         if locations or schedules:
             parts = [
-                "Tài liệu nhập học được truy xuất không nêu riêng quầy thu tiền mặt."
+                "Mình chưa có thông tin cụ thể về quầy thu tiền mặt."
             ]
             if locations:
                 parts.append("Địa điểm tiếp nhận nhập học được công bố:\n" + "\n".join(f"- {line}" for line in locations[:2]))
@@ -782,7 +920,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                 f"- {line}" for line in confirmation_lines[:4]
             )
 
-    if any(marker in normalized for marker in ("o xa", "nhap hoc truc tuyen", "nhap hoc online", "chua den truong ngay")):
+    if request == "submission_mode" or any(marker in normalized for marker in ("o xa", "nhap hoc truc tuyen", "nhap hoc online", "chua den truong ngay")):
         online_lines = unique([
             sentence
             for sentence in _evidence_sentences(evidence)
@@ -866,7 +1004,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                 f"- {line}" for line in fee_lines[:6]
             )
 
-    if "nhap hoc" not in normalized:
+    if "nhap hoc" not in normalized and request != "documents":
         return None
 
     document_lines: list[str] = []
@@ -887,6 +1025,23 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
         document_lines.append(value)
     document_lines = unique(document_lines)
     if document_lines:
+        if any(marker in normalized for marker in ("cong chung", "ban goc", "ban sao")):
+            named = [line for line in document_lines if any(
+                re.search(rf"\b{re.escape(alias)}\b", normalized)
+                and re.search(rf"\b{re.escape(alias)}\b", normalize_question(line))
+                for alias in ("hoc ba", "can cuoc", "thu moi", "giay chung nhan ket qua thi")
+            )]
+            if len(named) == 1 and any("ban goc" in normalize_question(text_for(chunk)) and
+                                       "khong can cong chung" in normalize_question(text_for(chunk)) for chunk in chunks):
+                return f"Với {named[0].rstrip(' .')}, bạn mang bản gốc để đối chiếu, không cần công chứng."
+        if provided:
+            remaining = [line for line in document_lines if not any(
+                re.search(rf"\b{re.escape(alias)}\b", normalize_question(line)) for alias in provided
+            )]
+            if remaining:
+                document_lines = remaining
+            else:
+                return "Bạn đã có các giấy tờ trong danh sách nhập học: " + "; ".join(document_lines) + ". Bạn nhớ mang bản gốc để đối chiếu nhé."
         count = len(document_lines)
         operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
         
@@ -897,7 +1052,8 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                 f"- {line}" for line in document_lines
             )
         else:
-            answer = "Hồ sơ nhập học DHV 2026 cần chuẩn bị:\n" + "\n".join(
+            heading = "Bạn cần bổ sung các giấy tờ sau:" if provided else "Bạn mang các giấy tờ sau:" if "nhac lai ngan gon" in normalized else "Hồ sơ nhập học DHV 2026 cần chuẩn bị:"
+            answer = heading + "\n" + "\n".join(
                 f"- {line}" for line in document_lines
             )
         note_lines: list[str] = []
@@ -1019,9 +1175,9 @@ def _evidence_admission_combination_answer(analysis: QueryAnalysis, evidence: An
             break
     if official_structures:
         intro = (
-            "Có. Theo tài liệu tuyển sinh DHV, hai cấu trúc tổ hợp được nêu là:\n"
+            "Có. DHV xét tuyển theo hai cấu trúc tổ hợp:\n"
             if analysis.entities.get("admission_combination_detail")
-            else "Theo tài liệu tuyển sinh DHV, hai cấu trúc tổ hợp được nêu là:\n"
+            else "DHV xét tuyển theo hai cấu trúc tổ hợp:\n"
         )
         return intro + "\n".join(
             f"- {structure}" for structure in official_structures[:2]
@@ -1071,12 +1227,12 @@ def _evidence_admission_combination_answer(analysis: QueryAnalysis, evidence: An
     if not sections:
         return None
     if any(marker in normalized for marker in ("nhung mon nao", "gom nhung mon", "cac mon", "to hop mon")):
-        return "Theo tài liệu tuyển sinh DHV, các cấu trúc tổ hợp được nêu gồm:\n" + "\n".join(
+        return "Các cấu trúc tổ hợp xét tuyển của DHV gồm:\n" + "\n".join(
             f"- {heading}: {bullet}" if heading else f"- {bullet}"
             for heading, bullet in sections
         )
     heading, bullet = sections[0]
-    return "Theo tài liệu tuyển sinh DHV: " + (f"{heading}: " if heading else "") + bullet
+    return "" + (f"{heading}: " if heading else "") + bullet
 
 
 def _evidence_admission_method_presence_answer(
@@ -1191,9 +1347,11 @@ def _evidence_method_calculation_answer(
                 and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
             ):
                 continue
+            source_text = str(getattr(chunk, "text", "") or "")
+            source_text = source_text.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
             lines = [
                 re.sub(r"\s+", " ", line).strip()
-                for line in str(getattr(chunk, "text", "") or "").splitlines()
+                for line in source_text.splitlines()
                 if line.strip()
             ]
             start = next(
@@ -1210,7 +1368,7 @@ def _evidence_method_calculation_answer(
                 (
                     index for index in range(start + 1, len(lines))
                     if re.match(
-                        r"^c[.)]?\s*xet ket qua ky thi danh gia nang luc\b",
+                        r"^(?:c[.)]?\s*|\d+(?:\.\d+)*\.?\s+)xet ket qua ky thi danh gia nang luc\b",
                         normalize_question(lines[index]),
                     )
                 ),
@@ -1222,6 +1380,7 @@ def _evidence_method_calculation_answer(
                 break
     if not detail:
         return None
+    detail = detail.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\\r", "\n")
     method_label = (
         "kết quả kỳ thi tốt nghiệp THPT"
         if method == "thpt"
@@ -1386,12 +1545,12 @@ def _evidence_schedule_answer(analysis: QueryAnalysis, evidence: Any) -> str | N
     operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
     
     if operation == "COUNT":
-        return f"Dữ liệu tuyển sinh DHV ghi nhận {count} mốc thời gian chính."
+        return f"Có {count} mốc thời gian chính."
     elif operation == "LIST_AND_COUNT":
-        return f"Dữ liệu tuyển sinh DHV ghi nhận {count} mốc thời gian chính:\n" + "\n".join(
+        return f"Có {count} mốc thời gian chính:\n" + "\n".join(
             f"- {line}" for line in timing_lines
         )
-    return "Mình liệt kê các mốc thời gian theo dữ liệu tuyển sinh DHV:\n" + "\n".join(
+    return "Các mốc tuyển sinh DHV gồm:\n" + "\n".join(
         f"- {line}" for line in timing_lines
     )
 
@@ -1472,10 +1631,31 @@ def _evidence_score_list_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     requested_method = str(entities.get("admission_method") or "")
     candidate_methods = entities.get("candidate_methods") or ()
     filter_method = bool(requested_method and len(candidate_methods) <= 1)
+    normalized_question = normalize_question(analysis.normalized_question)
+    explicit_all_major_request = any(
+        marker in normalized_question
+        for marker in ("tat ca cac nganh", "toan bo cac nganh")
+    )
+    if not candidates and explicit_all_major_request:
+        for fact in getattr(evidence, "score_facts", ()) or ():
+            if not isinstance(fact, Mapping) or fact.get("score_type") != score_type:
+                continue
+            if not (
+                fact.get("status") == "verified"
+                or fact.get("source_status") == "verified"
+                or fact.get("verified") is True
+            ):
+                continue
+            name = str(fact.get("major_name") or "").strip()
+            if name and normalize_entity_name(name) not in {
+                normalize_entity_name(value) for value in candidates
+            }:
+                candidates.append(name)
     if len(candidates) < 2 or not score_type:
         return None
     candidate_by_fold = {normalize_entity_name(name): name for name in candidates}
     grouped: dict[str, list[tuple[str, str]]] = {name: [] for name in candidates}
+    major_codes: dict[str, str] = {}
     for fact in getattr(evidence, "score_facts", ()) or ():
         if not isinstance(fact, Mapping):
             continue
@@ -1495,6 +1675,9 @@ def _evidence_score_list_answer(analysis: QueryAnalysis, evidence: Any) -> str |
         )
         if not candidate:
             continue
+        code = str(fact.get("major_code") or "").strip()
+        if code:
+            major_codes.setdefault(candidate, code)
         raw_value = str(fact.get("raw_value") or "").strip()
         if not raw_value:
             continue
@@ -1503,15 +1686,36 @@ def _evidence_score_list_answer(analysis: QueryAnalysis, evidence: Any) -> str |
             grouped[candidate].append(row)
     if any(not grouped[name] for name in candidates):
         return None
-    methods = list(dict.fromkeys(method for values in grouped.values() for method, _ in values))
+    method_order = ("thi tốt nghiệp THPT", "học bạ", "ĐGNL")
+    available_methods = {
+        method for values in grouped.values() for method, _ in values
+    }
+    methods = [method for method in method_order if method in available_methods]
+    methods.extend(sorted(available_methods - set(method_order)))
+    name_column = "Ngành" if entities.get("candidate_majors") else "Tên mã xét tuyển"
     rows = [
-        "| Ngành | " + " | ".join(methods) + " |",
-        "|---|" + "---|" * len(methods),
+        f"| {name_column} | Mã xét tuyển | " + " | ".join(methods) + " |",
+        "|---|---|" + "---|" * len(methods),
     ]
     for candidate in candidates:
         by_method = dict(grouped[candidate])
-        rows.append("| " + candidate + " | " + " | ".join(by_method.get(method, "-") for method in methods) + " |")
-    return "Ngưỡng theo danh sách ngành ở lượt trước, từ dữ liệu DHV đã xác minh:\n" + "\n".join(rows)
+        values = [by_method.get(method, "-") for method in methods]
+        rows.append(
+            "| " + candidate + " | " + major_codes.get(candidate, "-") + " | "
+            + " | ".join(values) + " |"
+        )
+    if score_type == "admission_score":
+        scope = (
+            "các ngành bạn vừa xem"
+            if entities.get("candidate_majors")
+            else "theo mã xét tuyển"
+        )
+        return (
+            f"Điểm trúng tuyển đợt 1 năm 2026 {scope}:\n"
+            + "\n".join(rows)
+            + "\n\nLưu ý: đây là điểm trúng tuyển theo từng phương thức, không phải ngưỡng chung để nộp hồ sơ."
+        )
+    return "Ngưỡng nhận hồ sơ của các ngành bạn vừa hỏi:\n" + "\n".join(rows)
 
 
 def _structured_score_answer(
@@ -1715,7 +1919,7 @@ def _evidence_applicant_support_answer(analysis: QueryAnalysis, evidence: Any) -
             or "ho tro hoc phi" in folded
             or "chinh sach" in folded
         ):
-            return f"Theo tài liệu DHV đã xác minh: {sentence.strip()}"
+            return f"{sentence.strip()}"
     return None
 
 
@@ -1751,7 +1955,7 @@ def _evidence_application_registration_answer(analysis: QueryAnalysis, evidence:
         if len(sites) < 2:
             continue
         answer = (
-            "Với đợt xét tuyển bổ sung, tài liệu DHV nêu hai cách: "
+            "Bạn có thể đăng ký xét tuyển bổ sung theo hai cách: "
             + route.group(0)
             + "\n"
             + "\n".join(f"- {site.lstrip('• ')}" for site in sites[:2])
@@ -1888,6 +2092,6 @@ def _evidence_result_notification_answer(analysis: QueryAnalysis, evidence: Any)
         details.append(f"Tài liệu nhập học nhắc đến: {_remove_unresolved_url_label(invitation)}")
     if not details:
         return None
-    return "Theo các tài liệu tuyển sinh DHV đã xác minh:\n" + "\n".join(
+    return "Bạn lưu ý các bước sau:\n" + "\n".join(
         f"- {detail}" for detail in details
     )

@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
-from .query_analysis import normalize_question
+from src.config.settings import Settings
+from src.models.local_llm import LocalLLM
+from .query_analysis import (
+    ConversationState, QueryAnalysis, QueryPlan, analyze_question, normalize_question, route_question,
+)
 
 
 _ELIGIBLE_INTENTS = frozenset(
@@ -215,6 +219,170 @@ def decompose_question(question: str, llm: Any) -> QueryDecomposition:
 
 def _searchable(value: str) -> str:
     return " ".join(_TOKEN_RE.findall(normalize_question(value)))
+
+
+def _try_pre_rag_decomposition(
+    *,
+    analysis: QueryAnalysis,
+    plan: QueryPlan,
+    llm: Any | None,
+    query_planner: Any | None,
+    settings_obj: Settings,
+) -> tuple[QueryAnalysis, QueryPlan, Any | None]:
+    """Optionally split an in-scope compound query before any retrieval."""
+
+    if not should_attempt_decomposition(analysis, plan):
+        return analysis, plan, llm
+
+    planner_llm = query_planner
+    if planner_llm is None and llm is not None:
+        trace: dict[str, object] = {
+            "status": "skipped",
+            "reason": "separate_planner_not_configured_for_injected_generator",
+            "parts": [],
+        }
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+    try:
+        if planner_llm is None:
+            planner_llm = LocalLLM(settings_obj=settings_obj)
+        outcome = decompose_question(analysis.question, planner_llm)
+    except Exception:
+        outcome = None
+
+    if outcome is None:
+        trace: dict[str, object] = {
+            "status": "rejected",
+            "reason": "planner_unavailable",
+            "parts": [],
+        }
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+
+    trace = outcome.to_dict()
+    if not outcome.accepted:
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+
+    shared_entity_keys = (
+        "year",
+        "target_school",
+        "school_mentions",
+        "explicit_school",
+        "scope_reason",
+        "major_name",
+        "major_code",
+        "program_name",
+        "parent_major",
+        "entity_type",
+        "candidate_majors",
+        "candidate_programs",
+        "admission_method",
+        "candidate_methods",
+        "score_type",
+        "score_query_type",
+        "score_value",
+        "student_scores",
+        "interest",
+        "admission_combination",
+    )
+    neutral_state = ConversationState(current_year=settings_obj.target_year)
+    subplans: list[QueryPlan] = []
+    sub_analyses: list[QueryAnalysis] = []
+    rejection_reason: str | None = None
+    for part in outcome.parts:
+        child_analysis = analyze_question(
+            part,
+            neutral_state,
+            default_year=settings_obj.target_year,
+        )
+        child_target = str(child_analysis.entities.get("target_school") or "UNSPECIFIED")
+        if child_target in {"OTHER_SCHOOL", "MIXED", "AMBIGUOUS"}:
+            rejection_reason = "part_crosses_school_boundary"
+            break
+        if child_analysis.intent in {
+            "OUT_OF_SCOPE",
+            "MULTI_ISSUE",
+            "GREETING",
+            "THANKS",
+            "SYSTEM_IDENTITY",
+            "SYSTEM_SCOPE",
+        }:
+            rejection_reason = "part_not_independently_routable"
+            break
+
+        child_entities = dict(child_analysis.entities)
+        for key in shared_entity_keys:
+            inherited = analysis.entities.get(key)
+            current = child_entities.get(key)
+            if inherited not in (None, "", [], {}, ()) and current in (None, "", [], {}, ()):
+                child_entities[key] = inherited
+        child_analysis = replace(child_analysis, entities=child_entities)
+        child_plan = route_question(
+            child_analysis,
+            neutral_state,
+            target_year=settings_obj.target_year,
+        )
+        if child_plan.needs_clarification:
+            rejection_reason = "part_requires_clarification"
+            break
+        if not child_plan.categories or child_plan.subplans:
+            rejection_reason = "part_has_no_supported_route"
+            break
+        if int(child_entities.get("year") or settings_obj.target_year) != int(
+            analysis.entities.get("year") or settings_obj.target_year
+        ):
+            rejection_reason = "part_year_conflicts_with_question"
+            break
+        subplans.append(replace(child_plan, issue_question=part, issue_entities=child_entities))
+        sub_analyses.append(child_analysis)
+
+    intents = [child.intent for child in sub_analyses]
+    if rejection_reason is None and (
+        len(subplans) < 2 or len(set(intents)) != len(intents)
+    ):
+        rejection_reason = "parts_do_not_resolve_distinct_issues"
+    if rejection_reason is not None:
+        trace = {
+            **trace,
+            "status": "rejected",
+            "reason": rejection_reason,
+            "routed_intents": intents,
+        }
+        return analysis, replace(plan, pre_rag_decomposition=trace), llm
+
+    trace = {
+        **trace,
+        "status": "accepted",
+        "reason": "validated_verbatim_spans_and_deterministic_routes",
+        "routed_intents": intents,
+        "scope_revalidated": True,
+    }
+    multi_entities = {
+        **analysis.entities,
+        "issue_intents": intents,
+        "requested_information": intents,
+    }
+    multi_analysis = replace(
+        analysis,
+        intent="MULTI_ISSUE",
+        entities=multi_entities,
+        intent_source="llm_pre_rag_decomposition+deterministic_routes",
+        intent_confidence=None,
+    )
+    categories = tuple(
+        dict.fromkeys(category for subplan in subplans for category in subplan.categories)
+    )
+    multi_plan = QueryPlan(
+        intent="MULTI_ISSUE",
+        categories=categories,
+        retrieval_query=plan.retrieval_query,
+        metadata_filter=dict(plan.metadata_filter),
+        needs_clarification=False,
+        subplans=tuple(subplans),
+        entity_filters=dict(plan.entity_filters),
+        query_mode=plan.query_mode,
+        pre_rag_decomposition=trace,
+    )
+    return multi_analysis, multi_plan, llm
+
 
 
 __all__ = [

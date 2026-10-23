@@ -3,11 +3,25 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Mapping
 
 
 def _json_block(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+
+
+@lru_cache(maxsize=1)
+def _response_examples() -> tuple[dict[str, object], ...]:
+    path = Path(__file__).resolve().parents[2] / "data/training/response_examples.jsonl"
+    try:
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    except (OSError, ValueError):
+        return ()
+    return tuple(row for row in rows if isinstance(row, dict) and all(
+        isinstance(row.get(key), str) and row[key].strip() for key in ("question", "context", "answer")
+    ))
 
 
 def build_rag_prompt(
@@ -70,13 +84,17 @@ def build_rag_prompt(
         for relation in bounded_relations
         if relation.get("program_name") and relation.get("parent_major")
     ]
+    examples = sorted(_response_examples(), key=lambda row: row.get("intent") != intent)[:2]
+    style_examples = _json_block([
+        {key: row[key][:700] for key in ("question", "context", "answer")} for row in examples
+    ])
 
     return f"""Bạn là trợ lý tư vấn tuyển sinh của Trường Đại học Hùng Vương TP.HCM (DHV).
 
 CHỈ DÙNG CONTEXT DƯỚI ĐÂY để trả lời câu hỏi. Không sử dụng kiến thức bên ngoài
 CONTEXT, không suy đoán, không tự điền thông tin còn thiếu và không biến một
 mốc lịch chung thành hạn hồ sơ riêng. Nếu CONTEXT không đủ, hãy nói rõ phần
-thông tin chưa được xác minh; chỉ nêu Fanpage, hotline hoặc kênh liên hệ nếu
+thông tin mình chưa có để trả lời chính xác; chỉ nêu Fanpage, hotline hoặc kênh liên hệ nếu
 chính CONTEXT cung cấp thông tin đó. Nếu không có, không tự tạo số điện thoại
 hoặc liên kết và chỉ hướng dẫn người dùng kiểm tra kênh chính thức của trường.
 
@@ -86,7 +104,8 @@ Quy tắc:
   hỏi và trình bày từng ý riêng khi cần. Chỉ trả lời ý được CONTEXT của lượt
   truy xuất hiện tại hỗ trợ; không dùng evidence của một ý để suy ra ý khác.
   Nếu có nhiều ý nhưng CONTEXT chỉ hỗ trợ một phần, trả lời phần có căn cứ và
-  nói rõ phần còn thiếu thông tin đã xác minh; tuyệt đối không tự lấp chỗ trống.
+  nói rõ phần còn thiếu bằng lời tự nhiên, ví dụ "Riêng phần này, mình chưa có
+  thông tin chính xác"; tuyệt đối không tự lấp chỗ trống.
 - Mỗi mục trả lời chỉ được dùng dữ kiện liên quan trực tiếp tới intent của mục
   đó. Không thêm thông tin quảng bá, gợi ý liên hệ, hotline, fanpage hoặc liên
   kết nếu CONTEXT không nêu rõ; nguồn và liên kết chính thức do backend gắn.
@@ -137,7 +156,10 @@ Quy tắc:
   + Luôn xưng hô "mình" và "bạn", giọng văn tự nhiên, ấm áp, nhiệt tình và rõ ràng.
   + Trả lời thẳng vào trọng tâm câu hỏi của bạn thí sinh, giải thích dễ hiểu, mạch lạc bằng các gạch đầu dòng Markdown rõ ràng.
   + Bôi đậm các con số quan trọng, mốc thời gian, tên ngành hoặc điều kiện cốt lõi để người đọc dễ nắm bắt.
-  + Mở đầu nhẹ nhàng tự nhiên và kết thúc bằng một câu tiếp nối thiện chí (ví dụ: sẵn sàng giải đáp thêm các thắc mắc khác của bạn).
+  + Đi thẳng vào câu trả lời; không bắt buộc chào hỏi, cảm ơn hay thêm câu mời hỏi tiếp ở mọi lượt.
+  + Khi thiếu một ý, trả lời các ý còn lại trước và nói ngắn gọn ý nào chưa rõ.
+    Không nói "đang tra tài liệu", "dữ liệu đã kiểm chứng" hay giải thích quy trình nội bộ.
+    Không biến việc chưa biết thành khẳng định trường không có dịch vụ hoặc chính sách đó.
   + Tuyệt đối không dùng văn phong máy móc, rập khuôn, quan liêu hay các từ ngữ hành chính cứng nhắc.
   + Tuyệt đối KHÔNG nhắc đến các từ kỹ thuật: "trong dữ liệu", "theo tài liệu", "được ghi nhận", "trong CONTEXT", "hệ thống", "validator", "prompt", "model".
   + Không mở đầu lặp bằng "Theo dữ liệu tuyển sinh", "Đây là các thông tin được công bố" hoặc câu xác nhận nguồn nếu người dùng không hỏi nguồn.
@@ -178,6 +200,13 @@ Quy tắc:
 <INTENT>
 {intent or "chưa xác định"}
 </INTENT>
+
+<STYLE_EXAMPLES>
+Các cặp hỏi đáp sau chỉ hướng dẫn cách diễn đạt, KHÔNG phải nguồn thông tin
+cho câu hỏi hiện tại. Không chép số liệu, địa chỉ hoặc điều kiện từ ví dụ nếu
+CONTEXT hiện tại không có. Chỉ CONTEXT hiện tại được dùng làm căn cứ trả lời.
+{style_examples}
+</STYLE_EXAMPLES>
 
 <ENTITIES>
 {_json_block(dict(entities or {}))}

@@ -15,6 +15,10 @@ class OllamaUnavailableError(OllamaError):
     """Ollama đang offline, không thể kết nối, hoặc model được cấu hình không tồn tại."""
 
 
+class OllamaTimeoutError(OllamaUnavailableError):
+    """The server did not finish within the configured request deadline."""
+
+
 class LocalLLM:
     """Sinh văn bản bằng model Ollama đã cấu hình.
 
@@ -61,6 +65,9 @@ class LocalLLM:
                 options={"temperature": 0},
             )
         except Exception as exc:
+            from httpx import TimeoutException
+            if isinstance(exc, (TimeoutException, TimeoutError)):
+                raise OllamaTimeoutError("Ollama request timed out") from exc
             raise OllamaUnavailableError("Ollama request failed") from exc
 
         content = _extract_content(response)
@@ -84,4 +91,4 @@ def _extract_content(response: Any) -> str:
     return ""
 
 
-__all__ = ["LocalLLM", "OllamaError", "OllamaUnavailableError"]
+__all__ = ["LocalLLM", "OllamaError", "OllamaUnavailableError", "OllamaTimeoutError"]

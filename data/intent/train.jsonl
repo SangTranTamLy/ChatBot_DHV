@@ -46,32 +46,56 @@
 {"id": "dsnganh_06", "intent": "DANH_SACH_NGANH", "text": "Các ngành đào tạo của DHV gồm những ngành nào?"}
 {"id": "dsnganh_07", "intent": "DANH_SACH_NGANH", "text": "Danh mục ngành chính của trường"}
 {"id": "dsnganh_09", "intent": "DANH_SACH_NGANH", "text": "Danh sách các ngành chính"}
+{"id": "focus_hoi_co_so_lien_he_1", "intent": "HOI_CO_SO_LIEN_HE", "text": "Cho em xin hotline tuyển sinh của DHV"}
+{"id": "focus_hoi_co_so_lien_he_3", "intent": "HOI_CO_SO_LIEN_HE", "text": "Trường có tất cả những cơ sở nào?"}
+{"id": "focus_hoi_co_so_lien_he_4", "intent": "HOI_CO_SO_LIEN_HE", "text": "Em muốn tìm fanpage chính thức của trường"}
+{"id": "focus_hoi_co_so_lien_he_5", "intent": "HOI_CO_SO_LIEN_HE", "text": "Số điện thoại phòng tuyển sinh DHV là số nào?"}
+{"id": "focus_hoi_ho_so_2", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học cần bản gốc hay bản sao?"}
+{"id": "focus_hoi_ho_so_3", "intent": "HOI_HO_SO", "text": "Em cần chuẩn bị gì trong bộ hồ sơ nhập học?"}
+{"id": "focus_hoi_ho_so_4", "intent": "HOI_HO_SO", "text": "Cần mang học bạ khi làm hồ sơ nhập học không?"}
+{"id": "focus_hoi_ho_so_5", "intent": "HOI_HO_SO", "text": "Giấy tờ nhập học có cần công chứng không?"}
+{"id": "focus_hoi_hoc_bong_1", "intent": "HOI_HOC_BONG", "text": "Điều kiện để được học bổng đầu vào là gì?"}
+{"id": "focus_hoi_hoc_bong_3", "intent": "HOI_HOC_BONG", "text": "Học bổng nhóm bạn được giảm vào học kỳ nào?"}
+{"id": "focus_hoi_hoc_bong_4", "intent": "HOI_HOC_BONG", "text": "Em cần hồ sơ gì để xin miễn giảm học phí?"}
+{"id": "focus_hoi_hoc_bong_5", "intent": "HOI_HOC_BONG", "text": "Chương trình UniBridge hỗ trợ như thế nào?"}
+{"id": "focus_hoi_hoc_phi_1", "intent": "HOI_HOC_PHI", "text": "Học phí một tín chỉ hiện là bao nhiêu?"}
+{"id": "focus_hoi_hoc_phi_2", "intent": "HOI_HOC_PHI", "text": "Tổng tiền nhập học có gồm kiểm tra tiếng Anh không?"}
+{"id": "focus_hoi_hoc_phi_3", "intent": "HOI_HOC_PHI", "text": "Học phí HKI chưa trừ học bổng bao nhiêu?"}
+{"id": "focus_hoi_hoc_phi_4", "intent": "HOI_HOC_PHI", "text": "Nhập học phải đóng những khoản tiền nào?"}
+{"id": "focus_hoi_lich_tuyen_sinh_2", "intent": "HOI_LICH_TUYEN_SINH", "text": "Thời gian xác nhận nhập học trên cổng Bộ khi nào?"}
+{"id": "focus_hoi_lich_tuyen_sinh_3", "intent": "HOI_LICH_TUYEN_SINH", "text": "Năm nay lịch đăng ký xét tuyển ra sao?"}
+{"id": "focus_hoi_lich_tuyen_sinh_4", "intent": "HOI_LICH_TUYEN_SINH", "text": "Đợt nhập học kéo dài đến ngày nào?"}
+{"id": "focus_hoi_nhap_hoc_1", "intent": "HOI_NHAP_HOC", "text": "Nộp hồ sơ lúc nào trong ngày?"}
+{"id": "focus_hoi_nhap_hoc_2", "intent": "HOI_NHAP_HOC", "text": "Trường nhận hồ sơ nhập học vào giờ nào?"}
+{"id": "focus_hoi_nhap_hoc_3", "intent": "HOI_NHAP_HOC", "text": "Chủ nhật em đến nộp hồ sơ nhập học được không?"}
+{"id": "focus_hoi_nhap_hoc_4", "intent": "HOI_NHAP_HOC", "text": "Em nộp hồ sơ nhập học qua mạng được không?"}
 {"id": "hocbong_01", "intent": "HOI_HOC_BONG", "text": "Học bổng DHV có những loại nào?"}
+{"id": "hocbong_02", "intent": "HOI_HOC_BONG", "text": "Điều kiện nhận học bổng tuyển sinh"}
 {"id": "hocbong_03", "intent": "HOI_HOC_BONG", "text": "Trường có học bổng cho sinh viên không?"}
 {"id": "hocbong_04", "intent": "HOI_HOC_BONG", "text": "Mức học bổng của DHV"}
 {"id": "hocbong_05", "intent": "HOI_HOC_BONG", "text": "Chính sách học bổng tuyển sinh"}
 {"id": "hocbong_06", "intent": "HOI_HOC_BONG", "text": "Điều kiện xét học bổng của trường"}
-{"id": "hocbong_08", "intent": "HOI_HOC_BONG", "text": "Thông tin học bổng DHV"}
+{"id": "hocbong_07", "intent": "HOI_HOC_BONG", "text": "Học bổng dành cho tân sinh viên"}
 {"id": "hocbong_09", "intent": "HOI_HOC_BONG", "text": "Sinh viên mới có được học bổng không?"}
-{"id": "hocbong_10", "intent": "HOI_HOC_BONG", "text": "Học bổng đầu vào DHV"}
 {"id": "hocphi_01", "intent": "HOI_HOC_PHI", "text": "Học phí DHV năm 2026 bao nhiêu?"}
 {"id": "hocphi_02", "intent": "HOI_HOC_PHI", "text": "Mỗi học kỳ học phí là bao nhiêu?"}
 {"id": "hocphi_03", "intent": "HOI_HOC_PHI", "text": "Mức học phí ngành CNTT"}
 {"id": "hocphi_04", "intent": "HOI_HOC_PHI", "text": "Tiền học ở DHV bao nhiêu?"}
-{"id": "hocphi_06", "intent": "HOI_HOC_PHI", "text": "Học phí một kỳ tại DHV"}
-{"id": "hocphi_07", "intent": "HOI_HOC_PHI", "text": "Năm 2026 học phí bao nhiêu tiền?"}
+{"id": "hocphi_05", "intent": "HOI_HOC_PHI", "text": "Học phí học kỳ một"}
+{"id": "hocphi_08", "intent": "HOI_HOC_PHI", "text": "Mức thu học phí học kỳ I"}
 {"id": "hocphi_09", "intent": "HOI_HOC_PHI", "text": "Chi phí học phí DHV"}
 {"id": "hocphi_10", "intent": "HOI_HOC_PHI", "text": "Học phí kỳ đầu tại trường"}
 {"id": "hoso_01", "intent": "HOI_HO_SO", "text": "Hồ sơ nhập học cần giấy tờ gì?"}
 {"id": "hoso_02", "intent": "HOI_HO_SO", "text": "Thủ tục nhập học cần chuẩn bị gì?"}
 {"id": "hoso_03", "intent": "HOI_HO_SO", "text": "Cần chuẩn bị giấy tờ nào để nhập học?"}
 {"id": "hoso_04", "intent": "HOI_HO_SO", "text": "Hồ sơ xét tuyển gồm những gì?"}
+{"id": "hoso_05", "intent": "HOI_HO_SO", "text": "Đăng ký nhập học cần hồ sơ gì?"}
 {"id": "hoso_06", "intent": "HOI_HO_SO", "text": "Nộp hồ sơ nhập học gồm giấy tờ nào?"}
 {"id": "hoso_07", "intent": "HOI_HO_SO", "text": "Danh sách giấy tờ nhập học"}
-{"id": "hoso_08", "intent": "HOI_HO_SO", "text": "Thủ tục và hồ sơ cần nộp"}
-{"id": "hoso_09", "intent": "HOI_HO_SO", "text": "Hồ sơ để xác nhận nhập học"}
+{"id": "hoso_10", "intent": "HOI_HO_SO", "text": "Giấy tờ làm thủ tục nhập học"}
 {"id": "lich_01", "intent": "HOI_LICH_TUYEN_SINH", "text": "Lịch tuyển sinh DHV năm 2026"}
-{"id": "lich_02", "intent": "HOI_LICH_TUYEN_SINH", "text": "Các mốc xét tuyển của trường"}
+{"id": "lich_03", "intent": "HOI_LICH_TUYEN_SINH", "text": "Hạn xét tuyển khi nào?"}
+{"id": "lich_04", "intent": "HOI_LICH_TUYEN_SINH", "text": "Thời gian tuyển sinh DHV"}
 {"id": "lich_05", "intent": "HOI_LICH_TUYEN_SINH", "text": "Deadline tuyển sinh năm nay"}
 {"id": "lich_06", "intent": "HOI_LICH_TUYEN_SINH", "text": "Lịch các mốc tuyển sinh năm 2026"}
 {"id": "lich_07", "intent": "HOI_LICH_TUYEN_SINH", "text": "Khi nào đến hạn đăng ký xét tuyển?"}
@@ -83,9 +107,9 @@
 {"id": "lienhe_03", "intent": "HOI_CO_SO_LIEN_HE", "text": "Liên hệ phòng tuyển sinh thế nào?"}
 {"id": "lienhe_04", "intent": "HOI_CO_SO_LIEN_HE", "text": "Email tư vấn tuyển sinh của trường"}
 {"id": "lienhe_05", "intent": "HOI_CO_SO_LIEN_HE", "text": "Số điện thoại trường DHV"}
+{"id": "lienhe_06", "intent": "HOI_CO_SO_LIEN_HE", "text": "Hotline tư vấn tuyển sinh là bao nhiêu?"}
 {"id": "lienhe_07", "intent": "HOI_CO_SO_LIEN_HE", "text": "Website chính thức DHV là gì?"}
 {"id": "lienhe_09", "intent": "HOI_CO_SO_LIEN_HE", "text": "Cổng thông tin tuyển sinh DHV ở đâu?"}
-{"id": "lienhe_10", "intent": "HOI_CO_SO_LIEN_HE", "text": "Đường dẫn trang tuyển sinh chính thức DHV"}
 {"id": "nganh_01", "intent": "HOI_NGANH", "text": "Mã 7480201 tương ứng ngành nào?"}
 {"id": "nganh_02", "intent": "HOI_NGANH", "text": "Cho tôi biết về ngành công nghệ thông tin"}
 {"id": "nganh_03", "intent": "HOI_NGANH", "text": "Mã ngành CNTT của DHV là bao nhiêu?"}
@@ -102,7 +126,7 @@
 {"id": "nguong_08", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn tuyển sinh của ngành Marketing"}
 {"id": "nguong_09", "intent": "HOI_NGUONG_DAU_VAO", "text": "Điểm sàn của DHV"}
 {"id": "nguong_10", "intent": "HOI_NGUONG_DAU_VAO", "text": "Ngành Luật nhận hồ sơ từ bao nhiêu điểm?"}
-{"id": "nhaphoc_03", "intent": "HOI_NHAP_HOC", "text": "Cách xác nhận nhập học"}
+{"id": "nhaphoc_02", "intent": "HOI_NHAP_HOC", "text": "Hướng dẫn nhập học trực tuyến"}
 {"id": "nhaphoc_04", "intent": "HOI_NHAP_HOC", "text": "Nhập học online thế nào?"}
 {"id": "nhaphoc_05", "intent": "HOI_NHAP_HOC", "text": "Khi nào xác nhận nhập học?"}
 {"id": "nhaphoc_06", "intent": "HOI_NHAP_HOC", "text": "Thời gian xác nhận nhập học"}

@@ -12,6 +12,7 @@ env/
 # Local agent metadata and temporary workspace folders
 .agents/
 tmp*/
+.pytest-temp/
 .qa_tmp/
 .test_tmp/
 torchinductor_*/

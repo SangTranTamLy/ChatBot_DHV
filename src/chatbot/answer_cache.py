@@ -45,6 +45,8 @@ def is_cacheable(payload: Dict[str, Any]) -> bool:
         payload.get("answer")
         and not payload.get("is_smalltalk")
         and payload.get("status") == "ok"
+        and not payload.get("partial")
+        and not payload.get("temporal_checked")
     )
 
 

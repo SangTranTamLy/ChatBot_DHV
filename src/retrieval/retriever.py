@@ -272,7 +272,9 @@ def topic_category(question: str) -> str | None:
         or "tinh diem ra sao" in normalized
         or "tinh nhu the nao" in normalized
     ):
-        return "cach_tinh_diem"
+        # The approved 2026 corpus stores score-calculation rules alongside
+        # the admission methods, not under a separate calculation category.
+        return "phuong_thuc_xet_tuyen"
     if (
         ("hoc ba" in normalized and re.search(r"\b(?:bao nhieu|may|lay)\b", normalized))
         or "diem nhan ho so" in normalized
@@ -385,17 +387,46 @@ def _entity_terms(entity_filters: Mapping[str, object] | None) -> tuple[str, ...
         value = entity_filters.get(key)
         items = value if isinstance(value, (list, tuple, set)) else (value,)
         for item in items:
-            folded = _normalize(str(item or "")).strip()
+            folded = " ".join(_normalize(str(item or "").replace("&", " va ")).split())
             if folded and folded not in values:
                 values.append(folded)
     return tuple(values)
 
 
-def _entity_matches(document: Document, entity_filters: Mapping[str, object] | None) -> bool:
+def _entity_matches(
+    document: Document,
+    entity_filters: Mapping[str, object] | None,
+    categories: Iterable[str] = (),
+) -> bool:
     terms = _entity_terms(entity_filters)
     if not terms:
         return True
-    content = _normalize(document.page_content)
+    metadata = document.metadata or {}
+    category_values = {str(category) for category in categories}
+    record_type = str(metadata.get("record_type") or "")
+    has_specific_major = bool(metadata.get("major_name") or metadata.get("major_code"))
+
+    # A major-specific query still needs verified general thresholds: the
+    # published THPT floor and ĐGNL floor apply across majors, while the
+    # catalogue row itself carries no threshold values. Keep these typed,
+    # category-scoped rules in the candidate pool so the answer layer can
+    # combine them with a major-specific exception when one exists.
+    if not has_specific_major and (
+        (
+            "nguong_dau_vao" in category_values
+            and metadata.get("category") == "nguong_dau_vao"
+            and record_type == "application_threshold"
+        )
+        or (
+            "xet_tuyen_bo_sung" in category_values
+            and metadata.get("category") == "xet_tuyen_bo_sung"
+            and record_type == "supplementary_threshold"
+            and str(metadata.get("scope") or "").casefold()
+            in {"most_programs", "all", "toàn bộ", "phần lớn chương trình"}
+        )
+    ):
+        return True
+    content = " ".join(_normalize(document.page_content.replace("&", " va ")).split())
     return any(term in content for term in terms)
 
 
@@ -445,37 +476,81 @@ def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters:
 
     Đây là một policy về dạng truy vấn, không phụ thuộc tên ngành. Tài liệu
     ``description`` vẫn được truy xuất cho câu hỏi mô tả/tư vấn; chỉ các yêu
-    cầu liệt kê thuần catalog mới bỏ prose khỏi candidate pool.
+    cầu liệt kê thuần catalog mới bỏ prose khỏi candidate pool và mở rộng hết
+    danh mục thay vì giới hạn ở top-k semantic.
     """
 
-    if "nganh_dao_tao" not in categories or entity_filters:
-        return False
     normalized = _normalize(query)
-    return any(
-        marker in normalized
-        for marker in (
-            "danh sach",
-            "liet ke",
-            "bao nhieu nganh",
-            "nhieu nganh",
-            "bao nhiu nganh",
-            "nhiu nganh",
-            "may nganh",
-            "so luong nganh",
-            "tat ca cac nganh",
-            "co nhung nganh",
-            "cac nganh",
-            "nganh gi",
-            "nganh nao",
-            "nhung nganh",
-            "chuong trinh nao",
-            "chuong trinh gi",
-            "co may chuong trinh",
-            "intent:danh_sach_nganh",
-            "intent:danh_sach_chuong_trinh",
-            "intent:tu_van_chon_nganh",
+    if "diem_trung_tuyen" in categories:
+        asks_for_all_major_scores = any(
+            marker in normalized
+            for marker in (
+                "tat ca cac nganh",
+                "toan bo cac nganh",
+                "cac nganh tren",
+                "cac nganh neu tren",
+                "cac nganh vua ke",
+                "cac nganh vua neu",
+                "nhung nganh tren",
+                "nhung nganh vua ke",
+            )
+        ) and any(
+            marker in normalized
+            for marker in ("diem san", "diem trung tuyen", "diem chuan", "diem dau vao", "nguong")
         )
-    )
+        has_major_list_scope = not entity_filters or bool(
+            entity_filters.get("candidate_majors")
+        )
+        if asks_for_all_major_scores and has_major_list_scope:
+            # A multi-major score table is only complete when every verified
+            # score row in the requested category reaches evidence selection.
+            # Top-k ranking had previously kept one or two rows and the LLM
+            # filled the gap with a generic threshold from another source.
+            return True
+    if entity_filters:
+        return False
+    if "nganh_dao_tao" in categories:
+        return any(
+            marker in normalized
+            for marker in (
+                "danh sach",
+                "liet ke",
+                "bao nhieu nganh",
+                "nhieu nganh",
+                "bao nhiu nganh",
+                "nhiu nganh",
+                "may nganh",
+                "so luong nganh",
+                "tat ca cac nganh",
+                "co nhung nganh",
+                "cac nganh",
+                "nganh gi",
+                "nganh nao",
+                "nhung nganh",
+                "chuong trinh nao",
+                "chuong trinh gi",
+                "co may chuong trinh",
+                "intent:danh_sach_nganh",
+                "intent:danh_sach_chuong_trinh",
+                "intent:tu_van_chon_nganh",
+            )
+        )
+    if (
+        "phuong_thuc_xet_tuyen" in categories
+        and "intent:hoi_phuong_thuc_xet_tuyen" in normalized
+    ):
+        return any(
+            marker in normalized
+            for marker in (
+                "cac phuong thuc",
+                "nhung phuong thuc",
+                "liet ke",
+                "liet ra",
+                "moi phuong thuc",
+                "tung phuong thuc",
+            )
+        )
+    return False
 
 
 def _rank_hybrid_candidates(
@@ -517,9 +592,12 @@ def _rank_hybrid_candidates_with_audit(
     for document in candidates:
         if _filter_reason(document, target_year, category_values) is not None:
             continue
-        if not _entity_matches(document, entity_filters):
+        if not _entity_matches(document, entity_filters, category_values):
             continue
         unique.setdefault(_document_identity(document), document)
+
+    if _catalog_list_query(query, category_values, entity_filters or {}):
+        top_k = len(unique)
 
     dense_rank = {
         _document_identity(document): rank
@@ -786,7 +864,9 @@ class DHVRetriever:
         for position, candidate in enumerate(candidates, start=1):
             identity = _document_identity(candidate)
             reason = _filter_reason(candidate, self.settings.target_year, requested_categories)
-            if reason is None and effective_entity_filters and not _entity_matches(candidate, effective_entity_filters):
+            if reason is None and effective_entity_filters and not _entity_matches(
+                candidate, effective_entity_filters, requested_categories
+            ):
                 reason = "entity_not_in_document"
             item = {
                 "candidate_rank": position,

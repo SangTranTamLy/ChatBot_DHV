@@ -73,6 +73,7 @@ def _document_id(document: Document) -> str:
             str(document.metadata.get("source_url", "")),
             str(document.metadata.get("source_file", "")),
             str(document.metadata.get("title", "")),
+            str(document.metadata.get("structured_record_id", "")),
         ]
     )
     return hashlib.sha1(identity.encode("utf-8")).hexdigest()[:12]
