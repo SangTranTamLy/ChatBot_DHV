@@ -101,3 +101,72 @@ def is_tuition_increase_question(question: str) -> bool:
     if re.search(r"\btang (?:may|\d)|\blau\b", folded):
         return False
     return bool(re.search(r"\b(?:tang|on dinh|giu nguyen|cam ket)\b", folded))
+
+
+# Cụm từ tuyển sinh hay bị gõ sai, kèm số ký tự sai tối đa được sửa. Chỉ
+# ``phương thức`` chịu sai 2 ký tự (``Phước thực``); cụm khác chỉ 1 để không đổi
+# nhầm cụm có nghĩa khác (``chuẩn ngành`` ≠ ``chuyên ngành``).
+_DOMAIN_PHRASES = {
+    "phuong thuc": ("phương thức", 2),
+    "dieu kien": ("điều kiện", 1),
+    "xet tuyen": ("xét tuyển", 1),
+    "tuyen sinh": ("tuyển sinh", 1),
+    "chuyen nganh": ("chuyên ngành", 1),
+    "trung tuyen": ("trúng tuyển", 1),
+}
+_VOWELS = "aeiouy"
+
+
+def _strip_telex_residue(token: str) -> str:
+    """Bỏ phím Telex sót lại khi bộ gõ không nhận (``dieefu`` → ``dieu``)."""
+    token = re.sub(r"([aeod])\1", r"\1", token)
+    token = re.sub(rf"(?<=[{_VOWELS}])[sfrxj](?=[{_VOWELS}])", "", token)
+    return re.sub(rf"(?<=[{_VOWELS}])[sfrxj]$", "", token)
+
+
+def _edit_distance(left: str, right: str) -> int:
+    previous = list(range(len(right) + 1))
+    for i, char_left in enumerate(left, start=1):
+        current = [i]
+        for j, char_right in enumerate(right, start=1):
+            current.append(min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + (char_left != char_right),
+            ))
+        previous = current
+    return previous[-1]
+
+
+def _match_domain_phrase(first: str, second: str) -> str | None:
+    key = f"{_strip_telex_residue(normalize_semantic_text(first))} {_strip_telex_residue(normalize_semantic_text(second))}"
+    for folded, (canonical, allowed) in _DOMAIN_PHRASES.items():
+        if key == folded:
+            return canonical
+        head, tail = folded.split()
+        if not key.startswith(head[0]) or key.split()[-1][:1] != tail[0]:
+            continue
+        if _edit_distance(key, folded) <= allowed:
+            return canonical
+    return None
+
+
+def correct_domain_typos(question: str) -> str:
+    """Sửa lỗi gõ ở các cụm tuyển sinh để bộ tách ý nhận ra đủ các vế câu hỏi."""
+    words = (question or "").split(" ")
+    corrected: list[str] = []
+    index = 0
+    while index < len(words):
+        if index + 1 < len(words):
+            first, second = words[index], words[index + 1]
+            core_second = second.rstrip(",.;:?!")
+            canonical = _match_domain_phrase(first, core_second) if first and core_second else None
+            if canonical and normalize_semantic_text(f"{first} {core_second}") != normalize_semantic_text(canonical):
+                if first[:1].isupper():
+                    canonical = canonical[0].upper() + canonical[1:]
+                corrected.append(canonical + second[len(core_second):])
+                index += 2
+                continue
+        corrected.append(words[index])
+        index += 1
+    return " ".join(corrected)

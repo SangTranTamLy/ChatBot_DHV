@@ -727,6 +727,7 @@ def _evidence_catalog_answer(
                     "nhung nganh nao",
                 )
             )
+            and analysis.entities.get("query_mode") not in {"LIST", "LIST_AND_COUNT"}
         )
         if count_only:
             if group_label:

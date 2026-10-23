@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 
 from .intent_classifier import IntentPrediction, predict_intent
 from .query_semantics import (
+    correct_domain_typos,
     enrollment_request,
     is_semester_fee_total_question,
     is_tuition_increase_question,
@@ -1980,7 +1981,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         or website_count_request
     )
     list_requested = any(marker in normalized for marker in (
-        "danh sach", "liet ke", "liet ra", "co nhung", "nhung loai",
+        "danh sach", "liet ke", "liet ra", "ke ten", "neu ten", "ke ra", "co nhung", "nhung loai",
         "nhung gi", "gom nhung", "gom gi", "toan bo", "tat ca",
         "cac nganh", "nganh nao", "nganh gi", "nhung nganh",
     ))
@@ -2974,7 +2975,7 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
     """Chuẩn hóa một lượt hỏi và chỉ trích xuất các thực thể có cấu trúc và giới hạn."""
 
     active_state = ConversationState.from_value(state, default_year=default_year)
-    original = question if isinstance(question, str) else ""
+    original = correct_domain_typos(question) if isinstance(question, str) else ""
     normalized = normalize_question(original)
     if active_state.previous_intent in {"HOI_HO_SO", "HOI_NHAP_HOC"} and active_state.current_school in {None, "DHV", "UNSPECIFIED"}:
         followup = re.sub(r"^(?:vay|con|the)\s+", "", normalized).strip(" ?.!")
@@ -3123,6 +3124,10 @@ def _explicit_issue_analyses(analysis: QueryAnalysis, target_year: int) -> tuple
     if not 2 <= len(parts) <= 4:
         return ()
     expected = set(analysis.entities.get("issue_intents") or ())
+    # A clause analysed on its own is more precise than the whole-question
+    # guess (``hạn nộp hồ sơ khi nào`` is a deadline, not a document list), so
+    # accept any in-scope admissions intent; filler clauses fall to OUT_OF_SCOPE.
+    routable = (set(INTENTS) - {"OUT_OF_SCOPE"}) | {"SCHOOL_INFO"}
     children: list[QueryAnalysis] = []
     signatures: set[tuple[str, str]] = set()
     neutral = ConversationState(current_year=int(analysis.entities.get("year") or target_year))
@@ -3135,7 +3140,7 @@ def _explicit_issue_analyses(analysis: QueryAnalysis, target_year: int) -> tuple
             if enrollment_request(contextual) not in {"", "documents"}:
                 child = analyze_question(contextual, neutral, default_year=neutral.current_year)
         signature = (child.intent, str(child.entities.get("request_type") or ""))
-        if child.intent not in expected or signature in signatures:
+        if child.intent not in expected | routable or signature in signatures:
             return ()
         signatures.add(signature)
         if child.entities.get("target_school") in {"OTHER_SCHOOL", "MIXED", "AMBIGUOUS"}:
@@ -3164,7 +3169,7 @@ def _explicit_issue_analyses(analysis: QueryAnalysis, target_year: int) -> tuple
         entities.update(issue_intents=[], multi_issue_subplan=True, requested_information=[child.intent],
                         issue_original_question=part)
         children.append(replace(child, entities=entities))
-    return tuple(children) if {child.intent for child in children} == expected else ()
+    return tuple(children)
 
 
 def _clarification_needed(analysis: QueryAnalysis, state: ConversationState) -> tuple[bool, str]:

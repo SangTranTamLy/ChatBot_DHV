@@ -301,7 +301,7 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
 
     normalized = normalize_question(analysis.normalized_question)
     asks_for_list = (
-        analysis.entities.get("query_mode") in {"LIST", "LIST_AND_COUNT"}
+        analysis.entities.get("query_mode") in {"COUNT", "LIST", "LIST_AND_COUNT"}
         or any(marker in normalized for marker in ("nhung hoc bong nao", "cac hoc bong", "liet ke hoc bong"))
     )
     if analysis.intent != "HOI_HOC_BONG" or not asks_for_list:
@@ -345,10 +345,12 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
                 headings.append(title)
     if not headings:
         return None
+    count_sentence = f"Tài liệu tuyển sinh DHV {target_year} có {len(headings)} đề mục/chính sách học bổng được nêu rõ."
     if analysis.entities.get("query_mode") == "COUNT":
-        return f"Tài liệu tuyển sinh DHV {target_year} có {len(headings)} đề mục/chính sách học bổng được nêu rõ."
+        return count_sentence
     return (
-        f"Các đề mục/chính sách học bổng được nêu trong tài liệu tuyển sinh DHV {target_year}:\n"
+        (count_sentence + "\n" if analysis.entities.get("query_mode") == "LIST_AND_COUNT" else "")
+        + f"Các đề mục/chính sách học bổng được nêu trong tài liệu tuyển sinh DHV {target_year}:\n"
         + "\n".join(f"{index}. {title}" for index, title in enumerate(headings, start=1))
     )
 

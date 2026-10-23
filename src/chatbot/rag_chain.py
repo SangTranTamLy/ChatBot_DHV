@@ -98,6 +98,7 @@ from .query_analysis import (
     update_conversation_state,
 )
 from .query_decomposer import _try_pre_rag_decomposition
+from .query_semantics import correct_domain_typos
 from .scholarship_formatters import (
     _evidence_scholarship_answer,
     _evidence_scholarship_catalog_answer,
@@ -155,7 +156,7 @@ def ask_chatbot(
 ) -> dict[str, object]:
     """Trả lời một lượt hỏi thông qua luồng: phân tích → router → truy xuất → sinh văn bản."""
 
-    query = question.strip() if isinstance(question, str) else ""
+    query = correct_domain_typos(question.strip()) if isinstance(question, str) else ""
     state = ConversationState.from_value(conversation_state, default_year=settings_obj.target_year)
     analysis = analyze_question(query, state, default_year=settings_obj.target_year)
     explicit_year = requested_year(query)

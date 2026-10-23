@@ -373,7 +373,10 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     }
     if _asks_for_each_admission_method(normalized):
         if all(number in method_details for number in range(1, 6)):
-            return "Điều kiện theo từng phương thức xét tuyển DHV 2026:\n" + "\n".join(
+            header = "Điều kiện theo từng phương thức xét tuyển DHV 2026:\n"
+            if re.search(r"\b(?:bao nhieu|may|so luong)\b.{0,16}\bphuong thuc\b", normalized):
+                header = "DHV 2026 áp dụng 5 phương thức xét tuyển. " + header
+            return header + "\n".join(
                 f"{number}. {labels[number]}: {method_details[number]}"
                 for number in range(1, 6)
             )
