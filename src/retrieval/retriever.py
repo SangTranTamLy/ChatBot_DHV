@@ -440,6 +440,13 @@ def _entity_matches(
             and str(metadata.get("scope") or "").casefold()
             in {"most_programs", "all", "toàn bộ", "phần lớn chương trình"}
         )
+        # The verified tuition rule applies to every major; year, school and
+        # status are already enforced by ``_filter_reason``.
+        or (
+            "hoc_phi" in category_values
+            and metadata.get("category") == "hoc_phi"
+            and record_type == "tuition"
+        )
     ):
         return True
     content = " ".join(_normalize(document.page_content.replace("&", " va ")).split())

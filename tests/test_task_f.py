@@ -569,10 +569,12 @@ class TaskFGenerationTests(unittest.TestCase):
             )
         )
         self.assertEqual(llm.prompts, [])
-        self.assertTrue(result["partial"])
-        self.assertTrue(multi_issue["partial"])
-        self.assertFalse(multi_issue["complete"])
-        self.assertEqual(multi_issue["statuses"], ["no_data", "ok", "ok"])
+        # The general tuition rule applies to CNTT too, so every issue is answered.
+        self.assertIn("12.500.000", result["answer"].split("### Học phí\n", 1)[1].split("\n### ", 1)[0])
+        self.assertFalse(result["partial"])
+        self.assertFalse(multi_issue["partial"])
+        self.assertTrue(multi_issue["complete"])
+        self.assertEqual(multi_issue["statuses"], ["ok", "ok", "ok"])
 
     def test_single_issue_major_scholarship_question_uses_policy_not_program_table(self) -> None:
         question = "CNTT có học bổng gì?"

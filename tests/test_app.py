@@ -17,6 +17,8 @@ APP_PATH = PROJECT_ROOT / "app.py"
 def _signed_in_app() -> AppTest:
     at = AppTest.from_file(str(APP_PATH))
     at.session_state["auth_user"] = {"name": "Test User", "email": "test@example.com"}
+    # init_auth signs out a user that has no tokens.
+    at.session_state["auth_tokens"] = {"access_token": "a", "refresh_token": "r", "expires_at": 4_000_000_000}
     return at
 
 
@@ -294,6 +296,34 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertIn("Website DHV", rendered_text)
         self.assertIn("@dhv.official", rendered_text)
         self.assertTrue(at.session_state["messages"][-1]["allow_contact_channel_urls"])
+
+    def test_account_avatar_and_name_are_display_only(self) -> None:
+        at = _app()
+        self.assertFalse(at.exception)
+        keys = {button.key for button in at.button}
+        self.assertTrue({"account_settings", "logout"} <= keys)
+        for key in ("account_avatar_button", "account_profile_button", "popup_avatar", "popup_name"):
+            self.assertNotIn(key, keys)
+        self.assertNotIn("Test User", [button.label for button in at.button])
+
+    def test_settings_opens_profile_and_back_returns_to_chat(self) -> None:
+        at = _app()
+        at.button(key="account_settings").click().run(timeout=30)
+        self.assertFalse(at.exception)
+        self.assertEqual(at.session_state["account_page"], "profile")
+        self.assertIn("### Đổi mật khẩu", [element.value for element in at.markdown])
+        at.button(key="profile_back_to_chat").click().run(timeout=30)
+        self.assertEqual(at.session_state["account_page"], "chat")
+        self.assertTrue(at.chat_input)
+
+    def test_logout_from_account_menu_clears_session(self) -> None:
+        with patch("src.ui_auth.logout_user") as remote_logout:
+            at = _app()
+            at.button(key="logout").click().run(timeout=30)
+        self.assertFalse(at.exception)
+        self.assertIsNone(at.session_state["auth_user"])
+        self.assertIsNone(at.session_state["auth_tokens"])
+        remote_logout.assert_called_once()
 
 
 if __name__ == "__main__":

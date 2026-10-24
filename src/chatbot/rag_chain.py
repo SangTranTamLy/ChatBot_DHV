@@ -31,6 +31,7 @@ from .admission_answers import (
     _evidence_score_comparison_reason_answer,
     _evidence_score_list_answer,
     _evidence_subject_minimum_answer,
+    _evidence_supplementary_detail_answer,
     _evidence_supplementary_majors_answer,
     _evidence_vocational_same_group_eligibility_answer,
     _is_result_notification_question,
@@ -138,6 +139,7 @@ from .scope_guard import (
     is_in_scope,
 )
 from .tuition_formatters import (
+    _evidence_fee_item_answer,
     _evidence_optional_english_fee_answer,
     _evidence_semester_system_answer,
     _evidence_tuition_answer,
@@ -550,8 +552,10 @@ def ask_chatbot(
         and any(fact.get("method") == "deadline" for fact in lookup_facts)
     )
     normalized_query = normalize_question(analysis.normalized_question)
+    supplementary_detail_question = str(analysis.entities.get("request_type") or "").startswith("supplementary_")
     supplementary_route_question = (
-        analysis.intent in {"HOI_XET_TUYEN_BO_SUNG", "HOI_DANG_KY_XET_TUYEN"}
+        not supplementary_detail_question
+        and analysis.intent in {"HOI_XET_TUYEN_BO_SUNG", "HOI_DANG_KY_XET_TUYEN"}
         and any(marker in normalized_query for marker in (
             "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung",
         ))
@@ -805,6 +809,8 @@ def ask_chatbot(
         direct_evidence_answer = _evidence_date_comparison_answer(analysis, evidence)
     elif result_notification_question:
         direct_evidence_answer = _evidence_result_notification_answer(analysis, evidence)
+    elif supplementary_detail_question:
+        direct_evidence_answer = _evidence_supplementary_detail_answer(analysis, evidence)
     elif supplementary_route_question:
         direct_evidence_answer = _evidence_application_registration_answer(analysis, evidence)
     elif applicant_support_question:
@@ -821,6 +827,7 @@ def ask_chatbot(
         direct_evidence_answer = (
             _evidence_semester_system_answer(analysis, evidence)
             or _evidence_optional_english_fee_answer(analysis, evidence)
+            or _evidence_fee_item_answer(analysis, evidence)
             or _evidence_tuition_per_credit_answer(analysis, evidence)
             or _evidence_tuition_total_answer(analysis, evidence)
             or _evidence_tuition_answer(evidence)
@@ -934,6 +941,7 @@ def ask_chatbot(
         applicant_support_question
         or result_notification_question
         or supplementary_route_question
+        or supplementary_detail_question
         or (method_formula_request and method_formula_answer is None)
         or (
             bool(analysis.entities.get("admission_condition_request"))

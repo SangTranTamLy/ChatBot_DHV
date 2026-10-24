@@ -54,6 +54,48 @@ def _evidence_tuition_answer(evidence: Any) -> str | None:
     return None
 
 
+_FEE_ITEMS = (
+    (("hoc lieu",), "Tài khoản học liệu điện tử"),
+    (("kiem tra nang luc tieng anh", "kiem tra tieng anh"), "Kiểm tra năng lực Tiếng Anh"),
+)
+
+
+def _evidence_fee_item_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Answer a question about one named fee row of the verified HKI fee table."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    label = next((label for markers, label in _FEE_ITEMS if any(m in normalized for m in markers)), None)
+    if label is None:
+        return None
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    found: re.Match[str] | None = None
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        try:
+            year = int(metadata.get("year"))
+        except (TypeError, ValueError):
+            continue
+        if (
+            str(metadata.get("category") or "") != "hoc_phi"
+            or str(metadata.get("status") or "") != "verified"
+            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
+            or year != target_year
+        ):
+            continue
+        flattened = re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or ""))
+        match = re.search(rf"{label}(\s*\(nếu có\))?\s*:?\s*(\d[\d.,]*\s*đồng)", flattened, re.IGNORECASE)
+        # Prefer the table row that keeps the "(nếu có)" qualifier.
+        if match and (found is None or match.group(1)):
+            found = match
+    if found is None:
+        return None
+    qualifier = " (nếu có)" if found.group(1) else ""
+    return (
+        f"{label}{qualifier} là một khoản riêng trong bảng phí học kỳ I năm {target_year} "
+        f"của DHV, ngoài học phí: {found.group(2)}."
+    )
+
+
 def _evidence_tuition_total_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     """Calculate a semester total from the verified page-text fee breakdown."""
 

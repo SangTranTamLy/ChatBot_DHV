@@ -978,6 +978,35 @@ def _has_supplementary_marker(normalized: str) -> bool:
     return any(marker in normalized for marker in _SUPPLEMENTARY_MARKERS)
 
 
+def _without_threshold_intake(normalized: str) -> str:
+    """``điểm/ngưỡng nhận hồ sơ`` names the score threshold; its ``hồ sơ`` is not a paperwork request."""
+    if _has_supplementary_marker(normalized):
+        return normalized  # supplementary wording keeps its own route
+    return re.sub(r"\b(?:muc diem|diem|nguong)\s+(?:tiep\s+)?nhan\s+ho\s+so\b", "nguong dau vao", normalized)
+
+
+def _supplementary_request(normalized: str) -> str:
+    """Name the non-score detail asked about a supplementary round, if any."""
+    if not _has_supplementary_marker(normalized) or re.search(
+        r"\bo dau\b|\bnop tai\b|\bonline\b|\btruc tuyen\b|\bhinh thuc\b|\bcach dang ky\b", normalized
+    ):
+        # Route questions keep the registration answer, which already carries the deadline.
+        return ""
+    if re.search(r"\bchi tieu\b", normalized):
+        return "supplementary_quota"
+    if any(
+        re.search(r"\b(?:bao nhieu|may|so luong)\b.{0,20}\bchuong trinh\b", clause)
+        and _has_supplementary_marker(clause)
+        for clause in re.split(r"[,;]|\b(?:va|con|dong thoi|ngoai ra)\b", normalized)
+    ):
+        return "supplementary_program_count"
+    if re.search(r"\ble phi\b|\bphi xet tuyen\b|\b(?:mat|ton|mien) phi\b", normalized):
+        return "supplementary_fee"
+    if re.search(r"\bhan (?:nop|nhan|chot|cuoi)\b|\bthoi han\b|\bkhi nao\b|\bbao gio\b|\bden ngay nao\b", normalized):
+        return "supplementary_deadline"
+    return ""
+
+
 def _is_formula_request(normalized: str) -> bool:
     return any(marker in normalized for marker in _FORMULA_MARKERS) or bool(
         re.search(r"\bcach\s+(?:lay|chon)\b.{0,80}\bcong\b", normalized)
@@ -1481,6 +1510,8 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
     retrieve riêng. Không dùng từ ``và`` đơn lẻ làm bằng chứng của multi-issue
     để tránh tách nhầm câu hỏi mô tả một chủ đề duy nhất.
     """
+
+    normalized = _without_threshold_intake(normalized)
 
     # ``nhập học`` describes the advisor being contacted here, not a separate
     # request about enrollment procedures. Keep advisor phone questions on
@@ -2042,6 +2073,13 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         )
         else None
     )
+    supplementary_request = _supplementary_request(normalized)
+    if supplementary_request:
+        # A quota/deadline/fee question names the round, not a score to look up.
+        score_type = score_query_type = None
+    if supplementary_request == "supplementary_program_count":
+        # Counts the round's programs, not the whole catalogue.
+        catalog_operation = None
     issue_intents = _multi_issue_intents(
         normalized,
         {
@@ -2078,7 +2116,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "admission_combination": combination_match.group(1).upper() if combination_match else None,
         "admission_combination_detail": _is_admission_combination_structure_question(normalized),
         "requested_information": [],
-        "request_type": enrollment_request(normalized),
+        "request_type": enrollment_request(_without_threshold_intake(normalized)) or supplementary_request,
         "query_mode": query_mode,
         "faculty_request": any(
             marker in normalized
@@ -2624,6 +2662,8 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         return "HOI_NHAP_HOC"
     if issue_intents == ("HOI_DANG_KY_XET_TUYEN",):
         return "HOI_DANG_KY_XET_TUYEN"
+    if str(entities.get("request_type") or "").startswith("supplementary_"):
+        return "HOI_XET_TUYEN_BO_SUNG"
     if _has_supplementary_marker(normalized) and any(
         marker in normalized
         for marker in ("nganh nao", "nhung nganh", "chuong trinh nao", "nhung chuong trinh")

@@ -1963,6 +1963,50 @@ def _evidence_applicant_support_answer(analysis: QueryAnalysis, evidence: Any) -
     return None
 
 
+_SUPPLEMENTARY_DETAIL_PATTERNS = {
+    "supplementary_quota": r"(\d+)\s+chỉ tiêu tại\s+(\d+)\s+chương trình",
+    "supplementary_program_count": r"(\d+)\s+chỉ tiêu tại\s+(\d+)\s+chương trình",
+    "supplementary_deadline": r"nhận hồ sơ đến hết ngày\s+(\d{1,2}/\d{1,2}/\d{4})",
+    "supplementary_fee": r"((?:miễn phí|lệ phí) xét tuyển[^.;]*)",
+}
+
+
+def _evidence_supplementary_detail_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Answer a quota/deadline/fee question from the verified supplementary notice only."""
+
+    request = str(analysis.entities.get("request_type") or "")
+    pattern = _SUPPLEMENTARY_DETAIL_PATTERNS.get(request)
+    if pattern is None:
+        return None
+    target_year = int(analysis.entities.get("year") or settings.target_year)
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        try:
+            year = int(metadata.get("year"))
+        except (TypeError, ValueError):
+            continue
+        if (
+            str(metadata.get("category") or "") != "xet_tuyen_bo_sung"
+            or str(metadata.get("status") or "") != "verified"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or year != target_year
+        ):
+            continue
+        match = re.search(pattern, re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or "")), re.IGNORECASE)
+        if not match:
+            continue
+        # Phrase it as the notice's milestone: the round may already be closed.
+        prefix = f"Theo thông báo xét tuyển bổ sung năm {year}, DHV"
+        if request == "supplementary_quota":
+            return f"{prefix} tuyển {match.group(1)} chỉ tiêu tại {match.group(2)} chương trình đào tạo."
+        if request == "supplementary_program_count":
+            return f"{prefix} mở xét tuyển bổ sung cho {match.group(2)} chương trình đào tạo."
+        if request == "supplementary_deadline":
+            return f"{prefix} nhận hồ sơ đến hết ngày {match.group(1)}."
+        return f"{prefix} {match.group(1).strip()}."
+    return None
+
+
 def _evidence_application_registration_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     """Render verified online/in-person routes for a supplementary application."""
 

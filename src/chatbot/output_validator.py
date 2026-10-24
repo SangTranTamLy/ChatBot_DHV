@@ -392,7 +392,9 @@ def _answer_contract_failure(
     if _claims_official_status(answer):
         return "official_status_claim"
 
-    request = enrollment_request(question)
+    # Trust the analysed request: re-reading the raw text mistakes ``nhận hồ sơ`` for paperwork.
+    analysed = _analysis_entities(analysis)
+    request = analysed["request_type"] if "request_type" in analysed else enrollment_request(question)
     folded_answer = _fold_text(answer)
     if request in {"documents", "reception_hours"} and re.search(
         r"(?:hoc phi|hoc bong|ho tro nhap hoc)[^\n]{0,70}\d[\d.,]*\s*(?:dong|vnd)\b", folded_answer
@@ -468,17 +470,26 @@ def _answer_contract_failure(
     return ""
 
 
+def _unbulleted(organization: str) -> str:
+    """Join a name a PDF line break turned into a list bullet ("đại học\n- hùng vương").
+
+    Only used against the trusted DHV names, so another school's name is never widened.
+    """
+    return " ".join(re.sub(r"\s[-–•]\s", " ", organization).split())
+
+
 def _target_institution_failure(answer: str, evidence: EvidenceBundle) -> str:
     evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
     folded_answer = _fold_text(answer)
     for match in _ORGANIZATION_RE.finditer(folded_answer):
         organization = match.group(0)
+        unbulleted = _unbulleted(organization)
         # Institution support is checked as a complete normalized name, not
         # as token overlap; the fact that evidence mentions "university" or
         # "cooperation" cannot support a claim about a specific partner.
         if (
             organization in _TRUSTED_SCHOOL_NAMES
-            or any(organization.startswith(trusted) for trusted in _TRUSTED_SCHOOL_NAMES)
+            or any(name.startswith(trusted) for name in (organization, unbulleted) for trusted in _TRUSTED_SCHOOL_NAMES)
             or organization in evidence_text
             or organization.startswith(("dai hoc chinh quy", "dai hoc he chinh quy"))
         ):
@@ -652,7 +663,7 @@ def _has_unsupported_named_entity(
     evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
     for match in _ORGANIZATION_RE.finditer(_fold_text(answer)):
         organization = match.group(0)
-        if organization in _TRUSTED_SCHOOL_NAMES:
+        if organization in _TRUSTED_SCHOOL_NAMES or _unbulleted(organization) in _TRUSTED_SCHOOL_NAMES:
             continue
         if organization not in evidence_text:
             return True

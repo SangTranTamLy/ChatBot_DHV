@@ -391,45 +391,44 @@ def _render_profile_page() -> None:
               type="tertiary", on_click=_return_to_chat)
     with st.container(key="account_profile"):
         st.markdown("## Hồ sơ cá nhân")
-        st.caption("Thông tin tài khoản của bạn.")
         with st.container(key="profile_identity", horizontal=True, vertical_alignment="center"):
             st.html(f'<div class="dhv-profile-avatar" aria-hidden="true">{escape(initials)}</div>')
             with st.container(key="profile_identity_text"):
-                st.markdown(f"### {escape(name)}")
+                st.markdown(f"#### {escape(name)}")
                 st.caption(escape(email))
 
-        with st.container(key="profile_password_card"):
-            st.markdown("### Đổi mật khẩu")
-            st.caption("Nhập mật khẩu hiện tại và mật khẩu mới để cập nhật tài khoản.")
-            with st.form("change_password_form", clear_on_submit=True, border=False):
-                current_password = st.text_input(
-                    "Mật khẩu hiện tại", type="password", key="change_current_password", max_chars=72,
+        st.divider()
+        st.markdown("### Đổi mật khẩu")
+        st.caption("Nhập mật khẩu hiện tại và mật khẩu mới để cập nhật tài khoản.")
+        with st.form("change_password_form", clear_on_submit=True, border=False):
+            current_password = st.text_input(
+                "Mật khẩu hiện tại", type="password", key="change_current_password", max_chars=72,
+            )
+            new_password = st.text_input(
+                "Mật khẩu mới", type="password", key="change_new_password", max_chars=72,
+            )
+            password_confirmation = st.text_input(
+                "Nhập lại mật khẩu mới", type="password",
+                key="change_password_confirmation", max_chars=72,
+            )
+            submitted = st.form_submit_button(
+                "Cập nhật mật khẩu", type="primary", width="stretch",
+            )
+        if submitted:
+            try:
+                updated_tokens = change_password(
+                    st.session_state.get("auth_tokens") or {},
+                    current_password,
+                    new_password,
+                    password_confirmation,
                 )
-                new_password = st.text_input(
-                    "Mật khẩu mới", type="password", key="change_new_password", max_chars=72,
-                )
-                password_confirmation = st.text_input(
-                    "Nhập lại mật khẩu mới", type="password",
-                    key="change_password_confirmation", max_chars=72,
-                )
-                submitted = st.form_submit_button(
-                    "Cập nhật mật khẩu", type="primary", width="stretch",
-                )
-            if submitted:
-                try:
-                    updated_tokens = change_password(
-                        st.session_state.get("auth_tokens") or {},
-                        current_password,
-                        new_password,
-                        password_confirmation,
-                    )
-                except AuthServiceError as exc:
-                    st.error(str(exc))
-                except Exception:
-                    st.error("Không đổi được mật khẩu. Vui lòng thử lại sau.")
-                else:
-                    st.session_state.auth_tokens = updated_tokens
-                    st.success("Đã đổi mật khẩu.")
+            except AuthServiceError as exc:
+                st.error(str(exc))
+            except Exception:
+                st.error("Không đổi được mật khẩu. Vui lòng thử lại sau.")
+            else:
+                st.session_state.auth_tokens = updated_tokens
+                st.success("Đã đổi mật khẩu.")
 
 
 def _render_sidebar() -> None:
@@ -469,24 +468,21 @@ def _render_sidebar() -> None:
             if st.session_state.auth_user:
                 name = st.session_state.auth_user["name"]
                 initials = "".join(part[0] for part in name.split()[-2:]).upper() or "U"
+                identity = (
+                    f'<div class="dhv-account-identity"><span class="dhv-account-avatar" aria-hidden="true">'
+                    f'{escape(initials)}</span><span class="dhv-account-name">{escape(name)}</span></div>'
+                )
                 with st.container(key="account_row", horizontal=True, wrap=False,
                                   vertical_alignment="center", gap="small"):
-                    st.button(initials, key="account_avatar_button", type="tertiary",
-                              help="Mở hồ sơ cá nhân", on_click=_open_profile)
-                    st.button(name, key="account_profile_button", type="tertiary",
-                              help="Mở hồ sơ cá nhân", on_click=_open_profile)
-                    with st.popover("Tùy chọn tài khoản", key="account_menu", type="tertiary"):
+                    st.html(identity)
+                    with st.popover("Tùy chọn tài khoản", icon=":material/more_vert:",
+                                    key="account_menu", type="tertiary"):
                         with st.container(key="popup_account"):
-                            st.caption("TÀI KHOẢN")
-                            with st.container(key="popup_identity", horizontal=True, wrap=False,
-                                              vertical_alignment="center", gap="small"):
-                                st.button(initials, key="popup_avatar", type="tertiary",
-                                          help="Mở hồ sơ cá nhân", on_click=_open_profile)
-                                st.button(name, key="popup_name", type="tertiary",
-                                          help="Mở hồ sơ cá nhân", on_click=_open_profile)
-                        st.divider()
-                        st.button("Đăng xuất", icon=":material/logout:", key="logout",
-                                  on_click=_logout_account, width="stretch")
+                            st.html(identity)
+                            st.button("Cài đặt", icon=":material/settings:", key="account_settings",
+                                      on_click=_open_profile, width="stretch")
+                            st.button("Đăng xuất", icon=":material/logout:", key="logout",
+                                      on_click=_logout_account, width="stretch")
 
 
 def _record_and_render_exchange(question: str) -> None:
