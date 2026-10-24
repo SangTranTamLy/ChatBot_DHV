@@ -18,7 +18,22 @@ def enrollment_request(question: str) -> str:
     text = normalize_semantic_text(question.partition("intent:")[0])
     if "dang ky xet tuyen" in text and re.search(r"\b(?:han|lich)\b|\bkhi nao\b|\bngay nao\b", text):
         return "deadline"
-    if not any(x in text for x in ("ho so", "giay to", "nhap hoc", "tiep nhan tan sinh vien")):
+    enrollment_context = any(
+        marker in text
+        for marker in (
+            "ho so", "giay to", "nhap hoc", "vao hoc", "tan sinh vien",
+            "sinh vien moi", "trung tuyen", "hoan tat thu tuc",
+        )
+    )
+    benefit_markers = (
+        "qua tang", "nhan qua", "duoc tang", "tang gi", "nhan gi",
+        "nhan duoc gi", "duoc nhung gi", "nhan duoc nhung gi",
+        "quyen loi", "office 365", "microsoft 365", "balo", "hop dung but",
+        "day deo the", "ma so sinh vien", "sinh vien duoc cap",
+    )
+    if enrollment_context and any(marker in text for marker in benefit_markers):
+        return "enrollment_benefits"
+    if not enrollment_context:
         return ""
     if "xet tuyen" in text and "nhap hoc" not in text:
         return ""
@@ -140,6 +155,12 @@ def _edit_distance(left: str, right: str) -> int:
 
 def _match_domain_phrase(first: str, second: str) -> str | None:
     key = f"{_strip_telex_residue(normalize_semantic_text(first))} {_strip_telex_residue(normalize_semantic_text(second))}"
+    # ``phòng thuộc`` occurs naturally in programme names followed by a
+    # relation question (for example, ``Tiếng Trung hành chính văn phòng
+    # thuộc ngành nào?``). Its edit distance is close enough to ``phương
+    # thức`` that fuzzy correction otherwise destroys the programme name.
+    if key == "phong thuoc":
+        return None
     for folded, (canonical, allowed) in _DOMAIN_PHRASES.items():
         if key == folded:
             return canonical

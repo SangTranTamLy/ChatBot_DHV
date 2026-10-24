@@ -129,6 +129,8 @@ def _where_matches(metadata: dict[str, object], where: dict[str, object]) -> boo
         return any(_where_matches(metadata, item) for item in where["$or"])
     if "category" in where:
         return metadata.get("category") == where["category"]
+    if "data_role" in where:
+        return metadata.get("data_role") == where["data_role"]
     return True
 
 

@@ -711,6 +711,43 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                 result.append(cleaned)
         return result
 
+    if request == "enrollment_benefits":
+        requested_year = int(analysis.entities.get("year") or 2026)
+        rights_chunks = []
+        for chunk in chunks:
+            metadata = metadata_for(chunk)
+            try:
+                chunk_year = int(metadata.get("year"))
+            except (TypeError, ValueError):
+                continue
+            title = normalize_question(str(metadata.get("title") or ""))
+            if (
+                metadata.get("status") == "verified"
+                and str(metadata.get("school_code") or "").upper() == "DHV"
+                and chunk_year == requested_year
+                and str(metadata.get("category") or "") == "ho_so"
+                and "quyen loi nhap hoc" in title
+            ):
+                rights_chunks.append(chunk)
+
+        source_text = "\n".join(text_for(chunk) for chunk in rights_chunks)
+        folded_source = normalize_question(source_text)
+        required_facts = (
+            "sau khi hoan tat nhap hoc",
+            "microsoft office 365 ban quyen 01 nam",
+            "word", "excel", "powerpoint", "outlook", "onedrive", "teams", "ai copilot",
+            "ma so sinh vien", "balo dhv", "hop dung but", "day deo the sinh vien",
+        )
+        if not rights_chunks or not all(fact in folded_source for fact in required_facts):
+            return None
+
+        return (
+            "Sau khi hoàn tất nhập học, tân sinh viên DHV được hưởng các quyền lợi và quà tặng sau:\n"
+            "- Microsoft Office 365 bản quyền 01 năm, gồm Word, Excel, PowerPoint, Outlook, OneDrive, Teams và AI Copilot.\n"
+            "- Được cấp mã số sinh viên.\n"
+            "- Bộ quà tặng gồm balo DHV, hộp đựng bút và dây đeo thẻ sinh viên."
+        )
+
     provided: set[str] = set()
     if any(marker in normalized for marker in ("con thieu", "gi nua", "con lai", "bo sung", "can them")):
         owned = re.search(r"(?<!chua )(?<!khong )(?:da )?co\s+(.+?)(?:\broi\b|\bcan\b|\bcon thieu\b)", normalized)

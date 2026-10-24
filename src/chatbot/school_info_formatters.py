@@ -489,6 +489,7 @@ def _evidence_campus_list_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         return None
     if not any(marker in question for marker in (
         "nhung co so", "cac co so", "bao nhieu co so", "may co so", "co so nao",
+        "co so va",
     )) or any(marker in question for marker in ("nop ho so", "nhap hoc", "hoc phi")):
         return None
     campuses: dict[int, str] = {}
@@ -653,6 +654,22 @@ def _evidence_contact_phone_answer(analysis: QueryAnalysis, evidence: Any) -> st
             "Bạn có thể liên hệ tổng đài tư vấn tuyển sinh: " + ", ".join(numbers) + "."
         )
     return "Tổng đài tư vấn tuyển sinh DHV: " + ", ".join(numbers) + "." if numbers else None
+
+
+def _evidence_campus_and_phone_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Answer an explicit campus-plus-hotline request with both requested facts."""
+
+    question = normalize_question(analysis.normalized_question)
+    asks_for_campuses = "co so va" in question
+    asks_for_phone = any(term in question for term in ("hotline", "tong dai", "so dien thoai"))
+    if analysis.intent != "HOI_CO_SO_LIEN_HE" or not (asks_for_campuses and asks_for_phone):
+        return None
+
+    campus_answer = _evidence_campus_list_answer(analysis, evidence)
+    phone_answer = _evidence_contact_phone_answer(analysis, evidence)
+    if not campus_answer or not phone_answer:
+        return None
+    return f"{campus_answer}\n\n{phone_answer}"
 
 
 def _evidence_contact_email_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:

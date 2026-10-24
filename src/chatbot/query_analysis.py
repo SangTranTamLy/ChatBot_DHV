@@ -462,6 +462,7 @@ class QueryPlan:
     pre_rag_decomposition: dict[str, object] | None = None
     issue_question: str = ""
     issue_entities: dict[str, object] = field(default_factory=dict)
+    data_roles: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         result = {
@@ -474,6 +475,7 @@ class QueryPlan:
             "subplans": [subplan.to_dict() for subplan in self.subplans],
             "entity_filters": dict(self.entity_filters),
             "query_mode": self.query_mode,
+            "data_roles": list(self.data_roles),
         }
         if self.pre_rag_decomposition is not None:
             result["pre_rag_decomposition"] = dict(self.pre_rag_decomposition)
@@ -904,6 +906,10 @@ def _is_verified_school_info_request(
         "y nghia logo",
         "bieu tuong",
         "co cau to chuc",
+        "co cau lanh dao",
+        "moi truong hoc tap",
+        "co hoi nghe nghiep",
+        "co hoi thuc tap",
         "thong diep tuyen sinh",
         "gia tri that",
         "quy vuon uom",
@@ -2527,11 +2533,20 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
             entities["issue_intents"] = list(issue_intents)
             return "MULTI_ISSUE"
         return "SCHOOL_INFO"
+    if "unibridge" in normalized:
+        # UniBridge is an approved DHV financial-support programme even when
+        # the user does not use the phrase "học bổng" or "hỗ trợ tài chính".
+        return "HOI_HOC_BONG"
     # Hard rejection patterns are safety signals, not an intent vocabulary.
     # They prevent an unrelated domain from being reopened by a broad word
     # such as ``ngành`` or ``tuyển sinh``.
     if _is_hard_out_of_scope(normalized, entities):
         return "OUT_OF_SCOPE"
+    if entities.get("request_type") == "enrollment_benefits":
+        # Gifts and rights after completing enrollment are documented in the
+        # verified enrollment guide, but are distinct from the document
+        # checklist and application procedure.
+        return "HOI_NHAP_HOC"
     advisory = any(
         term in normalized
         for term in ("chon nganh", "chua biet chon", "phan van", "nen hoc nganh", "nen chon", "goi y nganh", "nganh hoc phu hop")
@@ -3103,6 +3118,8 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
         normalized,
     ):
         entities["query_mode"] = "LIST"
+    if intent == "HOI_NHAP_HOC" and entities.get("request_type") == "enrollment_benefits":
+        requested = ["enrollment_benefits"]
     entities["requested_information"] = requested
     return QueryAnalysis(
         question=original,
@@ -3204,6 +3221,101 @@ def _clarification_needed(analysis: QueryAnalysis, state: ConversationState) -> 
     if has_score_request and not score_type and analysis.intent in {"HOI_NGANH", "HOI_CHUONG_TRINH", "HOI_NGUONG_DAU_VAO", "OUT_OF_SCOPE"}:
         return True, "score_kind_for_entity"
     return False, ""
+
+
+def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
+    """Resolve a clear intent to the reviewed document roles it may retrieve."""
+    normalized = normalize_question(analysis.normalized_question)
+    request_type = str(analysis.entities.get("request_type") or "")
+    roles: tuple[str, ...] = ()
+
+    if analysis.intent == "HOI_NHAP_HOC":
+        if request_type == "documents":
+            roles = ("ho_so_nhap_hoc",)
+        elif request_type in {
+            "enrollment_benefits", "enrollment_location", "reception_hours",
+            "reception_dates", "submission_mode",
+        }:
+            roles = ("thu_tuc_va_quyen_loi_nhap_hoc",)
+        elif any(marker in normalized for marker in ("hoc phi", "hoc lieu", "phi nhap hoc")):
+            roles = ("thu_tuc_va_quyen_loi_nhap_hoc", "hoc_phi_nhap_hoc")
+        else:
+            roles = ("ho_so_nhap_hoc", "thu_tuc_va_quyen_loi_nhap_hoc")
+    elif analysis.intent == "HOI_HO_SO":
+        roles = ("ho_so_nhap_hoc",)
+    elif analysis.intent == "HOI_HOC_PHI":
+        roles = ("hoc_phi_nhap_hoc",)
+    elif analysis.intent == "HOI_HOC_BONG":
+        unibridge = any(marker in normalized for marker in (
+            "unibridge", "hoan hoc phi", "ho tro tai chinh", "uu dai cao nhat",
+        ))
+        named_policy = any(marker in normalized for marker in (
+            "hao khi hung vuong", "hoc bong tuyen sinh", "hoc bong tai nang",
+            "nganh tien phong", "doi ban cung tien", "tuong lai vung buoc",
+            "bien dao yeu thuong", "cam ket hoan hoc phi",
+        ))
+        roles = (
+            ("unibridge_ho_tro_tai_chinh",)
+            if unibridge
+            else ("chinh_sach_hoc_bong", "unibridge_ho_tro_tai_chinh")
+            if not named_policy
+            else ("chinh_sach_hoc_bong",)
+        )
+    elif analysis.intent == "HOI_LICH_TUYEN_SINH":
+        if request_type in {"reception_hours", "reception_dates"} or "tiep nhan tan sinh vien" in normalized:
+            roles = ("thu_tuc_va_quyen_loi_nhap_hoc",)
+        elif any(marker in normalized for marker in (
+            "bo sung", "xet tuyen bo sung", "dot bo sung", "nhan ho so bo sung",
+        )):
+            roles = ("xet_tuyen_bo_sung",)
+        else:
+            roles = ("lich_tuyen_sinh_dot_1",)
+    elif analysis.intent == "HOI_XET_TUYEN_BO_SUNG":
+        roles = ("xet_tuyen_bo_sung",)
+    elif analysis.intent == "HOI_DIEM_TRUNG_TUYEN":
+        roles = ("diem_trung_tuyen_dot_1",)
+    elif analysis.intent in {"HOI_NGANH", "HOI_CHUONG_TRINH", "DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}:
+        roles = ("catalog",)
+    elif analysis.intent == "TU_VAN_CHON_NGANH":
+        roles = ("catalog", "admission_conditions_and_methods")
+    elif analysis.intent in {"HOI_PHUONG_THUC_XET_TUYEN", "HOI_DANG_KY_XET_TUYEN", "HOI_CACH_TINH_DIEM"}:
+        roles = (
+            ("xet_tuyen_bo_sung",)
+            if any(marker in normalized for marker in ("bo sung", "xet tuyen bo sung", "dot bo sung"))
+            else ("admission_conditions_and_methods",)
+        )
+    elif analysis.intent == "HOI_NGUONG_DAU_VAO":
+        # Threshold facts are stored inside the reviewed methods document,
+        # although their record-level category is ``nguong_dau_vao`` rather
+        # than the manifest category ``phuong_thuc_xet_tuyen``.
+        roles = ("catalog", "admission_conditions_and_methods")
+    elif analysis.intent == "HOI_CO_SO_LIEN_HE":
+        roles = (
+            ("thu_tuc_va_quyen_loi_nhap_hoc", "co_so_va_kenh_lien_he")
+            if "tu van vien" in normalized
+            else ("co_so_va_kenh_lien_he",)
+        )
+    elif analysis.intent == "SCHOOL_INFO":
+        if any(marker in normalized for marker in ("co cau", "lanh dao", "hieu truong", "pho hieu truong", "khoa vien")):
+            roles = ("co_cau_to_chuc_va_lanh_dao",)
+        elif any(marker in normalized for marker in ("moi truong hoc tap", "co hoi nghe nghiep", "viec lam", "thuc tap", "ai pro", "cau lac bo")):
+            roles = ("moi_truong_hoc_tap_va_co_hoi_nghe_nghiep",)
+        elif any(marker in normalized for marker in ("hop tac", "doanh nghiep", "doi tac", "quoc te", "shb")):
+            roles = ("hop_tac_quoc_te_va_doanh_nghiep",)
+        elif any(marker in normalized for marker in ("lich su", "triet ly", "su menh", "gia tri cot loi", "tong quan", "gioi thieu")):
+            roles = ("gioi_thieu_triet_ly_va_lich_su",)
+        else:
+            roles = (
+                "moi_truong_hoc_tap_va_co_hoi_nghe_nghiep",
+                "gioi_thieu_triet_ly_va_lich_su",
+                "co_cau_to_chuc_va_lanh_dao",
+                "hop_tac_quoc_te_va_doanh_nghiep",
+            )
+
+    # The document role comes from the reviewed manifest and outranks a
+    # record-level category, which may describe the fact type rather than the
+    # containing file. Keep only the role choices made for this intent.
+    return tuple(dict.fromkeys(roles))
 
 
 def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[str, object] | None = None, *, target_year: int = 2026) -> QueryPlan:
@@ -3451,6 +3563,15 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     if entities.get("multi_issue_subplan"):
         parts.append(_DECOMPOSED_QUERY_LABELS.get(resolved.intent, resolved.intent))
     normalized_question = resolved.normalized_question
+    if entities.get("request_type") == "enrollment_benefits":
+        # The rights/gifts section is indexed under several short, adjacent
+        # chunks. Include its distinctive terms so retrieval keeps the Office
+        # entitlement and the gift list together in bounded evidence.
+        parts.append(
+            "quyen loi va qua tang sau khi hoan tat nhap hoc Microsoft Office 365 "
+            "ban quyen 01 nam Word Excel PowerPoint Outlook OneDrive Teams AI Copilot "
+            "ma so sinh vien Balo DHV hop dung but day deo the sinh vien"
+        )
     if (
         resolved.intent in {"HOI_PHUONG_THUC_XET_TUYEN", "HOI_DANG_KY_XET_TUYEN", "HOI_NGUONG_DAU_VAO"}
         and "trung cap" in normalized_question
@@ -3481,6 +3602,13 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     metadata_filter: dict[str, object] = {"year": target_year}
     if categories:
         metadata_filter["categories"] = list(categories)
+    data_roles = (
+        tuple(dict.fromkeys(role for subplan in subplans for role in subplan.data_roles))
+        if subplans
+        else _data_roles_for_route(resolved)
+    )
+    if data_roles:
+        metadata_filter["data_roles"] = list(data_roles)
     entity_filters = _entity_filters_from_entities(entities)
     explicit_query_entity = bool(
         analysis.entities.get("major_name")
@@ -3523,6 +3651,7 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
         query_mode=str(entities.get("query_mode") or "SINGLE_FACT"),
         issue_question=resolved.question if entities.get("multi_issue_subplan") else "",
         issue_entities=dict(entities) if entities.get("multi_issue_subplan") else {},
+        data_roles=data_roles,
     )
 
 

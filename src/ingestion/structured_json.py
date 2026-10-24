@@ -2178,7 +2178,20 @@ def build_structured_document(
     source_date = str(metadata.get("source_date") or metadata.get("date") or "").strip()
     collected_at = str(metadata.get("collected_at") or "").strip()
     document_id = str(metadata.get("document_id") or raw_file_path.stem)
-    data_role = "description" if category == "nganh_dao_tao" and any(marker in document_id.casefold() for marker in ("mo_ta", "nghe_nghiep", "trien_vong", "gioi_thieu")) else ("catalog" if category == "nganh_dao_tao" else "")
+    # The RAW manifest is the reviewed source of truth for a document's
+    # narrower retrieval role (for example ``ho_so_nhap_hoc`` vs.
+    # ``thu_tuc_va_quyen_loi_nhap_hoc``). Keep the historical catalogue
+    # fallback only for manifests that predate explicit role labels.
+    data_role = str(metadata.get("data_role") or "").strip()
+    if not data_role:
+        data_role = (
+            "description"
+            if category == "nganh_dao_tao"
+            and any(marker in document_id.casefold() for marker in (
+                "mo_ta", "nghe_nghiep", "trien_vong", "gioi_thieu",
+            ))
+            else "catalog" if category == "nganh_dao_tao" else ""
+        )
     warning_values: list[dict[str, Any]] = [dict(value) for value in warnings]
     for page in page_values:
         warning_values.extend(dict(value) for value in page.get("warnings", []))

@@ -456,6 +456,9 @@ def _retrieve(
                 "retrieval_query": plan.retrieval_query,
                 "entity_filters": entity_filters,
             }
+            data_roles = tuple(getattr(plan, "data_roles", ()) or ())
+            if data_roles:
+                kwargs["data_roles"] = data_roles
             if (
                 expanded_directory_top_k is not None
                 or expanded_school_code_top_k is not None

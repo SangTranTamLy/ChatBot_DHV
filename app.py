@@ -16,6 +16,7 @@ from typing import Any
 import streamlit as st
 from dotenv import load_dotenv
 
+from src.supabase_auth import AuthServiceError, change_password
 from src.ui_auth import init_auth, logout, open_auth, render_auth_dialog
 
 
@@ -114,9 +115,11 @@ def _init_session_state() -> None:
                                         for key in chat_keys if key in st.session_state}
         for key in (*chat_keys, "chat_input"):
             st.session_state.pop(key, None)
+        st.session_state.account_page = "chat"
         if owner in sessions:
             st.session_state.update(deepcopy(sessions[owner]))
     st.session_state.chat_owner = owner
+    st.session_state.setdefault("account_page", "chat")
     st.session_state.setdefault("messages", [])
     st.session_state.setdefault("chats", {})
     if not owner:
@@ -341,6 +344,7 @@ def _save_current_chat() -> None:
 
 
 def _new_chat() -> None:
+    st.session_state.account_page = "chat"
     _save_current_chat()
     st.session_state.next_chat += 1
     st.session_state.active_chat = st.session_state.next_chat
@@ -353,12 +357,79 @@ def _new_chat() -> None:
 def _open_chat(chat_id: int) -> None:
     if not st.session_state.auth_user:
         return
+    st.session_state.account_page = "chat"
     _save_current_chat()
     saved = st.session_state.chats[chat_id]
     st.session_state.active_chat = chat_id
     st.session_state.messages = deepcopy(saved["messages"])
     st.session_state.conversation_state = deepcopy(saved["conversation_state"])
     st.session_state.state = deepcopy(saved["conversation_state"])
+
+
+def _open_profile() -> None:
+    st.session_state.account_page = "profile"
+
+
+def _return_to_chat() -> None:
+    st.session_state.account_page = "chat"
+
+
+def _logout_account() -> None:
+    st.session_state.account_page = "chat"
+    logout()
+
+
+def _render_profile_page() -> None:
+    user = st.session_state.auth_user
+    if not user:
+        return
+
+    name = user["name"]
+    email = user["email"]
+    initials = "".join(part[0] for part in name.split()[-2:]).upper() or "U"
+    st.button("Quay lại trò chuyện", icon=":material/arrow_back:", key="profile_back_to_chat",
+              type="tertiary", on_click=_return_to_chat)
+    with st.container(key="account_profile"):
+        st.markdown("## Hồ sơ cá nhân")
+        st.caption("Thông tin tài khoản của bạn.")
+        with st.container(key="profile_identity", horizontal=True, vertical_alignment="center"):
+            st.html(f'<div class="dhv-profile-avatar" aria-hidden="true">{escape(initials)}</div>')
+            with st.container(key="profile_identity_text"):
+                st.markdown(f"### {escape(name)}")
+                st.caption(escape(email))
+
+        with st.container(key="profile_password_card"):
+            st.markdown("### Đổi mật khẩu")
+            st.caption("Nhập mật khẩu hiện tại và mật khẩu mới để cập nhật tài khoản.")
+            with st.form("change_password_form", clear_on_submit=True, border=False):
+                current_password = st.text_input(
+                    "Mật khẩu hiện tại", type="password", key="change_current_password", max_chars=72,
+                )
+                new_password = st.text_input(
+                    "Mật khẩu mới", type="password", key="change_new_password", max_chars=72,
+                )
+                password_confirmation = st.text_input(
+                    "Nhập lại mật khẩu mới", type="password",
+                    key="change_password_confirmation", max_chars=72,
+                )
+                submitted = st.form_submit_button(
+                    "Cập nhật mật khẩu", type="primary", width="stretch",
+                )
+            if submitted:
+                try:
+                    updated_tokens = change_password(
+                        st.session_state.get("auth_tokens") or {},
+                        current_password,
+                        new_password,
+                        password_confirmation,
+                    )
+                except AuthServiceError as exc:
+                    st.error(str(exc))
+                except Exception:
+                    st.error("Không đổi được mật khẩu. Vui lòng thử lại sau.")
+                else:
+                    st.session_state.auth_tokens = updated_tokens
+                    st.success("Đã đổi mật khẩu.")
 
 
 def _render_sidebar() -> None:
@@ -397,17 +468,25 @@ def _render_sidebar() -> None:
                 st.caption(PRIVACY_REMINDER)
             if st.session_state.auth_user:
                 name = st.session_state.auth_user["name"]
-                initials = "".join(part[0] for part in name.split()[-2:]).upper()
-                with st.container(key="account_row"):
-                    avatar, identity, menu = st.columns([0.2, 0.62, 0.18], gap="small", vertical_alignment="center")
-                    with avatar:
-                        st.html(f'<div class="dhv-account-avatar" aria-hidden="true">{escape(initials)}</div>')
-                    with identity:
-                        st.text(name)
-                        st.caption("Tài khoản cá nhân")
-                    with menu:
-                        with st.popover("Tùy chọn tài khoản", key="account_menu", type="tertiary"):
-                            st.button("Đăng xuất", icon=":material/logout:", key="logout", on_click=logout, width="stretch")
+                initials = "".join(part[0] for part in name.split()[-2:]).upper() or "U"
+                with st.container(key="account_row", horizontal=True, wrap=False,
+                                  vertical_alignment="center", gap="small"):
+                    st.button(initials, key="account_avatar_button", type="tertiary",
+                              help="Mở hồ sơ cá nhân", on_click=_open_profile)
+                    st.button(name, key="account_profile_button", type="tertiary",
+                              help="Mở hồ sơ cá nhân", on_click=_open_profile)
+                    with st.popover("Tùy chọn tài khoản", key="account_menu", type="tertiary"):
+                        with st.container(key="popup_account"):
+                            st.caption("TÀI KHOẢN")
+                            with st.container(key="popup_identity", horizontal=True, wrap=False,
+                                              vertical_alignment="center", gap="small"):
+                                st.button(initials, key="popup_avatar", type="tertiary",
+                                          help="Mở hồ sơ cá nhân", on_click=_open_profile)
+                                st.button(name, key="popup_name", type="tertiary",
+                                          help="Mở hồ sơ cá nhân", on_click=_open_profile)
+                        st.divider()
+                        st.button("Đăng xuất", icon=":material/logout:", key="logout",
+                                  on_click=_logout_account, width="stretch")
 
 
 def _record_and_render_exchange(question: str) -> None:
@@ -441,6 +520,8 @@ _inject_chat_styles()
 init_auth()
 if st.session_state.pop("auth_login_notice", False):
     st.toast("Đăng nhập thành công.", icon=":material/check_circle:", duration=4)
+if st.session_state.pop("auth_session_expired_notice", False):
+    st.toast("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", icon=":material/info:", duration=5)
 
 from src.chatbot.chat_service import ask_chatbot
 from src.chatbot.query_analysis import ConversationState
@@ -450,34 +531,42 @@ start_background_warmup()
 _init_session_state()
 _render_sidebar()
 
+show_profile = bool(st.session_state.auth_user) and st.session_state.get("account_page") == "profile"
 with st.container(key="topbar", horizontal=True, vertical_alignment="center", horizontal_alignment="distribute"):
-    st.markdown(":material/school: **Trợ lý tuyển sinh DHV**")
-    if st.session_state.auth_user:
+    if show_profile:
+        st.markdown(":material/person: **Hồ sơ cá nhân**")
+    else:
+        st.markdown(":material/school: **Trợ lý tuyển sinh DHV**")
+    if st.session_state.auth_user and not show_profile:
         st.caption("Trường Đại học Hùng Vương TP.HCM")
     else:
-        st.button("Đăng nhập", icon=":material/person:", key="open_login", on_click=open_auth)
+        if not st.session_state.auth_user:
+            st.button("Đăng nhập", icon=":material/person:", key="open_login", on_click=open_auth)
 
-typed_question = st.chat_input(
-    "Nhắn tin cho trợ lý DHV…",
-    key="chat_input",
-    submit_mode="disable",
-)
-has_typed_question = isinstance(typed_question, str) and bool(typed_question.strip())
+if show_profile:
+    _render_profile_page()
+else:
+    typed_question = st.chat_input(
+        "Nhắn tin cho trợ lý DHV…",
+        key="chat_input",
+        submit_mode="disable",
+    )
+    has_typed_question = isinstance(typed_question, str) and bool(typed_question.strip())
 
-selected_starter = _render_welcome() if not has_typed_question else None
-_render_chat_history()
+    selected_starter = _render_welcome() if not has_typed_question else None
+    _render_chat_history()
 
-if has_typed_question:
-    _record_and_render_exchange(typed_question.strip())
-    _save_current_chat()
-    st.rerun()
-elif selected_starter:
-    _record_and_render_exchange(selected_starter)
-    _save_current_chat()
-    st.rerun()
+    if has_typed_question:
+        _record_and_render_exchange(typed_question.strip())
+        _save_current_chat()
+        st.rerun()
+    elif selected_starter:
+        _record_and_render_exchange(selected_starter)
+        _save_current_chat()
+        st.rerun()
 
-with st.container(key="chat_note"):
-    st.caption("Thông tin tư vấn mang tính tham khảo. Bạn có thể kiểm tra lại qua kênh tuyển sinh chính thức của trường.")
+    with st.container(key="chat_note"):
+        st.caption("Thông tin tư vấn mang tính tham khảo. Bạn có thể kiểm tra lại qua kênh tuyển sinh chính thức của trường.")
 
 if st.session_state.auth_view and not st.session_state.auth_user:
     render_auth_dialog()

@@ -21,6 +21,31 @@ class NeverGenerate:
 
 
 class QueryUnderstandingTests(unittest.TestCase):
+    def test_approved_document_topics_route_to_their_reviewed_roles(self):
+        cases = (
+            ("Thông tin liên hệ của trường là gì?", "HOI_CO_SO_LIEN_HE", ("co_so_va_kenh_lien_he",)),
+            ("Hồ sơ nhập học cần giấy tờ gì?", "HOI_HO_SO", ("ho_so_nhap_hoc",)),
+            ("Sau khi nhập học được nhận quà gì?", "HOI_NHAP_HOC", ("thu_tuc_va_quyen_loi_nhap_hoc",)),
+            ("Học phí HKI bao nhiêu?", "HOI_HOC_PHI", ("hoc_phi_nhap_hoc",)),
+            ("Điều kiện học bổng Ngành Tiên phong là gì?", "HOI_HOC_BONG", ("chinh_sach_hoc_bong",)),
+            ("UniBridge hỗ trợ tài chính bao nhiêu?", "HOI_HOC_BONG", ("unibridge_ho_tro_tai_chinh",)),
+            ("Lịch tuyển sinh đợt 1 năm 2026 như thế nào?", "HOI_LICH_TUYEN_SINH", ("lich_tuyen_sinh_dot_1",)),
+            ("Hạn nhận hồ sơ xét tuyển bổ sung là ngày nào?", "HOI_XET_TUYEN_BO_SUNG", ("xet_tuyen_bo_sung",)),
+            ("Điểm trúng tuyển ngành Công nghệ thông tin là bao nhiêu?", "HOI_DIEM_TRUNG_TUYEN", ("diem_trung_tuyen_dot_1",)),
+            ("Điểm sàn CNTT 2026?", "HOI_NGUONG_DAU_VAO", ("catalog", "admission_conditions_and_methods")),
+            ("Có những ngành đào tạo nào?", "DANH_SACH_NGANH", ("catalog",)),
+            ("Phương thức xét tuyển của DHV gồm những gì?", "HOI_PHUONG_THUC_XET_TUYEN", ("admission_conditions_and_methods",)),
+            ("Cơ cấu tổ chức DHV gồm những đơn vị nào?", "SCHOOL_INFO", ("co_cau_to_chuc_va_lanh_dao",)),
+            ("Môi trường học tập tại DHV ra sao?", "SCHOOL_INFO", ("moi_truong_hoc_tap_va_co_hoi_nghe_nghiep",)),
+            ("DHV hợp tác quốc tế với trường nào?", "SCHOOL_INFO", ("hop_tac_quoc_te_va_doanh_nghiep",)),
+            ("Lịch sử hình thành DHV như thế nào?", "SCHOOL_INFO", ("gioi_thieu_triet_ly_va_lich_su",)),
+        )
+        for question, expected_intent, expected_roles in cases:
+            with self.subTest(question=question):
+                plan = route_question(analyze_question(question))
+                self.assertEqual(plan.intent, expected_intent)
+                self.assertEqual(plan.data_roles, expected_roles)
+
     def test_social_channel_followups_stay_in_contact_scope(self):
         for question in (
             "Tôi theo dõi ở đâu để biết thêm thông tin?",
@@ -163,18 +188,22 @@ class QueryUnderstandingTests(unittest.TestCase):
         self.assertEqual(result["trace"]["multi_issue"]["statuses"], ["ok", "ok"])
 
     def test_mixed_tuition_and_scholarship_question_answers_both_topics(self):
-        question = "Học phí và học bổng DHV năm 2026 như thế nào?"
-        result = ask_chatbot(question, retriever=_retriever(), llm=NeverGenerate())
+        for question in (
+            "Học phí và học bổng DHV năm 2026 như thế nào?",
+            "Học phí và học bổng DHV năm 2026 thế nào?",
+        ):
+            with self.subTest(question=question):
+                result = ask_chatbot(question, retriever=_retriever(), llm=NeverGenerate())
 
-        self.assertEqual(result["status"], "ok")
-        self.assertFalse(result["partial"])
-        self.assertIn("12.500.000 đồng", result["answer"])
-        self.assertIn("### Học bổng", result["answer"])
-        self.assertIn("75 tỷ đồng", result["answer"])
-        self.assertIn("Học bổng Tài năng", result["answer"])
-        self.assertIn("30% đến 100%", result["answer"])
-        self.assertNotIn("Mình chưa có thông tin chính xác về học bổng", result["answer"])
-        self.assertEqual(result["trace"]["multi_issue"]["statuses"], ["ok", "ok"])
+                self.assertEqual(result["status"], "ok")
+                self.assertFalse(result["partial"])
+                self.assertIn("12.500.000 đồng", result["answer"])
+                self.assertIn("### Học bổng", result["answer"])
+                self.assertIn("75 tỷ đồng", result["answer"])
+                self.assertIn("Học bổng Tài năng", result["answer"])
+                self.assertIn("30% đến 100%", result["answer"])
+                self.assertNotIn("Mình chưa có thông tin chính xác về học bổng", result["answer"])
+                self.assertEqual(result["trace"]["multi_issue"]["statuses"], ["ok", "ok"])
 
     def test_broad_single_topic_scholarship_question_gets_overview(self):
         result = ask_chatbot(

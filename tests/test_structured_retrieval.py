@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from langchain_core.documents import Document
 
 from src.config.settings import settings
-from src.retrieval.retriever import DHVRetriever, _rank_hybrid_candidates_with_audit
+from src.retrieval.retriever import DHVRetriever, _metadata_filter, _rank_hybrid_candidates_with_audit
 from src.retrieval.structured_lookup import lookup_structured_documents
 
 
@@ -22,6 +22,40 @@ def record(identity, kind, text, **metadata):
 
 
 class StructuredLookupTests(unittest.TestCase):
+    def test_document_role_filter_excludes_nearby_topics_in_same_category_pool(self):
+        contact = record(
+            "contact", "page_text", "Email và tổng đài liên hệ DHV.",
+            category="co_so_lien_he", data_role="co_so_va_kenh_lien_he",
+        )
+        enrollment = record(
+            "enrollment", "page_text", "Tư vấn viên và thủ tục nhập học DHV.",
+            category="ho_so", data_role="thu_tuc_va_quyen_loi_nhap_hoc",
+        )
+
+        ranked, _ = _rank_hybrid_candidates_with_audit(
+            "Thông tin liên hệ của DHV", [contact, enrollment], [contact, enrollment], {},
+            2026, 4, categories=("co_so_lien_he", "ho_so"),
+            data_roles=("co_so_va_kenh_lien_he",),
+        )
+
+        self.assertEqual(ranked, [contact])
+        self.assertEqual(
+            _metadata_filter(2026, ("co_so_lien_he", "ho_so"), ("co_so_va_kenh_lien_he",)),
+            {"$and": [{"year": 2026}, {"data_role": "co_so_va_kenh_lien_he"}]},
+        )
+
+    def test_document_role_keeps_fact_chunks_with_a_different_category(self):
+        unibridge_tuition_fact = record(
+            "unibridge-tuition", "tuition", "Hỗ trợ UniBridge học phí HKI.",
+            category="hoc_phi", data_role="unibridge_ho_tro_tai_chinh",
+        )
+        ranked, _ = _rank_hybrid_candidates_with_audit(
+            "UniBridge hỗ trợ học phí", [unibridge_tuition_fact], [unibridge_tuition_fact], {},
+            2026, 4, categories=("hoc_bong",),
+            data_roles=("unibridge_ho_tro_tai_chinh",),
+        )
+        self.assertEqual(ranked, [unibridge_tuition_fact])
+
     def test_all_major_score_followup_expands_past_semantic_top_k(self):
         majors = [f"Ngành {index:02d}" for index in range(1, 21)]
         documents = [

@@ -183,9 +183,15 @@ class TaskCTests(unittest.TestCase):
                     else (expected_category,)
                 )
                 self.assertEqual(plan.categories, expected_categories)
+                expected_filter = {
+                    "year": 2026,
+                    "categories": list(expected_categories),
+                }
+                if plan.data_roles:
+                    expected_filter["data_roles"] = list(plan.data_roles)
                 self.assertEqual(
                     plan.metadata_filter,
-                    {"year": 2026, "categories": list(expected_categories)},
+                    expected_filter,
                 )
                 self.assertEqual(topic_category(question), expected_category)
                 self.assertTrue(is_in_scope(question))

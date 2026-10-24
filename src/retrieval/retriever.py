@@ -320,17 +320,29 @@ def _categories_from_question(question: str) -> tuple[str, ...]:
     return (category,) if category else ()
 
 
-def _metadata_filter(target_year: int, categories: tuple[str, ...]) -> dict[str, object]:
-    if not categories:
-        return {"year": target_year}
-    if len(categories) == 1:
-        return {"$and": [{"year": target_year}, {"category": categories[0]}]}
-    return {
-        "$and": [
-            {"year": target_year},
-            {"$or": [{"category": category} for category in categories]},
-        ]
-    }
+def _metadata_filter(
+    target_year: int,
+    categories: tuple[str, ...],
+    data_roles: tuple[str, ...] = (),
+) -> dict[str, object]:
+    clauses: list[dict[str, object]] = [{"year": target_year}]
+    if data_roles:
+        # ``data_role`` comes from the reviewed document manifest and is the
+        # authoritative routing label. A few structured records have a
+        # fact-level category (for example tuition) that differs from their
+        # containing file's category (scholarship/UniBridge); applying both
+        # filters would silently drop valid chunks from that approved file.
+        if len(data_roles) == 1:
+            clauses.append({"data_role": data_roles[0]})
+        else:
+            clauses.append({"$or": [{"data_role": role} for role in data_roles]})
+    elif len(categories) == 1:
+        clauses.append({"category": categories[0]})
+    elif categories:
+        clauses.append({"$or": [{"category": category} for category in categories]})
+    if len(clauses) == 1:
+        return clauses[0]
+    return {"$and": clauses}
 
 
 def _official_dhv_url(value: object) -> bool:
@@ -351,6 +363,7 @@ def _filter_reason(
     document: Document,
     target_year: int,
     categories: tuple[str, ...],
+    data_roles: tuple[str, ...] = (),
 ) -> str | None:
     metadata = document.metadata or {}
     if metadata.get("status") != "verified":
@@ -365,7 +378,10 @@ def _filter_reason(
         return "target_institution_mismatch"
     if not _official_dhv_url(metadata.get("source_url")):
         return "source_not_official_dhv"
-    if categories and str(metadata.get("category") or "") not in categories:
+    if data_roles:
+        if str(metadata.get("data_role") or "") not in data_roles:
+            return "data_role_not_requested"
+    elif categories and str(metadata.get("category") or "") not in categories:
         return "category_not_requested"
     if not str(document.page_content or "").strip():
         return "empty_content"
@@ -562,6 +578,7 @@ def _rank_hybrid_candidates(
     top_k: int,
     categories: Iterable[str] = (),
     entity_filters: Mapping[str, object] | None = None,
+    data_roles: Iterable[str] = (),
 ) -> list[Document]:
     ranked, _ = _rank_hybrid_candidates_with_audit(
         query,
@@ -572,6 +589,7 @@ def _rank_hybrid_candidates(
         top_k,
         categories=categories,
         entity_filters=entity_filters,
+        data_roles=data_roles,
     )
     return ranked
 
@@ -586,11 +604,13 @@ def _rank_hybrid_candidates_with_audit(
     *,
     categories: Iterable[str] = (),
     entity_filters: Mapping[str, object] | None = None,
+    data_roles: Iterable[str] = (),
 ) -> tuple[list[Document], dict[str, dict[str, object]]]:
     category_values = tuple(str(category) for category in categories if str(category))
+    data_role_values = tuple(str(role) for role in data_roles if str(role))
     unique: dict[str, Document] = {}
     for document in candidates:
-        if _filter_reason(document, target_year, category_values) is not None:
+        if _filter_reason(document, target_year, category_values, data_role_values) is not None:
             continue
         if not _entity_matches(document, entity_filters, category_values):
             continue
@@ -692,6 +712,7 @@ def _audit_hit(
         "status": metadata.get("status"),
         "title": metadata.get("title"),
         "source_file": metadata.get("source_file"),
+        "data_role": metadata.get("data_role"),
         "chunk_id": metadata.get("chunk_id"),
         "content_preview": document.page_content[:220].replace("\n", " | "),
     }
@@ -733,6 +754,7 @@ class DHVRetriever:
         question: str,
         *,
         categories: Iterable[str] | None = None,
+        data_roles: Iterable[str] | None = None,
         retrieval_query: str | None = None,
         entity_filters: Mapping[str, object] | None = None,
         top_k: int | None = None,
@@ -795,16 +817,16 @@ class DHVRetriever:
         except Exception as exc:
             raise VectorDatabaseError("ChromaDB could not be opened") from exc
 
-        metadata_filter = _metadata_filter(
-            self.settings.target_year,
-            tuple(str(category) for category in categories if str(category))
-            if categories is not None
-            else _categories_from_question(original_query),
-        )
         requested_categories = tuple(
             str(category)
             for category in (categories if categories is not None else _categories_from_question(original_query))
             if str(category)
+        )
+        requested_data_roles = tuple(str(role) for role in (data_roles or ()) if str(role))
+        metadata_filter = _metadata_filter(
+            self.settings.target_year,
+            requested_categories,
+            requested_data_roles,
         )
         candidates: list[Document] = []
         vector_documents: list[Document] = []
@@ -846,6 +868,7 @@ class DHVRetriever:
                 ranking_limit,
                 categories=requested_categories,
                 entity_filters=effective_entity_filters,
+                data_roles=requested_data_roles,
             )
         except RetrieverEmbeddingError:
             raise
@@ -863,7 +886,12 @@ class DHVRetriever:
         selected_ids = {_document_identity(document) for document in documents}
         for position, candidate in enumerate(candidates, start=1):
             identity = _document_identity(candidate)
-            reason = _filter_reason(candidate, self.settings.target_year, requested_categories)
+            reason = _filter_reason(
+                candidate,
+                self.settings.target_year,
+                requested_categories,
+                requested_data_roles,
+            )
             if reason is None and effective_entity_filters and not _entity_matches(
                 candidate, effective_entity_filters, requested_categories
             ):
@@ -872,6 +900,7 @@ class DHVRetriever:
                 "candidate_rank": position,
                 "chunk_id": (candidate.metadata or {}).get("chunk_id"),
                 "category": (candidate.metadata or {}).get("category"),
+                "data_role": (candidate.metadata or {}).get("data_role"),
                 "year": (candidate.metadata or {}).get("year"),
                 "status": (candidate.metadata or {}).get("status"),
                 "selected": identity in selected_ids,

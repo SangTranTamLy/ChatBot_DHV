@@ -111,6 +111,7 @@ from .scholarship_formatters import (
 )
 from .school_info_formatters import (
     _evidence_campus_list_answer,
+    _evidence_campus_and_phone_answer,
     _evidence_contact_overview_answer,
     _evidence_contact_email_answer,
     _evidence_contact_phone_answer,
@@ -854,6 +855,7 @@ def ask_chatbot(
     elif analysis.intent == "HOI_CO_SO_LIEN_HE":
         direct_evidence_answer = (
             _evidence_social_channels_answer(analysis, evidence)
+            or _evidence_campus_and_phone_answer(analysis, evidence)
             or _evidence_contact_phone_answer(analysis, evidence)
             or _evidence_contact_overview_answer(analysis, evidence)
             or

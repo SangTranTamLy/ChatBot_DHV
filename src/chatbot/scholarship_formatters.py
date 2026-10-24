@@ -136,7 +136,7 @@ def _is_scholarship_overview_question(analysis: QueryAnalysis) -> bool:
     )):
         return False
     return any(marker in normalized for marker in (
-        "nhu the nao", "ra sao", "co nhung", "gom nhung gi", "chinh sach hoc bong",
+        "nhu the nao", "the nao", "ra sao", "co nhung", "gom nhung gi", "chinh sach hoc bong",
     ))
 
 

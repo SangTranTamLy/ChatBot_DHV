@@ -26,6 +26,7 @@ ADMISSIONS_KEYWORDS = frozenset(
         "xet tuyen",
         "hoc phi",
         "hoc bong",
+        "unibridge",
         "ho so",
         "giay to",
         "thu tuc",

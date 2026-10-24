@@ -35,6 +35,38 @@ def _enrollment_document(record_id: str, text: str) -> Document:
     )
 
 
+def _enrollment_benefits_document(text: str) -> Document:
+    return Document(
+        page_content=(
+            "Thủ tục và quyền lợi nhập học DHV 2026\n"
+            "4. Quyền lợi và quà tặng sau nhập học\n"
+            "4.1 Quà tặng dành cho tân sinh viên\n"
+            "Sau khi hoàn tất nhập học, tân sinh viên DHV được hưởng các quyền lợi và quà tặng theo chính sách hiện hành.\n"
+            "4.2 Microsoft Office 365 bản quyền 01 năm\n"
+            "• Bao gồm: Word – Excel – PowerPoint – Outlook – OneDrive – Teams – AI Copilot.\n"
+            "4.3 Bộ quà tặng tân sinh viên\n"
+            "Tân sinh viên được:\n"
+            "• Cấp mã số sinh viên.\n"
+            "• Nhận Balo DHV.\n"
+            "• Nhận Hộp đựng bút.\n"
+            "• Nhận Dây đeo thẻ sinh viên.\n"
+            + text
+        ),
+        metadata={
+            "title": "Thủ tục và quyền lợi nhập học DHV 2026",
+            "category": "ho_so",
+            "year": 2026,
+            "school_code": "DHV",
+            "source_url": SOURCE_URL,
+            "source_file": "data/raw/07_THU_TUC_VA_QUYEN_LOI_NHAP_HOC_DHV_2026.pdf",
+            "status": "verified",
+            "record_type": "document_text",
+            "chunk_id": "test-enrollment-benefits",
+            "page": 2,
+        },
+    )
+
+
 class FixtureRetriever:
     def __init__(self, documents: list[Document]) -> None:
         self.documents = documents
@@ -62,6 +94,47 @@ class FixtureRetriever:
 
 
 class RuntimeEnrollmentTests(unittest.TestCase):
+    def test_post_enrollment_gifts_and_benefits_use_their_own_verified_route(self) -> None:
+        question = "Sau khi nhập học, tân sinh viên được nhận những quyền lợi và quà gì?"
+        analysis = analyze_question(question, ConversationState())
+        plan = route_question(analysis)
+        self.assertEqual(analysis.intent, "HOI_NHAP_HOC")
+        self.assertEqual(analysis.entities["request_type"], "enrollment_benefits")
+        self.assertEqual(analysis.entities["requested_information"], ["enrollment_benefits"])
+        self.assertEqual(plan.categories, ("ho_so", "nhap_hoc"))
+        self.assertIn("microsoft office 365", plan.retrieval_query.casefold())
+
+        class NeverCalled:
+            def generate(self, prompt):
+                raise AssertionError("Verified post-enrollment benefits should be rendered from evidence")
+
+        result = ask_chatbot(
+            question,
+            retriever=FixtureRetriever([_enrollment_benefits_document("")]),
+            llm=NeverCalled(),
+        )
+        answer = str(result["answer"])
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("Microsoft Office 365 bản quyền 01 năm", answer)
+        self.assertIn("AI Copilot", answer)
+        self.assertIn("mã số sinh viên", answer)
+        self.assertIn("balo dhv", answer.casefold())
+        self.assertIn("hộp đựng bút", answer.casefold())
+        self.assertIn("dây đeo thẻ sinh viên", answer.casefold())
+
+    def test_gift_question_returns_the_complete_post_enrollment_benefits_section(self) -> None:
+        result = ask_chatbot(
+            "Sau khi nhập học được tặng quà gì?",
+            retriever=FixtureRetriever([_enrollment_benefits_document("")]),
+        )
+        answer = str(result["answer"])
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("Microsoft Office 365 bản quyền 01 năm", answer)
+        self.assertIn("mã số sinh viên", answer)
+        self.assertIn("balo dhv", answer.casefold())
+        self.assertIn("hộp đựng bút", answer.casefold())
+        self.assertIn("dây đeo thẻ sinh viên", answer.casefold())
+
     def test_rejected_enrollment_evidence_is_not_retried_or_sent_to_model(self) -> None:
         document = _enrollment_document("enrollment_location", "Cơ sở 1: 194 Lê Đức Thọ.")
 

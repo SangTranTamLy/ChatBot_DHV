@@ -47,6 +47,26 @@ class AnswerLLM:
 
 
 class RuntimeContactTests(unittest.TestCase):
+    def test_campus_and_hotline_question_returns_both_requested_details(self):
+        class NeverCalledLLM:
+            def generate(self, prompt):
+                raise AssertionError("Requested campus and hotline facts must use verified contact evidence")
+
+        result = ask_chatbot(
+            "Cơ sở và hotline tư vấn tuyển sinh DHV là gì?",
+            retriever=ContactRetriever(), llm=NeverCalledLLM(),
+        )
+
+        answer = str(result["answer"])
+        self.assertEqual(result["status"], "ok")
+        for expected in (
+            "194 Lê Đức Thọ", "736 Nguyễn Trãi", "37 Kinh Dương Vương",
+            "Công viên Phần mềm Quang Trung", "0287 1000 888",
+        ):
+            self.assertIn(expected, answer)
+        for unrelated_detail in ("info@dhv.edu.vn", "Kênh theo dõi", "TikTok", "Facebook"):
+            self.assertNotIn(unrelated_detail, answer)
+
     def test_broad_contact_answer_contains_only_phone_and_email(self):
         class NeverCalledLLM:
             def generate(self, prompt):

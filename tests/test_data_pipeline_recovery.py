@@ -9,7 +9,11 @@ from unittest.mock import patch
 
 from src.ingestion.prepare_processed_from_raw import _extract_pdf_pages, _normalize_extracted_text
 from src.ingestion.raw_manifest import load_raw_manifest, validate_manifest_sync
-from src.ingestion.structured_json import build_structured_document, validate_structured_document
+from src.ingestion.structured_json import (
+    build_chunk_documents,
+    build_structured_document,
+    validate_structured_document,
+)
 from src.ingestion.loader import load_verified_documents
 
 
@@ -46,6 +50,26 @@ class _FakeReader:
 
 
 class DataPipelineRecoveryTests(unittest.TestCase):
+    def test_manifest_data_role_is_preserved_in_processed_and_index_chunks(self) -> None:
+        entry = _manifest_entry("thu-tuc-va-quyen-loi-nhap-hoc-dhv-2026")
+        document = build_structured_document(
+            raw_path=PROJECT_ROOT / str(entry["raw_file"]),
+            raw_root=RAW_ROOT,
+            pages=[{
+                "page": 1,
+                "text": (
+                    "Quyền lợi và quà tặng sau nhập học.\n"
+                    "Sau khi hoàn tất nhập học, tân sinh viên được cấp mã số sinh viên."
+                ),
+            }],
+            manifest_entry=entry,
+        )
+
+        self.assertEqual(document["data_role"], entry["data_role"])
+        chunks = build_chunk_documents(document)
+        self.assertTrue(chunks)
+        self.assertTrue(all(chunk.metadata["data_role"] == entry["data_role"] for chunk in chunks))
+
     def test_manifest_covers_current_raw_files_exactly_once(self) -> None:
         manifest = load_raw_manifest(RAW_ROOT / "manifest.json")
         self.assertEqual(validate_manifest_sync(manifest, raw_root=RAW_ROOT), [])

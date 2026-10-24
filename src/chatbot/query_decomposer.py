@@ -370,16 +370,23 @@ def _try_pre_rag_decomposition(
     categories = tuple(
         dict.fromkeys(category for subplan in subplans for category in subplan.categories)
     )
+    data_roles = tuple(
+        dict.fromkeys(role for subplan in subplans for role in subplan.data_roles)
+    )
+    metadata_filter = dict(plan.metadata_filter)
+    if data_roles:
+        metadata_filter["data_roles"] = list(data_roles)
     multi_plan = QueryPlan(
         intent="MULTI_ISSUE",
         categories=categories,
         retrieval_query=plan.retrieval_query,
-        metadata_filter=dict(plan.metadata_filter),
+        metadata_filter=metadata_filter,
         needs_clarification=False,
         subplans=tuple(subplans),
         entity_filters=dict(plan.entity_filters),
         query_mode=plan.query_mode,
         pre_rag_decomposition=trace,
+        data_roles=data_roles,
     )
     return multi_analysis, multi_plan, llm
 
