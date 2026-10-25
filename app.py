@@ -484,8 +484,9 @@ def _render_sidebar() -> None:
                 with st.container(key="account_row", horizontal=True, wrap=False,
                                   vertical_alignment="center", gap="small"):
                     st.html(identity)
+                    menu_page = "profile" if st.session_state.get("account_page") == "profile" else "chat"
                     with st.popover("Tùy chọn tài khoản", icon=":material/more_vert:",
-                                    key="account_menu", type="tertiary"):
+                                    key=f"account_menu_{menu_page}", type="tertiary"):
                         with st.container(key="popup_account"):
                             st.html(identity)
                             st.button("Cài đặt", icon=":material/settings:", key="account_settings",

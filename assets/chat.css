@@ -323,15 +323,16 @@
     gap: 0.5rem !important; align-items: center; overflow: visible;
 }
 .st-key-account_row [data-testid="stHorizontalBlock"] > * { width: 100% !important; min-width: 0 !important; }
-.st-key-account_menu { flex: 0 0 2.25rem; width: 2.25rem; min-width: 0 !important; }
+:is(.st-key-account_menu_chat, .st-key-account_menu_profile) { flex: 0 0 2.25rem; width: 2.25rem; min-width: 0 !important; }
 .dhv-account-identity { display: flex; align-items: center; gap: 0.6rem; min-width: 0; cursor: default; }
 .dhv-account-avatar { display: flex; flex: 0 0 2.4rem; width: 2.4rem; height: 2.4rem; align-items: center; justify-content: center; border-radius: 50%; background: #edf2f8; color: #10264d; font-size: 0.85rem; font-weight: 700; }
 .dhv-account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ffffff; font-size: 0.95rem; font-weight: 600; }
-.st-key-account_row .st-key-account_menu [data-testid="stPopoverButton"] { min-width: 2.25rem; width: 2.25rem; height: 2.5rem; padding: 0.35rem; justify-content: center; border: 0; color: #e4edf8; }
-.st-key-account_menu [data-testid="stPopoverButton"] [data-testid="stMarkdownContainer"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.st-key-account_menu [data-testid="stPopoverButton"]:hover { background: #213b5d; }
-.st-key-account_menu [data-testid="stPopoverButton"] [role="img"],
-.st-key-account_menu [data-testid="stPopoverButton"] svg { color: #e4edf8; }
+.st-key-account_row :is(.st-key-account_menu_chat, .st-key-account_menu_profile) [data-testid="stPopoverButton"] { min-width: 2.25rem; width: 2.25rem; height: 2.5rem; padding: 0.35rem; justify-content: center; border: 0; color: #e4edf8; }
+:is(.st-key-account_menu_chat, .st-key-account_menu_profile) [data-testid="stPopoverButton"] [data-testid="stMarkdownContainer"] { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+:is(.st-key-account_menu_chat, .st-key-account_menu_profile) [data-testid="stPopoverButton"] > div > div[aria-hidden="true"] { display: none; }
+:is(.st-key-account_menu_chat, .st-key-account_menu_profile) [data-testid="stPopoverButton"]:hover { background: #213b5d; }
+:is(.st-key-account_menu_chat, .st-key-account_menu_profile) [data-testid="stPopoverButton"] [role="img"],
+:is(.st-key-account_menu_chat, .st-key-account_menu_profile) [data-testid="stPopoverButton"] svg { color: #e4edf8; }
 
 /* The account popover is portalled outside the sidebar. */
 [data-testid="stPopoverBody"]:has(.st-key-popup_account) {

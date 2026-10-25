@@ -938,17 +938,31 @@ def ask_chatbot(
             or _evidence_tuition_answer(evidence)
         )
     elif analysis.intent == "HOI_HOC_BONG":
-        tier_answer = _evidence_scholarship_tier_answer(analysis, evidence)
-        if tier_answer:
-            direct_evidence_answer = tier_answer
-        elif _is_scholarship_conditions_question(analysis):
-            direct_evidence_answer = _evidence_scholarship_conditions_answer(analysis, evidence)
-        elif analysis.entities.get("query_mode") in {"COUNT", "LIST", "LIST_AND_COUNT"}:
-            direct_evidence_answer = _evidence_scholarship_catalog_answer(analysis, evidence)
-        elif _is_scholarship_overview_question(analysis):
-            direct_evidence_answer = _evidence_scholarship_overview_answer(analysis, evidence)
+        asks_if_scholarships_exist = bool(re.fullmatch(
+            r"(?:(?:dhv|truong dhv|truong|nha truong) )?co hoc bong khong\??",
+            normalized_query,
+        ))
+        has_verified_scholarship_fund = any(
+            "trien khai quy hoc bong danh cho tan sinh vien" in normalize_question(chunk.text)
+            for chunk in evidence.chunks
+        )
+        if asks_if_scholarships_exist and has_verified_scholarship_fund:
+            direct_evidence_answer = (
+                f"Có. Theo tài liệu tuyển sinh DHV {settings_obj.target_year}, "
+                "trường triển khai quỹ học bổng dành cho tân sinh viên."
+            )
         else:
-            direct_evidence_answer = _evidence_scholarship_answer(analysis, evidence)
+            tier_answer = _evidence_scholarship_tier_answer(analysis, evidence)
+            if tier_answer:
+                direct_evidence_answer = tier_answer
+            elif _is_scholarship_conditions_question(analysis):
+                direct_evidence_answer = _evidence_scholarship_conditions_answer(analysis, evidence)
+            elif analysis.entities.get("query_mode") in {"COUNT", "LIST", "LIST_AND_COUNT"}:
+                direct_evidence_answer = _evidence_scholarship_catalog_answer(analysis, evidence)
+            elif _is_scholarship_overview_question(analysis):
+                direct_evidence_answer = _evidence_scholarship_overview_answer(analysis, evidence)
+            else:
+                direct_evidence_answer = _evidence_scholarship_answer(analysis, evidence)
     elif analysis.intent == "HOI_XET_TUYEN_BO_SUNG":
         direct_evidence_answer = (
             _evidence_application_registration_answer(analysis, evidence)
@@ -998,7 +1012,16 @@ def ask_chatbot(
             or _evidence_admission_method_presence_answer(analysis, evidence)
         )
     elif analysis.intent == "HOI_CHUONG_TRINH":
-        direct_evidence_answer = _evidence_program_relation_answer(analysis, evidence)
+        relation_analysis = analysis
+        if (
+            analysis.entities.get("parent_major")
+            and normalized_query.rstrip(" ?.!").endswith("thi sao")
+            and "hoc phan" not in normalized_query
+        ):
+            # A short programme follow-up inherits the relation question from
+            # its major context; the formatter still requires verified evidence.
+            relation_analysis = replace(analysis, normalized_question="thuộc ngành nào")
+        direct_evidence_answer = _evidence_program_relation_answer(relation_analysis, evidence)
 
     if direct_evidence_answer:
         validated_direct_answer = validate_model_answer(

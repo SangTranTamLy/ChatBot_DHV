@@ -42,7 +42,8 @@ class InstitutionNameBulletTests(unittest.TestCase):
         result = ask_chatbot("DHV có học bổng không?", retriever=_retriever(), llm=_NeverCalledLLM())
         self.assertEqual(result["trace"]["evidence_direct_answer"]["status"], "ok")
         self.assertEqual(result["status"], "ok")
-        self.assertIn("Học bổng", str(result["answer"]))
+        self.assertIn("học bổng", str(result["answer"]).casefold())
+        self.assertLess(len(str(result["answer"])), 200)
 
 
 if __name__ == "__main__":
