@@ -789,6 +789,12 @@ def scope_reason(
     return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
 
 
+def has_foreign_domain_signal(question: str) -> bool:
+    """True when the text names a domain unrelated to a university (weather, gold price, ...)."""
+
+    return bool(_OUT_OF_SCOPE_RE.search(normalize_scope_text(question)))
+
+
 def is_in_scope(
     question: str,
     *,
@@ -833,6 +839,7 @@ __all__ = [
     "TARGET_SCHOOL_OTHER",
     "TARGET_SCHOOL_UNSPECIFIED",
     "detect_target_school",
+    "has_foreign_domain_signal",
     "is_foreign_institution_question",
     "is_in_scope",
     "is_personal_life_advice",

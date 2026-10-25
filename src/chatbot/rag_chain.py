@@ -132,11 +132,15 @@ from .school_info_formatters import (
 from .scope_guard import (
     SCOPE_REASON_AMBIGUOUS_SCHOOL,
     SCOPE_REASON_EXTERNAL_SCHOOL,
+    SCOPE_REASON_IN_SCOPE_DHV,
     SCOPE_REASON_MIXED_SCHOOL,
+    SCOPE_REASON_RELATED_NO_DATA,
     TARGET_SCHOOL_AMBIGUOUS,
     TARGET_SCHOOL_MIXED,
     TARGET_SCHOOL_OTHER,
+    has_foreign_domain_signal,
     is_in_scope,
+    is_personal_life_advice,
 )
 from .tuition_formatters import (
     _evidence_fee_item_answer,
@@ -146,6 +150,17 @@ from .tuition_formatters import (
     _evidence_tuition_per_credit_answer,
     _evidence_tuition_total_answer,
 )
+
+
+def _is_dhv_related_unsupported(analysis: Any, query: str) -> bool:
+    """True for an unsupported topic that is still about DHV, not a foreign domain."""
+
+    return (
+        analysis.intent == "OUT_OF_SCOPE"
+        and analysis.entities.get("scope_reason") == SCOPE_REASON_IN_SCOPE_DHV
+        and not is_personal_life_advice(query)
+        and not has_foreign_domain_signal(query)
+    )
 
 
 def ask_chatbot(
@@ -266,16 +281,25 @@ def ask_chatbot(
         and not admission_date_comparison
     ):
         next_state = update_conversation_state(state, analysis)
-        answer_plan = plan_answer(analysis, status="out_of_scope")
+        # A DHV question about a topic the verified corpus does not cover (a
+        # campus event, a dormitory, ...) is not outside the bot's subject; it
+        # is answered honestly as missing data instead of "not admissions".
+        related_no_data = _is_dhv_related_unsupported(analysis, query)
+        status = "no_data" if related_no_data else "out_of_scope"
+        answer_plan = plan_answer(analysis, status=status)
         trace = _trace(analysis, plan, next_state, answer_plan=answer_plan)
         trace["retrieved_docs_count"] = 0
         trace["evidence_count"] = 0
         trace["retrieval_calls"] = 0
         return _attach_answer_plan({
-            "answer": OUT_OF_SCOPE_ANSWER,
+            "answer": FALLBACK_ANSWER if related_no_data else OUT_OF_SCOPE_ANSWER,
             "sources": [],
-            "status": "out_of_scope",
-            "scope_reason": analysis.entities.get("scope_reason", "general_out_of_scope"),
+            "status": status,
+            "scope_reason": (
+                SCOPE_REASON_RELATED_NO_DATA
+                if related_no_data
+                else analysis.entities.get("scope_reason", "general_out_of_scope")
+            ),
             "target_school": analysis.entities.get("target_school", "UNSPECIFIED"),
             "state": next_state.to_dict(),
             "conversation_state": next_state.to_dict(),

@@ -737,7 +737,10 @@ def _named_unit_relation_missing_evidence(analysis: QueryAnalysis, evidence: Any
         # ``khoa`` cũng là một phần của "á khoa", "thủ khoa", "chuyên khoa", "khoa học"...
         # nên chỉ coi là đơn vị khi không đi sau/trước các từ đó.
         match = re.search(
+            # "sinh viên", "giảng viên", "tư vấn viên"... are people, not a
+            # "viện" (institute), so they must not open a unit lookup.
             r"(?<!\ba )(?<!\bthu )(?<!\bchuyen )(?<!\bdai hoc )"
+            r"(?<!\bsinh )(?<!\bgiang )(?<!\bthanh )(?<!\bnhan )(?<!\bvan )"
             r"\b(khoa|vien|trung tam)\s+(?!(?:hoc|tai|cua|dhv|nao|nam|nay|do|dau)\b)"
             r"(.+?)(?=\s+(?:co|hop tac|nghien cuu|phu trach|ho tro|mang luoi|la|thuc hien|trai rong|gom|thuoc|hoat dong|nham)\b|[?,.]|$)",
             normalized,
@@ -847,6 +850,13 @@ def _school_info_detail_missing_evidence(analysis: QueryAnalysis, evidence: Any)
         return True
 
     if any(marker in normalized for marker in ("don vi nao", "doi tac nao", "mang luoi doi tac")):
+        # A named unit's own cooperation sentence ("Khoa Luật hợp tác với ...
+        # công ty luật, văn phòng luật sư ...") identifies its partner types.
+        if requested_unit and any(
+            "hop tac voi" in sentence[sentence.find(requested_unit):]
+            for sentence in unit_sentences
+        ):
+            return False
         # A general statement that DHV cooperates with organizations does not
         # identify the requested partner network, especially for a named unit.
         return not any(

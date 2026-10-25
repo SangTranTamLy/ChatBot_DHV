@@ -971,7 +971,34 @@ def _is_verified_school_info_request(
             )
         )
     )
-    return has_overview_or_partnership or has_generic_internship
+    return (
+        has_overview_or_partnership
+        or has_generic_internship
+        or _is_school_wide_practice_question(normalized)
+    )
+
+
+# Internship and business-exposure facts in the verified learning-environment
+# and partnership documents apply to every DHV student, so naming a major does
+# not change the answer. Major-specific career outcomes stay excluded above.
+_SCHOOL_WIDE_PRACTICE_MARKERS = (
+    "thuc tap",
+    "kien tap",
+    "moi truong doanh nghiep",
+    "lam viec truc tiep voi doanh nghiep",
+    "tiep can doanh nghiep",
+    "gan voi doanh nghiep",
+    "gan voi moi truong doanh nghiep",
+    "thuc hanh nghe nghiep",
+    "da van hoa",
+)
+
+
+def _is_school_wide_practice_question(normalized: str) -> bool:
+    return (
+        any(marker in normalized for marker in _SCHOOL_WIDE_PRACTICE_MARKERS)
+        and not _is_event_date_question(normalized)
+    )
 
 
 def _has_supplementary_marker(normalized: str) -> bool:
@@ -3336,21 +3363,34 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
             else ("co_so_va_kenh_lien_he",)
         )
     elif analysis.intent == "SCHOOL_INFO":
-        if any(marker in normalized for marker in ("co cau", "lanh dao", "hieu truong", "pho hieu truong", "khoa vien")):
-            roles = ("co_cau_to_chuc_va_lanh_dao",)
-        elif any(marker in normalized for marker in ("moi truong hoc tap", "co hoi nghe nghiep", "viec lam", "thuc tap", "ai pro", "cau lac bo")):
-            roles = ("moi_truong_hoc_tap_va_co_hoi_nghe_nghiep",)
-        elif any(marker in normalized for marker in ("hop tac", "doanh nghiep", "doi tac", "quoc te", "shb")):
-            roles = ("hop_tac_quoc_te_va_doanh_nghiep",)
-        elif any(marker in normalized for marker in ("lich su", "triet ly", "su menh", "gia tri cot loi", "tong quan", "gioi thieu")):
-            roles = ("gioi_thieu_triet_ly_va_lich_su",)
-        else:
-            roles = (
+        # A question may touch several school-information documents (an
+        # internship question is answered by both the learning-environment and
+        # the partnership documents), so collect every matching role.
+        role_markers = (
+            ("co_cau_to_chuc_va_lanh_dao", ("co cau", "lanh dao", "hieu truong", "pho hieu truong", "khoa vien")),
+            (
                 "moi_truong_hoc_tap_va_co_hoi_nghe_nghiep",
-                "gioi_thieu_triet_ly_va_lich_su",
-                "co_cau_to_chuc_va_lanh_dao",
+                ("moi truong hoc tap", "co hoi nghe nghiep", "viec lam", "thuc tap", "kien tap",
+                 "ai pro", "cau lac bo", "doanh nghiep", "da van hoa"),
+            ),
+            (
                 "hop_tac_quoc_te_va_doanh_nghiep",
-            )
+                ("hop tac", "doanh nghiep", "doi tac", "quoc te", "shb", "thuc tap", "kien tap"),
+            ),
+            (
+                "gioi_thieu_triet_ly_va_lich_su",
+                ("lich su", "triet ly", "su menh", "gia tri cot loi", "tong quan", "gioi thieu"),
+            ),
+        )
+        roles = tuple(
+            role for role, markers in role_markers
+            if any(marker in normalized for marker in markers)
+        ) or (
+            "moi_truong_hoc_tap_va_co_hoi_nghe_nghiep",
+            "gioi_thieu_triet_ly_va_lich_su",
+            "co_cau_to_chuc_va_lanh_dao",
+            "hop_tac_quoc_te_va_doanh_nghiep",
+        )
 
     # The document role comes from the reviewed manifest and outranks a
     # record-level category, which may describe the fact type rather than the
@@ -3650,6 +3690,11 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     if data_roles:
         metadata_filter["data_roles"] = list(data_roles)
     entity_filters = _entity_filters_from_entities(entities)
+    if resolved.intent == "SCHOOL_INFO":
+        # School-information documents describe the whole university; a major
+        # named in the question is context, not a filter that would discard
+        # every school-wide chunk.
+        entity_filters = {}
     explicit_query_entity = bool(
         analysis.entities.get("major_name")
         or analysis.entities.get("major_code")
