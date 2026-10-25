@@ -16,6 +16,7 @@ APP_PATH = PROJECT_ROOT / "app.py"
 
 def _signed_in_app() -> AppTest:
     at = AppTest.from_file(str(APP_PATH))
+    at.session_state["account_page"] = "chat"
     at.session_state["auth_user"] = {"name": "Test User", "email": "test@example.com"}
     # init_auth signs out a user that has no tokens.
     at.session_state["auth_tokens"] = {"access_token": "a", "refresh_token": "r", "expires_at": 4_000_000_000}

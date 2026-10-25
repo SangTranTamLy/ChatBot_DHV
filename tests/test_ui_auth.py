@@ -45,7 +45,9 @@ class AuthValidationTests(TestCase):
 class AuthScreenTests(TestCase):
     def test_guest_can_chat_without_login_or_saved_history(self):
         with patch("src.chatbot.chat_service.ask_chatbot", return_value={"answer": "Thông tin học phí.", "status": "ok"}) as backend:
-            at = AppTest.from_file(str(APP)).run(timeout=30)
+            at = AppTest.from_file(str(APP))
+            at.session_state["account_page"] = "chat"
+            at.run(timeout=30)
             at.chat_input[0].set_value("Học phí bao nhiêu?").run(timeout=30)
         self.assertFalse(at.exception)
         self.assertIsNone(at.session_state["auth_view"])
@@ -117,7 +119,9 @@ class AuthScreenTests(TestCase):
         self.assertTrue(any("Email hoặc mật khẩu chưa đúng" in message.value for message in at.error))
 
     def test_guest_chat_and_account_chat_remain_isolated(self):
-        at = AppTest.from_file(str(APP)).run(timeout=30)
+        at = AppTest.from_file(str(APP))
+        at.session_state["account_page"] = "chat"
+        at.run(timeout=30)
         with patch("src.chatbot.chat_service.ask_chatbot", return_value={"answer": "Guest answer", "status": "ok"}):
             at.chat_input[0].set_value("Guest question").run(timeout=30)
         at.session_state["auth_user"] = {"id": "a", "name": "Account A", "email": "a@example.com"}
