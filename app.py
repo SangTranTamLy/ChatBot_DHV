@@ -54,7 +54,16 @@ STARTER_QUESTIONS = {
 
 
 KNOWN_STATUSES = frozenset(
-    {"ok", "clarification", "no_data", "out_of_scope", "ollama_offline", "vector_db_error", "error"}
+    {
+        "ok",
+        "clarification",
+        "no_data",
+        "out_of_scope",
+        "ollama_offline",
+        "model_timeout",
+        "vector_db_error",
+        "error",
+    }
 )
 _DISPLAY_MARKDOWN_LINK_RE = re.compile(
     r"\[([^\]]+)\]\(\s*(?:https?://|www\.)[^)]+\)", re.IGNORECASE

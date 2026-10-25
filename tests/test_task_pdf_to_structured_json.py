@@ -37,6 +37,19 @@ from src.ingestion.structured_json import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 RAW_ROOT = PROJECT_ROOT / "data" / "raw"
+# Official 2026 source PDFs (flat layout; the category comes from manifest.json).
+ADMISSION_SCORES_PDF = RAW_ROOT / "01_DIEM_TRUNG_TUYEN_DOT_1_DHV_2026.pdf"
+MAJOR_CATALOG_PDF = RAW_ROOT / "02_NGANH_VA_CHUONG_TRINH_DAO_TAO_DHV_2026.pdf"
+ADMISSION_METHODS_PDF = RAW_ROOT / "03_DIEU_KIEN_VA_PHUONG_THUC_XET_TUYEN_DHV_2026.pdf"
+SUPPLEMENTARY_PDF = RAW_ROOT / "05_XET_TUYEN_BO_SUNG_DHV_2026.pdf"
+ENROLLMENT_DOCUMENTS_PDF = RAW_ROOT / "06_HO_SO_CAN_CHUAN_BI_KHI_NHAP_HOC_DHV_2026.pdf"
+ENROLLMENT_PROCEDURE_PDF = RAW_ROOT / "07_THU_TUC_VA_QUYEN_LOI_NHAP_HOC_DHV_2026.pdf"
+TUITION_PDF = RAW_ROOT / "08_HOC_PHI_VA_KHOAN_THU_NHAP_HOC_DHV_2026.pdf"
+SCHOLARSHIP_PDF = RAW_ROOT / "09_CHINH_SACH_HOC_BONG_DHV_2026.pdf"
+
+
+def _non_empty(values: list[str]) -> list[str]:
+    return [value for value in values if str(value).strip()]
 
 
 class StructuredJSONPipelineTests(unittest.TestCase):
@@ -133,34 +146,36 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertIn("tuyển sinh - đợt 2", text)
 
     def test_current_enrollment_pdf_records_only_required_documents_and_methods(self) -> None:
-        enrollment_pages = _extract_pdf_pages(
-            RAW_ROOT / "ho_so" / "V1_HO_SO_VA_THU_TUC_NHAP_HOC_DHV_2026.pdf"
-        )
+        enrollment_pages = _extract_pdf_pages(ENROLLMENT_DOCUMENTS_PDF)
         documents = parse_enrollment_documents(enrollment_pages)
         document_names = [record["document_name"] for record in documents]
-        self.assertEqual(len(document_names), 4)
-        self.assertIn(
-            "Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học.",
+        self.assertEqual(
             document_names,
+            [
+                "Thư mời nhập học bản chính hoặc tin nhắn Zalo xác nhận đủ điều kiện nhập học.",
+                "Học bạ THPT.",
+                "Căn cước/Căn cước công dân.",
+                "Giấy chứng nhận kết quả thi tốt nghiệp THPT năm 2026.",
+            ],
         )
-        self.assertNotIn("Cơ sở 1: 194 Lê Đức Thọ, Phường An Nhơn, TP.HCM.", document_names)
+        # Campus bullets in the procedure PDF are locations, not documents.
+        procedure_pages = _extract_pdf_pages(ENROLLMENT_PROCEDURE_PDF)
+        self.assertEqual(parse_enrollment_documents(procedure_pages), [])
 
-        method_pages = _extract_pdf_pages(
-            RAW_ROOT / "phuong_thuc_xet_tuyen" / "V1_TONG_QUAN_TUYEN_SINH_DHV_2026.pdf"
-        )
+        method_pages = _extract_pdf_pages(ADMISSION_METHODS_PDF)
         methods = parse_admission_methods(method_pages)
         self.assertEqual([record["method"] for record in methods], ["thpt", "hoc_ba", "dgnl", "h_sca", "trung_cap"])
 
         numbered_sections = [
             element
-            for element in enrollment_pages[0]["elements"]
+            for element in procedure_pages[0]["elements"]
             if element.get("type") == "heading" and "THÍ SINH TRÚNG TUYỂN" in str(element.get("text", ""))
         ]
         self.assertTrue(numbered_sections)
         self.assertFalse(
             any(
                 item.get("text") == "THÍ SINH TRÚNG TUYỂN CẦN LÀM GÌ?"
-                for list_value in enrollment_pages[0]["lists"]
+                for list_value in procedure_pages[0]["lists"]
                 for item in list_value.get("items", [])
             )
         )
@@ -441,7 +456,7 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(pages[1]["elements"][0]["text"], "Mã ngành | Tên ngành | Điểm chuẩn")
 
     def test_literal_backslash_newlines_are_normalized_in_structured_table_headers(self) -> None:
-        raw = RAW_ROOT / "diem_trung_tuyen" / "V1_DIEM_TRUNG_TUYEN_DHV_2026.pdf"
+        raw = ADMISSION_SCORES_PDF
         literal_major_header = r"Mã\nngành"
         literal_score_header = r"Điểm\nchuẩn"
         table_id = "page_1_table_1"
@@ -571,12 +586,11 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(tokens[0]["bbox"], [1.0, 1.5, 6.0, 5.5])
 
     def test_ocr_image_crop_boxes_are_translated_to_page_coordinates(self) -> None:
-        raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
         token = {"text": "75%", "bbox": [1.0, 2.0, 7.0, 9.0], "confidence": 0.95, "source": "rapidocr"}
         with patch("src.ingestion.pdf_layout._rapidocr_tokens", return_value=[token]):
             text, tokens, engine, failures = _ocr_page_layout(
-                raw,
-                5,
+                SCHOLARSHIP_PDF,
+                0,
                 image_regions=[[102.1, 313.3, 508.1, 719.3]],
             )
 
@@ -588,7 +602,7 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertLess(tokens[0]["bbox"][2], 120)
 
     def test_page_model_retains_layout_tables_lists_and_ocr_fields(self) -> None:
-        raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
+        raw = SUPPLEMENTARY_PDF
         with tempfile.TemporaryDirectory() as temp_dir:
             result = convert_pdf_to_structured_json(raw, raw_root=RAW_ROOT, output_root=Path(temp_dir), markdown_root=None)
             document = load_structured_json(result.output_path)
@@ -618,9 +632,10 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(validate_structured_document(document), [])
 
     def test_content_audit_counts_page_structures_and_keeps_import_data(self) -> None:
-        raw = RAW_ROOT / "ho_so" / "V1_HO_SO_VA_THU_TUC_NHAP_HOC_DHV_2026.pdf"
         with tempfile.TemporaryDirectory() as temp_dir:
-            result = convert_pdf_to_structured_json(raw, raw_root=RAW_ROOT, output_root=Path(temp_dir), markdown_root=None)
+            result = convert_pdf_to_structured_json(
+                TUITION_PDF, raw_root=RAW_ROOT, output_root=Path(temp_dir), markdown_root=None
+            )
             document = load_structured_json(result.output_path)
 
         audit = document["content_audit"]
@@ -630,38 +645,44 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertGreater(audit["final_chars"], 0)
         self.assertGreaterEqual(audit["final_chars"], audit["native_chars"])
         self.assertGreater(audit["records"], 0)
-        full_text = "\n".join(page["text"] for page in document["pages"])
-        for token in ("Hồ sơ", "nhập học", "học phí"):
-            self.assertIn(token.casefold(), full_text.casefold())
-        self.assertRegex(full_text.casefold(), r"giấy\s+tờ")
+        full_text = "\n".join(page["text"] for page in document["pages"]).casefold()
+        for token in ("học phí", "nhập học", "tín chỉ"):
+            self.assertIn(token, full_text)
 
-        fee_table = document["pages"][3]["tables"][0]
-        self.assertEqual(fee_table["headers"], ["Khoản thu", "Mức phí"])
-        self.assertEqual(fee_table["rows"][0]["data"]["Mức phí"], "12.500.000 đồng")
+        fee_table = document["pages"][0]["tables"][0]
+        self.assertEqual(_non_empty(fee_table["headers"]), ["Khoản thu", "Mức phí"])
+        self.assertEqual(
+            _non_empty(fee_table["rows"][0]["values"]),
+            ["Học phí HKI (10 tín chỉ)", "12.500.000 đồng"],
+        )
         tuition = next(record for record in document["records"] if record.get("record_type") == "tuition")
-        self.assertEqual(tuition["page"], 4)
+        self.assertEqual(tuition["page"], 1)
         self.assertEqual(tuition["tuition_amount_vnd"], 12_500_000)
+        self.assertEqual(tuition["tuition_per_credit_vnd"], 1_250_000)
         self.assertEqual(tuition["admission_fee_vnd"], 1_500_000)
         self.assertEqual(tuition["elearning_fee_vnd"], 250_000)
         self.assertEqual(tuition["english_test_fee_vnd"], 250_000)
         self.assertEqual(tuition["total_cost_vnd"], 14_250_000)
         self.assertEqual(tuition["total_cost_breakdown"], "14.250.000 đồng + 250.000 đồng")
-        first_scholarship_page_tables = document["pages"][4]["tables"]
-        second_scholarship_page_tables = document["pages"][5]["tables"]
-        self.assertEqual(len(first_scholarship_page_tables), 1)
-        self.assertEqual(len(second_scholarship_page_tables), 1)
+        self.assertEqual(validate_structured_document(document), [])
+
+    def test_scholarship_tables_keep_their_own_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = convert_pdf_to_structured_json(
+                SCHOLARSHIP_PDF, raw_root=RAW_ROOT, output_root=Path(temp_dir), markdown_root=None
+            )
+            document = load_structured_json(result.output_path)
+
+        tables = [table for page in document["pages"] for table in page["tables"]]
+        self.assertEqual(len(tables), 1)
         self.assertEqual(
-            first_scholarship_page_tables[0]["headers"],
-            ["Học bổng đầu vào", "Hỗ trợ HKI", "HKI cần đóng", "Giảm tiếp HKII", "Tổng ưu đãi"],
-        )
-        self.assertEqual(
-            second_scholarship_page_tables[0]["headers"],
+            _non_empty(tables[0]["headers"]),
             ["Số lượng tân sinh viên nhập học cùng nhau", "Mức hỗ trợ HKII"],
         )
         self.assertEqual(validate_structured_document(document), [])
 
     def test_catalog_json_has_pages_records_and_parent_child_programs(self) -> None:
-        raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
+        raw = MAJOR_CATALOG_PDF
         with tempfile.TemporaryDirectory() as temp_dir:
             result = convert_pdf_to_structured_json(
                 raw,
@@ -672,8 +693,8 @@ class StructuredJSONPipelineTests(unittest.TestCase):
             document = load_structured_json(result.output_path)
 
         self.assertEqual(document["extraction"]["method"], "native")
-        self.assertEqual(document["extraction"]["page_count"], 8)
-        self.assertEqual(len(document["pages"]), 8)
+        self.assertEqual(document["extraction"]["page_count"], 2)
+        self.assertEqual(len(document["pages"]), 2)
         majors = {
             record["major_name"]: record
             for record in document["records"]
@@ -695,10 +716,18 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertTrue(all(program["parent_major"] == "Công nghệ thông tin" for program in cntt["programs"]))
         self.assertEqual(len(majors), 20)
         self.assertEqual(sum(len(major["programs"]) for major in majors.values()), 50)
-        methods = [record for record in document["records"] if record.get("record_type") == "admission_method"]
-        self.assertEqual(len(methods), 5)
-        self.assertEqual([method["method"] for method in methods], ["thpt", "hoc_ba", "dgnl", "h_sca", "trung_cap"])
         self.assertEqual(cntt["fact_category"], "nganh_dao_tao")
+        self.assertEqual(validate_structured_document(document), [])
+
+    def test_admission_methods_pdf_keeps_methods_and_subject_combinations(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = convert_pdf_to_structured_json(
+                ADMISSION_METHODS_PDF, raw_root=RAW_ROOT, output_root=Path(temp_dir), markdown_root=None
+            )
+            document = load_structured_json(result.output_path)
+
+        methods = [record for record in document["records"] if record.get("record_type") == "admission_method"]
+        self.assertEqual([method["method"] for method in methods], ["thpt", "hoc_ba", "dgnl", "h_sca", "trung_cap"])
         list_items = [
             item["text"]
             for page in document["pages"]
@@ -711,15 +740,15 @@ class StructuredJSONPipelineTests(unittest.TestCase):
     def test_score_types_are_separate_and_numeric_values_are_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_root = Path(temp_dir)
-            for category, name in (
-                ("phuong_thuc_xet_tuyen", "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"),
-                ("diem_trung_tuyen", "V1_DIEM_TRUNG_TUYEN_DHV_2026.pdf"),
-                ("xet_tuyen_bo_sung", "V1_XET_TUYEN_BO_SUNG_DHV_2026.pdf"),
-            ):
-                convert_pdf_to_structured_json(RAW_ROOT / category / name, raw_root=RAW_ROOT, output_root=output_root, markdown_root=None)
-            threshold = load_structured_json(output_root / "phuong_thuc_xet_tuyen" / "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.json")
-            admission = load_structured_json(output_root / "diem_trung_tuyen" / "V1_DIEM_TRUNG_TUYEN_DHV_2026.json")
-            supplementary = load_structured_json(output_root / "xet_tuyen_bo_sung" / "V1_XET_TUYEN_BO_SUNG_DHV_2026.json")
+            outputs = {
+                raw.name: convert_pdf_to_structured_json(
+                    raw, raw_root=RAW_ROOT, output_root=output_root, markdown_root=None
+                ).output_path
+                for raw in (ADMISSION_METHODS_PDF, ADMISSION_SCORES_PDF, SUPPLEMENTARY_PDF)
+            }
+            threshold = load_structured_json(outputs[ADMISSION_METHODS_PDF.name])
+            admission = load_structured_json(outputs[ADMISSION_SCORES_PDF.name])
+            supplementary = load_structured_json(outputs[SUPPLEMENTARY_PDF.name])
 
         threshold_records = [record for record in threshold["records"] if record.get("record_type") == "application_threshold"]
         self.assertTrue(threshold_records)
@@ -729,24 +758,20 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertTrue(any(record.get("score_type") == "supplementary_threshold" and record.get("value") == 20 for record in supplementary["records"]))
         self.assertFalse(any("score" in record and record.get("record_type") in {"application_threshold", "admission_score", "supplementary_threshold"} for record in admission["records"]))
 
-        score_table = admission["pages"][0]["tables"][0]
-        continued_score_table = admission["pages"][1]["tables"][0]
-        self.assertEqual(continued_score_table["headers"], score_table["headers"])
-        # The source visibly repeats the table headings on page 2; do not
-        # mislabel detected source text as inherited metadata.
-        self.assertTrue(continued_score_table["header_detected"])
-        self.assertNotIn("header_inherited", continued_score_table)
-        self.assertTrue(all(set(row["data"]) == set(score_table["headers"]) for row in continued_score_table["rows"]))
-
-        method_table = threshold["pages"][0]["tables"][0]
-        for continued_page in threshold["pages"][1:3]:
-            continued_table = continued_page["tables"][0]
-            self.assertEqual(continued_table["headers"], method_table["headers"])
-            self.assertTrue(continued_table["header_detected"])
-            self.assertNotIn("header_inherited", continued_table)
+        # Both score tables visibly repeat their headings on page 2; detected
+        # source headers must not be mislabelled as inherited metadata.
+        for document in (admission, supplementary):
+            score_table = document["pages"][0]["tables"][0]
+            continued_score_table = document["pages"][1]["tables"][0]
+            self.assertEqual(continued_score_table["headers"], score_table["headers"])
+            self.assertTrue(continued_score_table["header_detected"])
+            self.assertNotIn("header_inherited", continued_score_table)
+            self.assertTrue(
+                all(len(row["values"]) == len(score_table["headers"]) for row in continued_score_table["rows"])
+            )
 
     def test_json_loader_builds_natural_record_chunks_and_flat_metadata(self) -> None:
-        raw = RAW_ROOT / "ho_so" / "V1_HO_SO_VA_THU_TUC_NHAP_HOC_DHV_2026.pdf"
+        raw = TUITION_PDF
         with tempfile.TemporaryDirectory() as temp_dir:
             output_root = Path(temp_dir)
             result = convert_pdf_to_structured_json(raw, raw_root=RAW_ROOT, output_root=output_root, markdown_root=None)
@@ -763,8 +788,8 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(document.metadata["tuition_amount_vnd"], 12500000)
         self.assertEqual(document.metadata["tuition_per_credit_vnd"], 1250000)
         self.assertEqual(document.metadata["total_cost_vnd"], 14250000)
-        self.assertEqual(document.metadata["page"], 4)
-        self.assertTrue(document.metadata["source_file"].endswith("V1_HO_SO_VA_THU_TUC_NHAP_HOC_DHV_2026.pdf"))
+        self.assertEqual(document.metadata["page"], 1)
+        self.assertTrue(document.metadata["source_file"].endswith(TUITION_PDF.name))
 
         page_text_documents = [
             item for item in loaded.documents
@@ -774,7 +799,7 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertTrue(all(item.metadata.get("page_text_source") is True for item in page_text_documents))
 
     def test_page_text_supplements_records_for_facts_not_structured_as_records(self) -> None:
-        raw = RAW_ROOT / "phuong_thuc_xet_tuyen" / "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf"
+        raw = ADMISSION_METHODS_PDF
         with tempfile.TemporaryDirectory() as temp_dir:
             result = convert_pdf_to_structured_json(
                 raw,

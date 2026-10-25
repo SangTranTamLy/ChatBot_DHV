@@ -29,24 +29,32 @@ class TaskMRawDataTests(unittest.TestCase):
         self.assertEqual(
             {entry["category"] for entry in documents},
             {
+                "co_so_lien_he",
                 "diem_trung_tuyen",
                 "ho_so",
+                "hoc_bong",
                 "hoc_phi",
+                "lich_tuyen_sinh",
+                "nganh_dao_tao",
                 "phuong_thuc_xet_tuyen",
                 "thong_tin_truong",
                 "xet_tuyen_bo_sung",
             },
         )
+        # Every document carries a unique reviewed retrieval role.
+        roles = [entry["data_role"] for entry in documents]
+        self.assertTrue(all(roles))
+        self.assertEqual(len(roles), len(set(roles)))
 
         required = {
+            "document_id",
             "raw_file",
             "title",
             "year",
-            "collected_at",
             "category",
+            "data_role",
             "source_url",
             "source_urls",
-            "verification_status",
             "verified",
             "status",
             "source_type",
@@ -56,12 +64,9 @@ class TaskMRawDataTests(unittest.TestCase):
             self.assertTrue(entry["raw_file"].endswith(".pdf"))
             self.assertTrue(all(is_official_dhv_url(url) for url in entry["source_urls"]))
             if entry["verified"] is True:
-                self.assertIn(entry["year"], {2024, 2026})
-                self.assertEqual(entry["verification_status"], "verified")
+                self.assertEqual(entry["year"], 2026)
+                self.assertEqual(entry["status"], "verified")
                 self.assertTrue(is_official_dhv_url(entry["source_url"]))
-                if entry["year"] == 2024:
-                    self.assertEqual(entry["document_id"], "hoc-phi-dhv-2024")
-                    self.assertEqual(entry["category"], "hoc_phi")
             else:
                 self.assertNotEqual(entry["status"], "verified")
                 self.assertIsNone(entry["source_url"])
@@ -81,38 +86,32 @@ class TaskMRawDataTests(unittest.TestCase):
             self.assertNotRegex(text, r"\b\d{12}\b", path)
 
     def test_processed_metadata_and_new_career_evidence_are_present(self) -> None:
-        school = json.loads(
-            (
-                PROJECT_ROOT
-                / "data"
-                / "processed"
-                / "thong_tin_truong"
-                / "V1_TONG_QUAN_TUYEN_SINH_DHV_2026.json"
-            ).read_text(encoding="utf-8")
-        )
-        catalog = json.loads(
-            (
-                PROJECT_ROOT
-                / "data"
-                / "processed"
-                / "phuong_thuc_xet_tuyen"
-                / "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.json"
-            ).read_text(encoding="utf-8")
-        )
+        processed = PROJECT_ROOT / "data" / "processed"
 
-        for document in (school, catalog):
+        def load(relative: str) -> dict:
+            path = processed / relative
+            if not path.exists():
+                self.skipTest("data/processed is generated locally; run prepare_processed_from_raw first")
+            return json.loads(path.read_text(encoding="utf-8"))
+
+        career = load("thong_tin_truong/11_MOI_TRUONG_HOC_TAP_VA_CO_HOI_NGHE_NGHIEP_DHV_2026.json")
+        catalog = load("nganh_dao_tao/02_NGANH_VA_CHUONG_TRINH_DAO_TAO_DHV_2026.json")
+        methods = load("phuong_thuc_xet_tuyen/03_DIEU_KIEN_VA_PHUONG_THUC_XET_TUYEN_DHV_2026.json")
+
+        for document in (career, catalog, methods):
             source = document["source"]
             self.assertEqual(source["verification_status"], "verified")
-            self.assertEqual(source["collected_at"], "2026-09-23")
-            self.assertTrue(source["source_date"])
             self.assertTrue(source["source_urls"])
+            self.assertTrue(all(is_official_dhv_url(url) for url in source["source_urls"]))
+            self.assertTrue(document["data_role"])
             self.assertTrue(document["pages"])
+        self.assertIn("nghề nghiệp", "\n".join(page["text"] for page in career["pages"]).casefold())
         self.assertEqual(
-            sum(record.get("record_type") == "major" for record in school["records"]),
+            sum(record.get("record_type") == "major" for record in catalog["records"]),
             20,
         )
         self.assertTrue(
-            any(record.get("record_type") == "application_threshold" for record in catalog["records"])
+            any(record.get("record_type") == "application_threshold" for record in methods["records"])
         )
 
     def test_official_host_policy_rejects_non_dhv_and_lookalike_urls(self) -> None:

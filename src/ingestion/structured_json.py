@@ -1747,26 +1747,45 @@ def parse_contacts(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return records
 
 
+# Unnumbered introductions that announce the enrollment checklist, e.g.
+# "Chuẩn bị hồ sơ nhập học DHV" or "... mang theo bản gốc các giấy tờ sau:".
+_ENROLLMENT_CHECKLIST_INTRO_MARKERS = ("cac giay to sau", "chuan bi ho so nhap hoc")
+_NUMBERED_SECTION_RE = re.compile(r"^\d+(?:\.\d+)+\s+")
+
+
+def _starts_enrollment_checklist(line: str) -> bool:
+    folded = _fold_label(line)
+    if _NUMBERED_SECTION_RE.match(line) and "ho so" in folded and "nhap hoc" in folded:
+        return True
+    return any(marker in folded for marker in _ENROLLMENT_CHECKLIST_INTRO_MARKERS)
+
+
 def parse_enrollment_documents(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for page in pages:
         elements = page.get("elements")
         if isinstance(elements, list):
             in_document_section = False
+            section_items = 0
             for element in elements:
                 if not isinstance(element, Mapping):
                     continue
                 line = _single_line(element.get("text", ""))
                 if not line:
                     continue
-                numbered_heading = bool(re.match(r"^\d+(?:\.\d+)+\s+", line))
-                folded = _fold_label(line)
-                if numbered_heading and "ho so" in folded and "nhap hoc" in folded:
+                is_list_item = element.get("type") == "list_item"
+                if not is_list_item and _starts_enrollment_checklist(line):
                     in_document_section = True
+                    section_items = 0
                     continue
-                if in_document_section and numbered_heading:
+                # The checklist ends at the next numbered section or at the
+                # first non-list element (for example a "Lưu ý" note) after it.
+                if in_document_section and (
+                    _NUMBERED_SECTION_RE.match(line) or (section_items and not is_list_item)
+                ):
                     in_document_section = False
-                if in_document_section and element.get("type") == "list_item":
+                if in_document_section and is_list_item:
+                    section_items += 1
                     records.append(
                         {
                             "record_type": "enrollment_document",
@@ -1781,15 +1800,19 @@ def parse_enrollment_documents(pages: list[dict[str, Any]]) -> list[dict[str, An
         # only treat bullets in the numbered enrollment-document section as
         # required documents.
         in_document_section = False
+        section_items = 0
         for line in _nonempty_lines(str(page.get("text", ""))):
-            numbered_heading = bool(re.match(r"^\d+(?:\.\d+)+\s+", line))
-            folded = _fold_label(line)
-            if numbered_heading and "ho so" in folded and "nhap hoc" in folded:
+            is_bullet = line.startswith("• ")
+            if not is_bullet and _starts_enrollment_checklist(line):
                 in_document_section = True
+                section_items = 0
                 continue
-            if in_document_section and numbered_heading:
+            if in_document_section and (
+                _NUMBERED_SECTION_RE.match(line) or (section_items and not is_bullet)
+            ):
                 in_document_section = False
-            if in_document_section and line.startswith("• "):
+            if in_document_section and is_bullet:
+                section_items += 1
                 records.append(
                     {
                         "record_type": "enrollment_document",

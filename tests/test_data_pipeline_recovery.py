@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -30,10 +31,16 @@ def _manifest_entry(document_id: str) -> dict[str, object]:
     )
 
 
-def _processed_path_for(entry: dict[str, object]) -> Path:
-    raw_file = Path(str(entry["raw_file"]))
-    relative_to_raw = raw_file.relative_to(Path("data") / "raw")
-    return PROJECT_ROOT / "data" / "processed" / relative_to_raw.with_suffix(".json")
+def _historical_tuition_entry() -> dict[str, object]:
+    """A verified 2024 entry shaped like the reviewed 2026 tuition manifest row.
+
+    The repository no longer ships 2024 sources, but the year-isolation policy
+    still applies whenever historical PDFs are added back. The 2026 PDF stands
+    in for the raw bytes because only the year metadata matters here.
+    """
+    entry = dict(_manifest_entry("hoc-phi-va-khoan-thu-nhap-hoc-dhv-2026"))
+    entry.update({"document_id": "hoc-phi-dhv-2024", "title": "Học phí DHV 2024", "year": 2024})
+    return entry
 
 
 class _FakePage:
@@ -90,7 +97,7 @@ class DataPipelineRecoveryTests(unittest.TestCase):
         self.assertEqual(pages[0]["text"], "OCR text có đủ nội dung để lập chỉ mục.")
 
     def test_manifest_provenance_preserves_verified_2024_source_url(self) -> None:
-        entry = _manifest_entry("hoc-phi-dhv-2024")
+        entry = _historical_tuition_entry()
         document = build_structured_document(
             raw_path=PROJECT_ROOT / str(entry["raw_file"]),
             raw_root=RAW_ROOT,
@@ -122,20 +129,32 @@ class DataPipelineRecoveryTests(unittest.TestCase):
             self.assertIn(token, value)
 
     def test_verified_2024_tuition_loads_only_for_2024_target_year(self) -> None:
-        entry = _manifest_entry("hoc-phi-dhv-2024")
-        processed = json.loads(_processed_path_for(entry).read_text(encoding="utf-8"))
-        self.assertEqual(processed["year"], 2024)
-        self.assertEqual(processed["source"]["status"], "verified")
-        self.assertTrue(processed["source"]["verified"])
-        self.assertEqual(processed["source"]["source_url"], entry["source_url"])
+        entries = {
+            2024: _historical_tuition_entry(),
+            2026: _manifest_entry("hoc-phi-va-khoan-thu-nhap-hoc-dhv-2026"),
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            processed_root = Path(temp_dir)
+            for year, entry in entries.items():
+                document = build_structured_document(
+                    raw_path=PROJECT_ROOT / str(entry["raw_file"]),
+                    raw_root=RAW_ROOT,
+                    pages=[{"page": 1, "text": f"Học phí năm {year} được tính theo tín chỉ."}],
+                    manifest_entry=entry,
+                )
+                self.assertEqual(validate_structured_document(document), [])
+                target = processed_root / "hoc_phi" / f"hoc_phi_{year}.json"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
 
-        processed_root = PROJECT_ROOT / "data" / "processed"
-        historical = load_verified_documents(processed_root, target_year=2024)
-        current = load_verified_documents(processed_root, target_year=2026)
+            historical = load_verified_documents(processed_root, target_year=2024)
+            current = load_verified_documents(processed_root, target_year=2026)
+
         self.assertEqual(historical.stats.verified_documents, 1)
         self.assertTrue(historical.documents)
         self.assertTrue(all(document.metadata["year"] == 2024 for document in historical.documents))
-        self.assertEqual(current.stats.verified_documents, 6)
+        self.assertEqual(current.stats.verified_documents, 1)
+        self.assertTrue(current.documents)
         self.assertTrue(all(document.metadata["year"] == 2026 for document in current.documents))
 
 

@@ -1,6 +1,7 @@
 """Input validation and Streamlit auth-flow tests for the Supabase integration."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
@@ -64,14 +65,20 @@ class AuthScreenTests(TestCase):
             patch("src.ui_auth.register_user") as register,
             patch("src.ui_auth.login_user", return_value=(user, tokens)) as login,
             patch("src.ui_auth.logout_user") as remote_logout,
+            # AppTest cannot mount Components v2; the stand-ins render nothing
+            # and the values arrive through component state as in the browser.
+            patch("src.ui_auth._LIVE_PASSWORD_INPUT", return_value=SimpleNamespace(value=None)),
+            patch("src.ui_auth._LIVE_CONFIRMATION_INPUT", return_value=SimpleNamespace(value=None)),
         ):
             at = AppTest.from_file(str(APP)).run(timeout=30)
             at.button(key="open_login").click().run(timeout=30)
             at.button(key="auth_register").click().run(timeout=30)
             at.text_input(key="register_name").set_value("Nguyễn An")
             at.text_input(key="register_email").set_value("AN@example.com")
-            at.text_input(key="register_password").set_value("DemoPass123")
-            at.text_input(key="register_confirmation").set_value("DemoPass123")
+            # The live password fields are custom components; AppTest cannot type
+            # into them, so set their component state the way the frontend does.
+            at.session_state["register_password_live"] = {"value": "DemoPass123"}
+            at.session_state["register_confirmation_live"] = {"value": "DemoPass123"}
             at.button(key="submit_register").click().run(timeout=30)
             self.assertTrue(any("Đăng ký thành công" in message.value for message in at.success))
             self.assertIsNone(at.session_state["auth_user"])
