@@ -2605,6 +2605,38 @@ _CAREER_OR_EVENT_TERMS = (
 )
 
 
+_SCHOLARSHIP_CRITERIA_WORDS = (
+    "diem", "toan", "dgnl", "danh gia nang luc", "hoc ba", "to hop", "dieu kien", "toi thieu",
+    "quy dinh", "can bao nhieu", "dat bao nhieu",
+)
+
+
+_SCORE_DISTRIBUTION_MARKERS = (
+    "giong nhau", "khac nhau", "tat ca cac nganh", "cac muc", "nhung muc", "muc nao",
+    "chia thanh", "dao dong", "pham vi",
+)
+
+
+def _is_score_distribution_question(normalized: str, entities: Mapping[str, object]) -> bool:
+    """How admission scores vary across majors (no single major named)."""
+    if entities.get("major_name") or entities.get("candidate_majors") or entities.get("student_scores"):
+        return False
+    if "diem" not in normalized or "hoc bong" in normalized or _has_supplementary_marker(normalized):
+        return False
+    if any(word in normalized for word in ("diem san", "nguong", "nhan ho so")):
+        return False
+    return any(marker in normalized for marker in _SCORE_DISTRIBUTION_MARKERS)
+
+
+def _is_scholarship_score_question(normalized: str) -> bool:
+    return (
+        "hoc bong" in normalized
+        and any(word in normalized for word in _SCHOLARSHIP_CRITERIA_WORDS)
+        and not _has_supplementary_marker(normalized)
+        and not any(other in normalized for other in ("diem chuan", "diem trung tuyen", "ho so", "nhap hoc"))
+    )
+
+
 def _classify_intent_rules(normalized: str, entities: dict[str, object], state: ConversationState) -> str:
     # System turns are a deterministic trust-boundary branch. They must be
     # resolved before both the trained classifier and the admissions scope
@@ -2625,6 +2657,21 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         entities["score_query_type"] = None
         entities["requested_information"] = ["score_calculation"]
         return "HOI_CACH_TINH_DIEM"
+    if _is_score_distribution_question(normalized, entities):
+        # "Điểm học bạ có giống nhau ở tất cả các ngành không?", "bảng trúng
+        # tuyển chia thành những mức nào?" ask how admission scores vary.
+        entities["score_type"] = ADMISSION_SCORE
+        entities["score_query_type"] = "admission_score_lookup"
+        entities["requested_information"] = [ADMISSION_SCORE]
+        return "HOI_DIEM_TRUNG_TUYEN"
+    if _is_scholarship_score_question(normalized):
+        # "Điểm học bạ/ĐGNL/Toán/tổ hợp bao nhiêu để nhận học bổng" asks for
+        # the scholarship criteria, not a threshold or a subject combination.
+        entities["score_type"] = None
+        entities["score_query_type"] = None
+        entities["admission_combination_detail"] = False
+        entities["requested_information"] = ["scholarship"]
+        return "HOI_HOC_BONG"
     if entities.get("admission_combination_detail"):
         # A natural-language description of the published subject structure
         # is a method/combinations question, not a personalized score formula.
@@ -3409,6 +3456,12 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
         # although their record-level category is ``nguong_dau_vao`` rather
         # than the manifest category ``phuong_thuc_xet_tuyen``.
         roles = ("catalog", "admission_conditions_and_methods")
+        if analysis.entities.get("student_scores") and (
+            analysis.entities.get("major_name") or analysis.entities.get("candidate_majors")
+        ):
+            # A personal score for a named major is also compared with that
+            # major's published round-1 admission score.
+            roles = (*roles, "diem_trung_tuyen_dot_1")
     elif analysis.intent == "HOI_CO_SO_LIEN_HE":
         roles = (
             ("thu_tuc_va_quyen_loi_nhap_hoc", "co_so_va_kenh_lien_he")
@@ -3561,6 +3614,10 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             categories = ("diem_trung_tuyen",)
         else:
             categories = ("nganh_dao_tao",) if major in {"luật", "luật kinh tế"} else ("nganh_dao_tao", "nguong_dau_vao")
+            if entities.get("student_scores") and (entities.get("major_name") or entities.get("candidate_majors")):
+                # Same rule as the data roles: a personal score for a named
+                # major is also shown next to its round-1 admission score.
+                categories = (*categories, "diem_trung_tuyen")
     elif resolved.intent == "HOI_DIEM_TRUNG_TUYEN":
         categories = ("diem_trung_tuyen",)
     elif resolved.intent == "HOI_XET_TUYEN_BO_SUNG":

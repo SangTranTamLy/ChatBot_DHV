@@ -97,7 +97,7 @@ _SCHOLARSHIP_POLICY_QUERY_MARKERS = {
     "1.1": ("hao khi hung vuong",),
     "1.2": ("hoc bong tuyen sinh", "hoc bong dau vao"),
     "1.3": ("hoc bong tai nang", "tai nang"),
-    "1.4": ("hoc bong nganh tien phong", "nganh tien phong"),
+    "1.4": ("hoc bong nganh tien phong", "nganh tien phong", "tien phong"),
     "1.5": ("doi ban cung tien",),
     "1.6": ("tuong lai vung buoc", "thu khoa dau vao", "a khoa dau vao"),
     "1.7": ("bien dao yeu thuong",),
@@ -105,12 +105,28 @@ _SCHOLARSHIP_POLICY_QUERY_MARKERS = {
 }
 
 
+_SCHOLARSHIP_SCORE_CRITERIA_MARKERS = (
+    "de nhan hoc bong", "de duoc hoc bong", "toi thieu", "bao nhieu diem", "can diem",
+    "diem toan", "diem hoc ba", "diem dgnl", "to hop",
+)
+
+
 def _is_scholarship_conditions_question(analysis: QueryAnalysis) -> bool:
+    """Conditions of one named policy, or the score criteria to receive a scholarship."""
     normalized = normalize_question(analysis.normalized_question)
+    if analysis.intent != "HOI_HOC_BONG" or "hoc bong" not in normalized:
+        return False
+    if any(marker in normalized for marker in ("toi da", "cao nhat", "muc cao", "nhieu nhat")):
+        return False  # the highest-level question has its own extractor
+    names_policy = any(
+        marker in normalized
+        for markers in _SCHOLARSHIP_POLICY_QUERY_MARKERS.values()
+        for marker in markers
+    )
     return (
-        analysis.intent == "HOI_HOC_BONG"
-        and "hoc bong" in normalized
-        and any(marker in normalized for marker in _SCHOLARSHIP_CONDITION_MARKERS)
+        any(marker in normalized for marker in _SCHOLARSHIP_CONDITION_MARKERS)
+        or any(marker in normalized for marker in _SCHOLARSHIP_SCORE_CRITERIA_MARKERS)
+        or (names_policy and analysis.entities.get("query_mode") not in {"COUNT", "LIST", "LIST_AND_COUNT"})
     )
 
 
@@ -140,6 +156,12 @@ def _is_scholarship_overview_question(analysis: QueryAnalysis) -> bool:
     ))
 
 
+# Score-based tiers (exam total, học bạ, ĐGNL) all belong to "Học bổng tuyển sinh".
+_ADMISSION_SCHOLARSHIP_SCORE_MARKERS = (
+    "dgnl", "danh gia nang luc", "hoc ba", "tong diem", "to hop", "diem thi", "diem tb",
+)
+
+
 def _scholarship_condition_policy_ids(analysis: QueryAnalysis) -> tuple[str, ...]:
     normalized = normalize_question(analysis.normalized_question)
     matched = tuple(
@@ -147,7 +169,11 @@ def _scholarship_condition_policy_ids(analysis: QueryAnalysis) -> tuple[str, ...
         for policy_id, markers in _SCHOLARSHIP_POLICY_QUERY_MARKERS.items()
         if any(marker in normalized for marker in markers)
     )
-    return matched or tuple(_SCHOLARSHIP_POLICY_HEADINGS)
+    if matched:
+        return matched
+    if any(marker in normalized for marker in _ADMISSION_SCHOLARSHIP_SCORE_MARKERS):
+        return ("1.2",)
+    return tuple(_SCHOLARSHIP_POLICY_HEADINGS)
 
 
 def _scholarship_policy_source_rank(metadata: Mapping[str, object], text: str) -> int | None:

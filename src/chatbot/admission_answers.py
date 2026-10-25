@@ -1758,6 +1758,89 @@ def _evidence_score_list_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     return "Ngưỡng nhận hồ sơ của các ngành bạn vừa hỏi:\n" + "\n".join(rows)
 
 
+def _is_verified_fact(fact: Mapping[str, object]) -> bool:
+    return (
+        fact.get("status") == "verified"
+        or fact.get("source_status") == "verified"
+        or fact.get("verified") is True
+    )
+
+
+def _admission_score_overview_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Summarise round-1 admission scores per method: range, usual value, exceptions.
+
+    Used when no major is named. Taking the first row per method would present
+    one major's score as the school's score; this groups every verified row.
+    """
+
+    entities = analysis.entities
+    if (
+        entities.get("score_type") != "admission_score"
+        or entities.get("major_name")
+        or entities.get("major_code")
+        or entities.get("candidate_majors")
+        or entities.get("student_scores")
+    ):
+        return None
+    requested_method = str(entities.get("admission_method") or "")
+    by_method: dict[str, list[tuple[str, str, float]]] = {}
+    for fact in getattr(evidence, "score_facts", ()) or ():
+        if not isinstance(fact, Mapping) or not _is_verified_fact(fact):
+            continue
+        if fact.get("score_type") != "admission_score":
+            continue
+        method = str(fact.get("method") or "")
+        raw_value = str(fact.get("raw_value") or "").strip()
+        major = str(fact.get("major_name") or "").strip()
+        if not method or not major or not raw_value or raw_value == "-":
+            continue
+        if requested_method and method != requested_method:
+            continue
+        try:
+            value = float(fact.get("value"))
+        except (TypeError, ValueError):
+            continue
+        rows = by_method.setdefault(method, [])
+        existing = next((index for index, row in enumerate(rows) if row[0] == major), None)
+        if existing is None:
+            rows.append((major, raw_value, value))
+        elif "(*)" in raw_value and "(*)" not in rows[existing][1]:
+            # The same row may be indexed twice; keep the variant that carries
+            # the published "(*)" condition marker.
+            rows[existing] = (major, raw_value, value)
+    # Require a real table (several majors), not a single matched row.
+    by_method = {method: rows for method, rows in by_method.items() if len(rows) >= 3}
+    if not by_method:
+        return None
+
+    lines = []
+    for method in sorted(by_method, key=lambda m: ("thpt", "hoc_ba", "dgnl").index(m) if m in ("thpt", "hoc_ba", "dgnl") else 9):
+        rows = by_method[method]
+        counts: dict[str, int] = {}
+        for _, raw_value, _ in rows:
+            counts[raw_value] = counts.get(raw_value, 0) + 1
+        usual = max(counts, key=lambda raw: (counts[raw], -len(raw)))
+        values = [value for _, _, value in rows]
+        low, high = min(values), max(values)
+        fmt = lambda number: f"{number:g}".replace(".", ",")
+        span = fmt(low) if low == high else f"{fmt(low)}–{fmt(high)}"
+        exceptions = []
+        for raw_value in sorted({raw for _, raw, _ in rows if raw != usual}, key=lambda raw: next(v for _, r, v in rows if r == raw)):
+            majors = ", ".join(major for major, raw, _ in rows if raw == raw_value)
+            exceptions.append(f"{raw_value.replace('.', ',')} điểm: {majors}")
+        detail = f"phần lớn mã xét tuyển {usual.replace('.', ',')} điểm"
+        if exceptions:
+            detail += "; " + "; ".join(exceptions)
+        label = _method_label(method)
+        lines.append(f"- {label[:1].upper()}{label[1:]}: {span} điểm ({detail}).")
+    note = (
+        "\nGhi chú (*) là điều kiện riêng của ngành theo bảng công bố."
+        if any("(*)" in raw for rows in by_method.values() for _, raw, _ in rows)
+        else ""
+    )
+    return "Điểm trúng tuyển đợt 1 năm 2026 của DHV theo từng phương thức:\n" + "\n".join(lines) + note
+
+
 def _structured_score_answer(
     analysis: QueryAnalysis,
     facts: Any,

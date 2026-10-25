@@ -117,7 +117,9 @@ class Phase2ScopeAndScoreTests(unittest.TestCase):
                 "HOI_NGUONG_DAU_VAO",
                 "application_threshold",
                 "personal_score_comparison",
-                ("nganh_dao_tao", "nguong_dau_vao"),
+                # A named major's round-1 admission score is shown next to
+                # the application threshold.
+                ("nganh_dao_tao", "nguong_dau_vao", "diem_trung_tuyen"),
             ),
         )
         for question, intent, score_type, semantic_type, categories in cases:

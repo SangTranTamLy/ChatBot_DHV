@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 from typing import Any, Mapping
 
@@ -40,6 +41,7 @@ from .admission_answers import (
     _prioritize_enrollment_document_records,
     _prioritize_result_notification_documents,
     _structured_comparison_answer,
+    _admission_score_overview_answer,
     _structured_score_answer,
 )
 from .answer_planner import plan_answer
@@ -151,6 +153,65 @@ from .tuition_formatters import (
     _evidence_tuition_per_credit_answer,
     _evidence_tuition_total_answer,
 )
+
+
+def _major_admission_score_lines(analysis: Any, evidence: Any) -> list[str]:
+    """Compare the user's score with each named major's round-1 admission score.
+
+    Majors are matched against the verified score table itself (longest names
+    first, so "Luật kinh tế" is not also counted as "Luật").
+    """
+
+    student_scores = analysis.entities.get("student_scores") or {}
+    if not isinstance(student_scores, Mapping) or not student_scores:
+        return []
+    facts = [
+        fact for fact in getattr(evidence, "score_facts", ()) or ()
+        if isinstance(fact, Mapping)
+        and fact.get("score_type") == "admission_score"
+        and (fact.get("status") == "verified" or fact.get("source_status") == "verified")
+        and str(fact.get("method") or "") in student_scores
+        and str(fact.get("major_name") or "").strip()
+        and str(fact.get("raw_value") or "").strip() not in {"", "-"}
+    ]
+    question = f" {normalize_question(analysis.normalized_question)} "
+    mentioned: list[str] = []
+    for name in sorted({str(fact["major_name"]).strip() for fact in facts}, key=len, reverse=True):
+        pattern = rf"\b{re.escape(normalize_question(name))}\b"
+        if re.search(pattern, question):
+            mentioned.append(name)
+            question = re.sub(pattern, " ", question)
+    lines: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for name in mentioned:
+        for fact in facts:
+            method = str(fact.get("method"))
+            if str(fact.get("major_name")).strip() != name or (name, method) in seen:
+                continue
+            raw_value = str(fact.get("raw_value")).strip()
+            if "(*)" not in raw_value and any(
+                str(other.get("major_name")).strip() == name
+                and str(other.get("method")) == method
+                and "(*)" in str(other.get("raw_value"))
+                for other in facts
+            ):
+                continue  # keep the row variant that carries the "(*)" marker
+            seen.add((name, method))
+            line = (
+                f"Điểm trúng tuyển đợt 1 năm 2026 của ngành {name} theo {_method_label(method)} "
+                f"là {raw_value} điểm"
+            )
+            try:
+                relation = (
+                    "bằng hoặc cao hơn"
+                    if float(student_scores[method]) >= float(fact.get("value"))
+                    else "thấp hơn"
+                )
+                line += f"; điểm {student_scores[method]} bạn nêu {relation} mức này."
+            except (TypeError, ValueError):
+                line += "."
+            lines.append(line)
+    return lines
 
 
 def _is_dhv_related_unsupported(analysis: Any, query: str) -> bool:
@@ -560,6 +621,7 @@ def ask_chatbot(
         else (
             _evidence_method_application_threshold_answer(analysis, evidence)
             or _evidence_score_comparison_reason_answer(analysis, evidence)
+            or _admission_score_overview_answer(analysis, evidence)
             or _structured_score_answer(analysis, lookup_facts)
         )
     )
@@ -599,7 +661,22 @@ def ask_chatbot(
         and not admission_rule_answer
         and not supplementary_route_question
     ):
-        return no_data()
+        # No application threshold exists for this method, but the named
+        # majors' published admission scores can still be compared.
+        admission_lines = _major_admission_score_lines(analysis, evidence)
+        if not admission_lines:
+            return no_data()
+        answer_plan = plan_answer(analysis, evidence=evidence, deterministic=True)
+        trace["answer_plan"] = answer_plan.to_dict()
+        trace["deterministic_branch"] = "major_admission_score_comparison"
+        return finish({
+            "answer": "\n".join(
+                admission_lines
+                + ["Đây là điểm trúng tuyển đợt 1 đã công bố, chỉ để tham khảo; kết quả còn theo điều kiện riêng của từng ngành."]
+            ),
+            "sources": [dict(source) for source in evidence.sources],
+            "status": "ok",
+        }, answer_plan)
     if (
         analysis.entities.get("entity_type") == "major_list"
         and score_query_type in {
@@ -1017,6 +1094,7 @@ def ask_chatbot(
                 f"Điểm {label} bạn nêu là {comparison.get('student_value')}, "
                 f"{relation_word} ngưỡng nhận hồ sơ {comparison.get('threshold_value')}."
             )
+        comparison_lines.extend(_major_admission_score_lines(analysis, evidence))
         comparison_lines.append(
             "Đây chỉ là phép so sánh với ngưỡng nhận hồ sơ, không phải kết luận trúng tuyển."
         )
