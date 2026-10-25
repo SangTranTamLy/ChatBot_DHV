@@ -925,6 +925,8 @@ def _is_verified_school_info_request(
         "cac khoa vien",
         "khoa dao tao",
         "danh sach khoa",
+        "nhung khoa nao",
+        "co nhung khoa",
     )
     partnership_markers = (
         "doi tac",
@@ -984,7 +986,7 @@ def _is_verified_school_info_request(
 _SCHOOL_WIDE_PRACTICE_MARKERS = (
     "thuc tap",
     "kien tap",
-    "moi truong doanh nghiep",
+    "tiep can moi truong doanh nghiep",
     "lam viec truc tiep voi doanh nghiep",
     "tiep can doanh nghiep",
     "gan voi doanh nghiep",
@@ -1530,6 +1532,45 @@ def _is_social_channel_question(normalized: str) -> bool:
     )
 
 
+_FEE_WORDS = ("hoc phi", "phi nhap hoc", "khoan", "dong tien", "phai dong", "dong them", "chi phi", "tien hoc", "so tien")
+_ENROLLMENT_PROCEDURE_WORDS = (
+    "ho so", "giay to", "thu tuc", "can mang", "cac buoc", "o dau", "khi nao", "thoi gian",
+    "hinh thuc nhap hoc", "truc tuyen", "truc tiep", "xac nhan", "dia diem", "unizone",
+    # "chưa đóng học phí thì có được nhập học không" asks about the procedure.
+    "duoc nhap hoc", "co duoc", "chua dong", "neu khong dong",
+)
+_TUITION_PAYMENT_WORDS = (
+    "thanh toan", "chuyen khoan", "so tai khoan", "tai khoan ngan hang", "ngan hang", "unizone",
+)
+_SCHOLARSHIP_ADJUSTED_FEE_WORDS = (
+    "dong bao nhieu", "phai dong", "con dong", "can dong", "con lai", "tru hoc bong", "da tru",
+    "chua tru", "truoc hoc bong", "lam thay doi", "thay doi muc hoc phi", "da giam", "chua giam",
+)
+
+
+def _is_single_fee_question(normalized: str) -> bool:
+    """One fee question even though it also says ``nhập học`` or ``học bổng``.
+
+    "Các khoản phải đóng khi nhập học" asks about the fee table, not the
+    enrollment procedure; "học bổng 70% thì phải đóng bao nhiêu" asks for the
+    amount payable, not a separate scholarship overview.
+    """
+
+    if not any(word in normalized for word in _FEE_WORDS):
+        return False
+    if "hoc phi" in normalized and any(word in normalized for word in _TUITION_PAYMENT_WORDS):
+        # Paying tuition (channel, bank account) is one fee question, even if
+        # "tài khoản" or "chuyển khoản" also look like contact words.
+        return not any(word in normalized for word in ("ho so", "giay to", "hoc bong"))
+    if "nhap hoc" in normalized and "hoc bong" not in normalized:
+        return not any(word in normalized for word in _ENROLLMENT_PROCEDURE_WORDS)
+    if "hoc bong" in normalized and "hoc phi" in normalized and "nhap hoc" not in normalized:
+        return any(word in normalized for word in _SCHOLARSHIP_ADJUSTED_FEE_WORDS) and not any(
+            word in normalized for word in ("nhung loai", "co nhung", "dieu kien", "bao nhieu loai")
+        )
+    return False
+
+
 def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tuple[str, ...]:
     """Tách các chủ đề nghiệp vụ độc lập có mặt trong một lượt hỏi.
 
@@ -1539,6 +1580,9 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
     """
 
     normalized = _without_threshold_intake(normalized)
+
+    if _is_single_fee_question(normalized):
+        return ("HOI_HOC_PHI",)
 
     # ``nhập học`` describes the advisor being contacted here, not a separate
     # request about enrollment procedures. Keep advisor phone questions on
@@ -2607,6 +2651,9 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     # such as ``ngành`` or ``tuyển sinh``.
     if _is_hard_out_of_scope(normalized, entities):
         return "OUT_OF_SCOPE"
+    if _is_single_fee_question(normalized):
+        # "Các khoản phải đóng khi nhập học" is a fee-table question.
+        return "HOI_HOC_PHI"
     if entities.get("request_type") == "enrollment_benefits":
         # Gifts and rights after completing enrollment are documented in the
         # verified enrollment guide, but are distinct from the document
@@ -3311,7 +3358,13 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
     elif analysis.intent == "HOI_HO_SO":
         roles = ("ho_so_nhap_hoc",)
     elif analysis.intent == "HOI_HOC_PHI":
-        roles = ("hoc_phi_nhap_hoc",)
+        # The payment channel (UniZone) is stated in the enrollment-procedure
+        # document, not in the fee table.
+        payment = any(marker in normalized for marker in (
+            "thanh toan", "chuyen khoan", "ngan hang", "so tai khoan", "unizone",
+            "hinh thuc dong", "dong hoc phi o dau", "nop hoc phi", "dong tien mat",
+        ))
+        roles = ("hoc_phi_nhap_hoc", "thu_tuc_va_quyen_loi_nhap_hoc") if payment else ("hoc_phi_nhap_hoc",)
     elif analysis.intent == "HOI_HOC_BONG":
         unibridge = any(marker in normalized for marker in (
             "unibridge", "hoan hoc phi", "ho tro tai chinh", "uu dai cao nhat",

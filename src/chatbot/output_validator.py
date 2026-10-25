@@ -13,6 +13,7 @@ from .evidence import EvidenceBundle
 from .query_semantics import (
     enrollment_request,
     excludes_optional_english_test,
+    is_fee_table_page_text,
     is_semester_fee_total_question,
     is_tuition_increase_question,
     mentions_optional_english_test,
@@ -578,16 +579,9 @@ def _optional_fee_total_from_evidence(
     expected_year = settings.target_year if target_year is None else int(target_year)
     for chunk in evidence.chunks:
         metadata = chunk.metadata or {}
-        if (
-            metadata.get("record_type") != "page_text"
-            or metadata.get("category") != "ho_so"
-            or str(metadata.get("status") or "").casefold() != "verified"
-            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
-        ):
+        if not is_fee_table_page_text(dict(metadata)):
             continue
         try:
-            if int(metadata.get("page", 0)) != 4:
-                continue
             if int(metadata.get("year", 0)) != expected_year:
                 continue
         except (TypeError, ValueError):

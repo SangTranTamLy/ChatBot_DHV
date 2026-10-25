@@ -748,31 +748,11 @@ def _evidence_catalog_answer(
                 if summary and int(summary.group(1)) == len(major_rows):
                     source_year = analysis.entities.get("year") or (year_values[0] if year_values else None)
                     year_text = f" năm {source_year}" if source_year else ""
-                    normalized_q = normalize_question(analysis.normalized_question)
-                    asks_faculty = any(
-                        m in normalized_q
-                        for m in ("khoa", "cac khoa", "bao nhieu khoa", "may khoa", "khoa vien")
+                    answer_text = (
+                        f"Chào bạn! DHV có {len(major_rows)} ngành chính{year_text} và hơn "
+                        f"{int(summary.group(2))} chương trình đào tạo.\n\n"
+                        f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
                     )
-                    if asks_faculty:
-                        answer_text = (
-                            f"Chào bạn! Về cơ cấu đào tạo tại Trường Đại học Hùng Vương TP.HCM (DHV):\n\n"
-                            f"🏛️ **Về các Khoa đào tạo:** DHV hiện có **5 Khoa đào tạo chính** cùng các Viện chuyên môn:\n"
-                            f"- **Khoa Kỹ thuật - Công nghệ**: phụ trách đào tạo Công nghệ thông tin, Trí tuệ nhân tạo, Kỹ thuật máy tính\n"
-                            f"- **Khoa Quản trị Kinh doanh - Marketing**: phụ trách Quản trị kinh doanh, Marketing, Thương mại điện tử, Tài chính - Ngân hàng, Công nghệ tài chính, Kế toán, Kinh tế quốc tế\n"
-                            f"- **Khoa Luật**: phụ trách ngành Luật, Luật Kinh tế\n"
-                            f"- **Khoa Ngôn ngữ**: phụ trách Ngôn ngữ Anh, Ngôn ngữ Trung Quốc, Ngôn ngữ Nhật, Ngôn ngữ Hàn Quốc\n"
-                            f"- **Khoa Du lịch - Nhà hàng - Khách sạn**: phụ trách Quản trị Khách sạn, Quản trị Dịch vụ Du lịch & Lữ hành, Quản lý bệnh viện, Tâm lý học\n"
-                            f"- *Cùng Viện Đào tạo Sau đại học và Viện Liên kết Giáo dục & Đào tạo từ xa*.\n\n"
-                            f"📚 **Về quy mô ngành học:** DHV có {len(major_rows)} ngành chính{year_text} và hơn "
-                            f"{int(summary.group(2))} chương trình đào tạo đa dạng theo định hướng ứng dụng thực tiễn.\n\n"
-                            f"Bạn đang quan tâm đến nhóm ngành hoặc khoa nào của trường, nhắn mình để được tư vấn chi tiết nhé!"
-                        )
-                    else:
-                        answer_text = (
-                            f"Chào bạn! DHV có {len(major_rows)} ngành chính{year_text} và hơn "
-                            f"{int(summary.group(2))} chương trình đào tạo đa dạng thuộc các lĩnh vực Công nghệ, Kinh doanh, Luật, Ngôn ngữ và Du lịch - Dịch vụ.\n\n"
-                            f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
-                        )
                     return {
                         "answer": answer_text,
                         "sources": catalog_sources,
@@ -801,59 +781,20 @@ def _evidence_catalog_answer(
                 if summary and int(summary.group(1)) == len(major_rows):
                     year = metadata.get("year") or (year_values[0] if year_values else None)
                     year_text = f" năm {year}" if year else ""
-                    normalized_q = normalize_question(analysis.normalized_question)
-                    asks_faculty = any(
-                        m in normalized_q
-                        for m in ("khoa", "cac khoa", "bao nhieu khoa", "may khoa", "khoa vien")
+                    answer_text = (
+                        f"Chào bạn! DHV có {len(major_rows)} ngành chính{year_text} và hơn "
+                        f"{int(summary.group(2))} chương trình đào tạo.\n\n"
+                        f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
                     )
-                    if asks_faculty:
-                        answer_text = (
-                            f"Chào bạn! Về cơ cấu đào tạo tại Trường Đại học Hùng Vương TP.HCM (DHV):\n\n"
-                            f"🏛️ **Về các Khoa đào tạo:** DHV hiện có **5 Khoa đào tạo chính** cùng các Viện chuyên môn:\n"
-                            f"- **Khoa Kỹ thuật - Công nghệ**: phụ trách đào tạo Công nghệ thông tin, Trí tuệ nhân tạo, Kỹ thuật máy tính\n"
-                            f"- **Khoa Quản trị Kinh doanh - Marketing**: phụ trách Quản trị kinh doanh, Marketing, Thương mại điện tử, Tài chính - Ngân hàng, Công nghệ tài chính, Kế toán, Kinh tế quốc tế\n"
-                            f"- **Khoa Luật**: phụ trách ngành Luật, Luật Kinh tế\n"
-                            f"- **Khoa Ngôn ngữ**: phụ trách Ngôn ngữ Anh, Ngôn ngữ Trung Quốc, Ngôn ngữ Nhật, Ngôn ngữ Hàn Quốc\n"
-                            f"- **Khoa Du lịch - Nhà hàng - Khách sạn**: phụ trách Quản trị Khách sạn, Quản trị Dịch vụ Du lịch & Lữ hành, Quản lý bệnh viện, Tâm lý học\n"
-                            f"- *Cùng Viện Đào tạo Sau đại học và Viện Liên kết Giáo dục & Đào tạo từ xa*.\n\n"
-                            f"📚 **Về quy mô ngành học:** DHV có {len(major_rows)} ngành chính{year_text} và hơn "
-                            f"{int(summary.group(2))} chương trình đào tạo đa dạng theo định hướng ứng dụng thực tiễn.\n\n"
-                            f"Bạn đang quan tâm đến nhóm ngành hoặc khoa nào của trường, nhắn mình để được tư vấn chi tiết nhé!"
-                        )
-                    else:
-                        answer_text = (
-                            f"Chào bạn! DHV có {len(major_rows)} ngành chính{year_text} và hơn "
-                            f"{int(summary.group(2))} chương trình đào tạo đa dạng thuộc các lĩnh vực Công nghệ, Kinh doanh, Luật, Ngôn ngữ và Du lịch - Dịch vụ.\n\n"
-                            f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
-                        )
                     return {
                         "answer": answer_text,
                         "sources": catalog_sources,
                         "status": "ok",
                     }
-            normalized_q = normalize_question(analysis.normalized_question)
-            asks_faculty = any(
-                m in normalized_q
-                for m in ("khoa", "cac khoa", "bao nhieu khoa", "may khoa", "khoa vien")
+            answer_text = (
+                f"Chào bạn! DHV hiện có {len(major_rows)} ngành chính{year_text} theo định hướng ứng dụng thực tiễn.\n\n"
+                f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
             )
-            if asks_faculty:
-                answer_text = (
-                    f"Chào bạn! Về cơ cấu đào tạo tại Trường Đại học Hùng Vương TP.HCM (DHV):\n\n"
-                    f"🏛️ **Về các Khoa đào tạo:** DHV hiện có **5 Khoa đào tạo chính** cùng các Viện chuyên môn:\n"
-                    f"- **Khoa Kỹ thuật - Công nghệ**: phụ trách đào tạo Công nghệ thông tin, Trí tuệ nhân tạo, Kỹ thuật máy tính\n"
-                    f"- **Khoa Quản trị Kinh doanh - Marketing**: phụ trách Quản trị kinh doanh, Marketing, Thương mại điện tử, Tài chính - Ngân hàng, Công nghệ tài chính, Kế toán, Kinh tế quốc tế\n"
-                    f"- **Khoa Luật**: phụ trách ngành Luật, Luật Kinh tế\n"
-                    f"- **Khoa Ngôn ngữ**: phụ trách Ngôn ngữ Anh, Ngôn ngữ Trung Quốc, Ngôn ngữ Nhật, Ngôn ngữ Hàn Quốc\n"
-                    f"- **Khoa Du lịch - Nhà hàng - Khách sạn**: phụ trách Quản trị Khách sạn, Quản trị Dịch vụ Du lịch & Lữ hành, Quản lý bệnh viện, Tâm lý học\n"
-                    f"- *Cùng Viện Đào tạo Sau đại học và Viện Liên kết Giáo dục & Đào tạo từ xa*.\n\n"
-                    f"📚 **Về quy mô ngành học:** DHV hiện có {len(major_rows)} ngành chính{year_text}.\n\n"
-                    f"Bạn đang quan tâm đến nhóm ngành hoặc khoa nào của trường, nhắn mình để được tư vấn chi tiết nhé!"
-                )
-            else:
-                answer_text = (
-                    f"Chào bạn! DHV hiện có {len(major_rows)} ngành chính{year_text} theo định hướng ứng dụng thực tiễn.\n\n"
-                    f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
-                )
             return {
                 "answer": answer_text,
                 "sources": catalog_sources,

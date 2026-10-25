@@ -201,6 +201,39 @@ def _evidence_overview_answer(
     return intro + "\n\n" + "\n".join(f"- {line}" for line in bullets)
 
 
+# Units that the verified corpus may name; only those present in the retrieved
+# evidence are listed. The corpus does not publish a complete faculty count or
+# a faculty-to-major assignment, so neither is asserted.
+_KNOWN_ACADEMIC_UNITS = (
+    ("khoa ngon ngu", "Khoa Ngôn ngữ"),
+    ("khoa ky thuat cong nghe", "Khoa Kỹ thuật – Công nghệ"),
+    ("khoa quan tri kinh doanh marketing", "Khoa Quản trị Kinh doanh – Marketing"),
+    ("khoa tai chinh ngan hang ke toan", "Khoa Tài chính – Ngân hàng – Kế toán"),
+    ("khoa du lich nha hang khach san", "Khoa Du lịch – Nhà hàng – Khách sạn"),
+    ("khoa luat", "Khoa Luật"),
+    ("khoa khoa hoc suc khoe", "Khoa Khoa học Sức khỏe"),
+    ("vien dao tao sau dai hoc", "Viện Đào tạo Sau đại học"),
+    ("vien lien ket giao duc va dao tao tu xa", "Viện Liên kết Giáo dục và Đào tạo từ xa"),
+    ("vien cong nghe tien tien va tri tue nhan tao", "Viện Công nghệ Tiên tiến và Trí tuệ Nhân tạo"),
+)
+
+
+def _faculties_in_evidence(evidence: Any) -> str | None:
+    folded = re.sub(r"[^a-z0-9 ]+", " ", normalize_question(
+        " ".join(str(getattr(chunk, "text", "") or "") for chunk in getattr(evidence, "chunks", ()) or ())
+    ))
+    folded = re.sub(r"\s+", " ", folded)
+    named = [label for marker, label in _KNOWN_ACADEMIC_UNITS if marker in folded]
+    if not named:
+        return None
+    return (
+        "Các khoa, viện được nêu trong tài liệu DHV đã kiểm chứng gồm:\n"
+        + "\n".join(f"- {label}" for label in named)
+        + "\nTài liệu chưa công bố tổng số khoa và ngành do từng khoa phụ trách, "
+        "nên mình chưa khẳng định thêm phần này."
+    )
+
+
 def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     """Extract a short, query-relevant school fact without model synthesis.
 
@@ -334,15 +367,7 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         "bao nhieu khoa", "may khoa", "co may khoa", "cac khoa", "khoa dao tao",
         "danh sach khoa", "nhung khoa nao", "co nhung khoa", "khoa vien"
     )):
-        return (
-            "Trường Đại học Hùng Vương TP.HCM (DHV) có 5 Khoa đào tạo chính cùng các Viện chuyên môn:\n"
-            "- **Khoa Kỹ thuật - Công nghệ**: phụ trách đào tạo Công nghệ thông tin, Trí tuệ nhân tạo, Kỹ thuật máy tính\n"
-            "- **Khoa Quản trị Kinh doanh - Marketing**: phụ trách Quản trị kinh doanh, Marketing, Thương mại điện tử, Tài chính - Ngân hàng, Công nghệ tài chính, Kế toán, Kinh tế quốc tế\n"
-            "- **Khoa Luật**: phụ trách ngành Luật, Luật Kinh tế\n"
-            "- **Khoa Ngôn ngữ**: phụ trách Ngôn ngữ Anh, Ngôn ngữ Trung Quốc, Ngôn ngữ Nhật, Ngôn ngữ Hàn Quốc\n"
-            "- **Khoa Du lịch - Nhà hàng - Khách sạn**: phụ trách Quản trị Khách sạn, Quản trị Dịch vụ Du lịch & Lữ hành, Quản lý bệnh viện, Tâm lý học\n\n"
-            "Cùng với **Viện Đào tạo Sau đại học** và **Viện Liên kết Giáo dục & Đào tạo từ xa**."
-        )
+        return _faculties_in_evidence(evidence)
     elif "tam nhin" in normalized:
         candidates = matching("tam nhin", "dinh huong ung dung")
     elif (

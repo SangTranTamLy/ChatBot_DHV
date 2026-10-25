@@ -57,6 +57,7 @@ from .school_info_formatters import (
     _prioritize_school_overview_documents,
 )
 from .tuition_formatters import (
+    _evidence_fee_breakdown_answer, _evidence_fee_item_answer,
     _evidence_semester_system_answer, _evidence_tuition_answer,
     _evidence_tuition_per_credit_answer, _evidence_tuition_total_answer,
     _evidence_optional_english_fee_answer,
@@ -336,10 +337,12 @@ def _ask_multi_issue(
             info_answer = _evidence_enrollment_answer(sub_analysis, evidence)
         elif subplan.intent == "HOI_HOC_PHI":
             info_answer = (
-                _evidence_semester_system_answer(sub_analysis, evidence)
+                _evidence_tuition_total_answer(sub_analysis, evidence)
+                or _evidence_fee_breakdown_answer(sub_analysis, evidence)
+                or _evidence_semester_system_answer(sub_analysis, evidence)
                 or _evidence_optional_english_fee_answer(sub_analysis, evidence)
+                or _evidence_fee_item_answer(sub_analysis, evidence)
                 or _evidence_tuition_per_credit_answer(sub_analysis, evidence)
-                or _evidence_tuition_total_answer(sub_analysis, evidence)
                 or _evidence_tuition_answer(evidence)
             )
         if info_answer and direct_result is None:

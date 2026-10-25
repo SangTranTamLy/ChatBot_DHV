@@ -143,6 +143,7 @@ from .scope_guard import (
     is_personal_life_advice,
 )
 from .tuition_formatters import (
+    _evidence_fee_breakdown_answer,
     _evidence_fee_item_answer,
     _evidence_optional_english_fee_answer,
     _evidence_semester_system_answer,
@@ -848,12 +849,15 @@ def ask_chatbot(
         enrollment_answer = direct_evidence_answer
         enrollment_answer_checked = True
     elif analysis.intent == "HOI_HOC_PHI" or any(k in normalized_query for k in ("hoc ky", "hoc ki", "1 nam", "mot nam", "thoi gian dao tao", "dao tao may nam")):
+        # Money questions first: "số tiền học kỳ I" must not be answered by
+        # the semester-structure formatter just because it says "học kỳ".
         direct_evidence_answer = (
-            _evidence_semester_system_answer(analysis, evidence)
+            _evidence_tuition_total_answer(analysis, evidence)
+            or _evidence_fee_breakdown_answer(analysis, evidence)
+            or _evidence_semester_system_answer(analysis, evidence)
             or _evidence_optional_english_fee_answer(analysis, evidence)
             or _evidence_fee_item_answer(analysis, evidence)
             or _evidence_tuition_per_credit_answer(analysis, evidence)
-            or _evidence_tuition_total_answer(analysis, evidence)
             or _evidence_tuition_answer(evidence)
         )
     elif analysis.intent == "HOI_HOC_BONG":

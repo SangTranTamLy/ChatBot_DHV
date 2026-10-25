@@ -103,6 +103,23 @@ def is_semester_fee_total_question(question: str) -> bool:
     return asks_total and (semester or mentions_optional_english_test(folded))
 
 
+# The verified HKI fee table lives in the tuition document; the previous
+# combined enrollment PDF ("ho_so") is still accepted for older corpora.
+FEE_TABLE_CATEGORIES = frozenset({"hoc_phi", "ho_so"})
+
+
+def is_fee_table_page_text(metadata: object) -> bool:
+    """True for verified DHV page text that may carry the HKI fee table."""
+    if not isinstance(metadata, dict):
+        return False
+    return (
+        str(metadata.get("record_type") or "") == "page_text"
+        and str(metadata.get("category") or "") in FEE_TABLE_CATEGORIES
+        and str(metadata.get("status") or "").casefold() == "verified"
+        and str(metadata.get("school_code") or "").strip().upper() == "DHV"
+    )
+
+
 def should_include_optional_english_fee(question: str) -> bool:
     return mentions_optional_english_test(question) and not excludes_optional_english_test(question)
 

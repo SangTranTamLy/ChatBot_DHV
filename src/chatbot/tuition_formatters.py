@@ -7,10 +7,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 from src.config.settings import settings
-from .evidence_utils import _evidence_text_lines
+from .evidence_utils import _evidence_sentences, _evidence_text_lines
 from .query_analysis import QueryAnalysis, normalize_question
 from .query_semantics import (
     excludes_optional_english_test,
+    is_fee_table_page_text,
     is_semester_fee_total_question,
     is_tuition_increase_question,
     mentions_optional_english_test,
@@ -55,6 +56,7 @@ def _evidence_tuition_answer(evidence: Any) -> str | None:
 
 
 _FEE_ITEMS = (
+    (("phi nhap hoc",), "Phí nhập học"),
     (("hoc lieu",), "Tài khoản học liệu điện tử"),
     (("kiem tra nang luc tieng anh", "kiem tra tieng anh"), "Kiểm tra năng lực Tiếng Anh"),
 )
@@ -104,20 +106,14 @@ def _evidence_tuition_total_answer(analysis: QueryAnalysis, evidence: Any) -> st
         return None
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
-        if (
-            str(metadata.get("record_type") or "") != "page_text"
-            or str(metadata.get("status") or "").casefold() != "verified"
-            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
-            or str(metadata.get("category") or "") != "ho_so"
-        ):
+        if not is_fee_table_page_text(dict(metadata)):
             continue
         try:
-            page = int(metadata.get("page", 0))
             year = int(metadata.get("year", 0))
         except (TypeError, ValueError):
             continue
         expected_year = int(analysis.entities.get("year") or settings.target_year)
-        if page != 4 or year != expected_year:
+        if year != expected_year:
             continue
         source_url = str(metadata.get("source_url") or "").strip()
         parsed_source = urlparse(source_url)
@@ -239,72 +235,218 @@ def _evidence_optional_english_fee_answer(analysis: QueryAnalysis, evidence: Any
     return None
 
 
+_PAYMENT_QUESTION_MARKERS = (
+    "thanh toan", "dong tien o dau", "chuyen khoan", "ngan hang", "so tai khoan",
+    "nop hoc phi the nao", "hinh thuc dong", "dong hoc phi", "nop hoc phi", "dong tien mat",
+)
+_BANK_ACCOUNT_MARKERS = ("chuyen khoan", "ngan hang", "so tai khoan", "tai khoan ngan hang")
+
+
+def _first_evidence_line(evidence: Any, *required: str) -> str | None:
+    """First full source sentence (not a wrapped PDF line) containing every marker."""
+    for sentence in _evidence_sentences(evidence):
+        folded = normalize_question(sentence)
+        if all(marker in folded for marker in required):
+            return re.sub(r"\s+", " ", sentence).lstrip("• ").strip()
+    return None
+
+
 def _evidence_semester_system_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    """Trả lời các câu hỏi về số học kỳ, năm học, tín chỉ tối thiểu, thanh toán học phí, cam kết học phí và thời gian đào tạo."""
+    """Answer payment-channel and tuition-stability questions from verified lines only.
+
+    The verified 2026 corpus states the UniZone payment channel and the
+    "không tăng trong suốt khóa học" commitment. It does not state a bank
+    account, the number of semesters per year, a minimum credit load or the
+    programme length, so those questions are left to the normal no-data flow
+    instead of being answered from hard-coded text.
+    """
+
     normalized = normalize_question(analysis.normalized_question)
 
-    # 1. Hỏi về số học kỳ trong năm (1 năm nhiêu học kì, có mấy học kỳ, mấy học kì...)
-    if any(marker in normalized for marker in (
-        "may hoc ky", "may hoc ki", "bao nhieu hoc ky", "bao nhieu hoc ki",
-        "nhieu hoc ky", "nhieu hoc ki", "1 nam", "mot nam", "so hoc ky", "so hoc ki",
-    )) and not any(marker in normalized for marker in ("hoc phi hoc ky 1", "hoc phi hoc ky i", "tong chi phi")):
+    if any(marker in normalized for marker in _PAYMENT_QUESTION_MARKERS):
+        channel = _first_evidence_line(evidence, "unizone") or _first_evidence_line(
+            evidence, "thanh toan hoc phi"
+        )
+        if channel is None:
+            return None
+        # Drop a merged heading such as "Hình thức 2: Nhập học trực tuyến".
+        subject = re.search(r"\bTân sinh viên\b", channel)
+        if subject:
+            channel = channel[subject.start():]
+        answer = f"Theo hướng dẫn nhập học của DHV: {channel.rstrip('.')}."
+        if any(marker in normalized for marker in _BANK_ACCOUNT_MARKERS):
+            answer += (
+                " Tài liệu tuyển sinh đã kiểm chứng chưa nêu số tài khoản ngân hàng; bạn nên "
+                "thanh toán theo kênh trên hoặc hỏi tư vấn viên tuyển sinh trước khi chuyển tiền."
+            )
+        return answer
+
+    if is_tuition_increase_question(normalized) or any(
+        marker in normalized for marker in ("co tang khong", "tang hoc phi")
+    ):
+        # Table rows have no full stops, so a "sentence" may swallow the fee
+        # table; keep only the clause that states the commitment itself.
+        flattened = " ".join(
+            re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or ""))
+            for chunk in getattr(evidence, "chunks", ()) or ()
+        )
+        # A sentence ends at "." followed by a space or the end; "1.250.000" is not an end.
+        commitment = re.search(r"(Học phí được tính.{0,160}?không tăng.{0,120}?\.)(?=\s|$)", flattened)
+        if commitment is None:
+            commitment = re.search(r"((?:Học phí|Nhà trường).{0,160}?không tăng.{0,120}?\.)(?=\s|$)", flattened)
+        return commitment.group(1).strip() if commitment else None
+
+    return None
+
+
+# --- HKI fee-table reasoning -------------------------------------------------
+# Every amount below is read from the verified page text of the fee table (the
+# same trust boundary as the semester-total answer); nothing is invented.
+
+_AMOUNT_RE = re.compile(r"(\d{1,3}(?:\.\d{3})+)\s*đồng", re.IGNORECASE)
+_FEE_ROW_LABELS = (
+    ("hoc phi hki", "Học phí HKI (10 tín chỉ)"),
+    ("phi nhap hoc", "Phí nhập học"),
+    ("tai khoan hoc lieu dien tu", "Tài khoản học liệu điện tử"),
+    ("kiem tra nang luc tieng anh", "Kiểm tra năng lực Tiếng Anh (nếu có)"),
+)
+_FEE_COMPOSITION_MARKERS = (
+    "ngoai hoc phi", "ngoai tien hoc", "ngoai tien hoc phi", "khoan nao", "nhung khoan",
+    "cac khoan", "khoan gi", "co nam trong", "nam trong", "toan bo", "chi tinh tien hoc",
+    "dong them", "con phai dong",
+)
+_PRE_SCHOLARSHIP_MARKERS = (
+    "tru hoc bong", "da tru", "chua tru", "da giam", "chua giam", "truoc hoc bong",
+    "chua ap dung hoc bong", "thay doi muc hoc phi", "lam thay doi", "so chua giam",
+)
+_PAYABLE_MARKERS = ("dong bao nhieu", "phai dong", "con dong", "can dong", "con lai", "so tien")
+
+
+def _money(amount: int) -> str:
+    return f"{amount:,}".replace(",", ".") + " đồng"
+
+
+def _fee_rows_text(rows: list[tuple[str, int]]) -> str:
+    """``phí nhập học 1.500.000 đồng; kiểm tra năng lực Tiếng Anh (nếu có) 250.000 đồng``."""
+    return "; ".join(f"{label[0].lower()}{label[1:]} {_money(amount)}" for label, amount in rows)
+
+
+def _parse_vnd(text: str) -> int | None:
+    """Parse ``12,5 triệu`` / ``12.500.000`` style amounts from a question."""
+    million = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:trieu|tr)\b", text)
+    if million:
+        return int(round(float(million.group(1).replace(",", ".")) * 1_000_000))
+    exact = re.search(r"\b(\d{1,3}(?:\.\d{3}){2,})\b", text)
+    return int(exact.group(1).replace(".", "")) if exact else None
+
+
+def _fee_table(analysis: QueryAnalysis, evidence: Any) -> dict[str, object] | None:
+    """Read rows, per-credit price and the pre-scholarship note from page text."""
+
+    expected_year = int(analysis.entities.get("year") or settings.target_year)
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if not is_fee_table_page_text(dict(metadata)):
+            continue
+        try:
+            if int(metadata.get("year", 0)) != expected_year:
+                continue
+        except (TypeError, ValueError):
+            continue
+        lines = [re.sub(r"\s+", " ", line).strip() for line in str(getattr(chunk, "text", "") or "").splitlines()]
+        lines = [line for line in lines if line]
+        rows: list[tuple[str, int]] = []
+        for marker, label in _FEE_ROW_LABELS:
+            for index, line in enumerate(lines):
+                if marker not in normalize_question(line):
+                    continue
+                amount = _AMOUNT_RE.search(line) or (
+                    _AMOUNT_RE.fullmatch(lines[index + 1]) if index + 1 < len(lines) else None
+                )
+                if amount:
+                    rows.append((label, int(amount.group(1).replace(".", ""))))
+                    break
+        if len(rows) < 2 or rows[0][0] != _FEE_ROW_LABELS[0][1]:
+            continue
+        per_credit = re.search(r"(\d{1,3}(?:\.\d{3})+)\s*đồng\s*/\s*tín\s*chỉ", " ".join(lines), re.IGNORECASE)
+        folded_text = normalize_question(" ".join(lines))
+        return {
+            "rows": rows,
+            "per_credit": int(per_credit.group(1).replace(".", "")) if per_credit else None,
+            "pre_scholarship": "chua ap dung hoc bong" in folded_text,
+            "year": expected_year,
+        }
+    return None
+
+
+def _evidence_fee_breakdown_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Answer composition, credit arithmetic and scholarship-adjusted fee questions."""
+
+    question = normalize_question(analysis.normalized_question)
+    table = _fee_table(analysis, evidence)
+    if table is None:
+        return None
+    rows: list[tuple[str, int]] = table["rows"]  # type: ignore[assignment]
+    tuition_label, tuition = rows[0]
+    per_credit = table["per_credit"]
+    year = table["year"]
+    credits_match = re.search(r"\b(\d{1,2})\s*tin chi\b", question)
+
+    # 1) "N tín chỉ thì tiền học bao nhiêu?"
+    if per_credit and credits_match and "bao nhieu tin chi" not in question and any(
+        marker in question for marker in ("bao nhieu", "uoc tinh", "tien hoc", "hoc phi", "het bao")
+    ):
+        credits = int(credits_match.group(1))
+        if credits == 1:
+            return f"Học phí năm {year} của DHV là {_money(per_credit)}/tín chỉ (chưa trừ học bổng)."
         return (
-            "Theo quy định và cam kết đào tạo của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
-            "- Trong một năm học tại DHV có **3 học kỳ**.\n"
-            "- Sinh viên sẽ đăng ký tối thiểu **10 tín chỉ/học kỳ**, mang lại sự linh hoạt trong việc quản lý và tối ưu chi phí học tập.\n"
-            "- Mức học phí theo tín chỉ (năm 2026) là **1.250.000 đồng/tín chỉ** (Học phí Học kỳ I tương ứng 10 tín chỉ là 12.500.000 đồng) và Nhà trường cam kết học phí ổn định, không tăng trong suốt 4 năm đào tạo."
+            f"Học phí năm {year} của DHV là {_money(per_credit)}/tín chỉ, nên {credits} tín chỉ "
+            f"tương ứng khoảng {_money(credits * per_credit)} (chưa gồm các khoản thu khác và chưa trừ học bổng)."
         )
 
-    # 2. Hỏi về số tín chỉ tối thiểu hoặc đăng ký tín chỉ mỗi học kỳ
-    if any(marker in normalized for marker in (
-        "toi thieu bao nhieu tin chi", "dang ky bao nhieu tin chi", "may tin chi moi hoc ky", "so tin chi toi thieu",
-    )):
+    # 2) "12,5 triệu tương ứng bao nhiêu tín chỉ?"
+    asked_amount = _parse_vnd(question)
+    if per_credit and asked_amount and any(m in question for m in ("bao nhieu tin chi", "may tin chi", "so tin chi")):
+        if asked_amount % per_credit == 0:
+            return (
+                f"Với mức {_money(per_credit)}/tín chỉ, {_money(asked_amount)} tương ứng "
+                f"{asked_amount // per_credit} tín chỉ."
+            )
+        return None
+
+    # 3) "Học bổng 70% học phí chuẩn HK1 thì phải đóng bao nhiêu?"
+    percent = re.search(r"\b(\d{1,3})\s*%", question)
+    if percent and "hoc phi" in question and any(marker in question for marker in _PAYABLE_MARKERS):
+        rate = int(percent.group(1))
+        if 0 < rate <= 100:
+            support = tuition * rate // 100
+            others = _fee_rows_text(rows[1:])
+            return (
+                f"Học phí chuẩn HK1 năm {year} là {_money(tuition)}. Hỗ trợ {rate}% tương đương "
+                f"{_money(support)}, nên phần học phí HK1 còn phải đóng là {_money(tuition - support)}. "
+                + (f"Các khoản thu khác được tính riêng: {others}." if others else "")
+            ).strip()
+
+    # 4) "Học phí đã trừ học bổng chưa?" / "Học bổng có làm thay đổi đơn giá?"
+    if "hoc bong" in question and "hoc phi" in question and any(m in question for m in _PRE_SCHOLARSHIP_MARKERS):
+        if not table["pre_scholarship"]:
+            return None
+        unit = f", tương ứng {_money(per_credit)}/tín chỉ" if per_credit else ""
+        lead = "Không." if "thay doi" in question else "Chưa."
         return (
-            "Theo quy định đào tạo của Trường Đại học Hùng Vương TP.HCM (DHV):\n"
-            "- Một năm học gồm 3 học kỳ, sinh viên đăng ký **tối thiểu 10 tín chỉ/học kỳ**.\n"
-            "- Mức học phí là 1.250.000 đồng/tín chỉ (năm 2026), cam kết ổn định trong suốt 4 năm đào tạo."
+            f"{lead} {tuition_label} năm {year} là {_money(tuition)}{unit}; đây là mức chưa áp dụng "
+            "học bổng và các chính sách hỗ trợ. Đơn giá tín chỉ giữ nguyên, học bổng (nếu được xét) "
+            "sẽ giảm vào số tiền bạn phải đóng."
         )
 
-    # 3. Hỏi về mức học phí theo tín chỉ (1 tín chỉ bao nhiêu, giá mỗi tín chỉ)
-    if any(marker in normalized for marker in (
-        "1 tin chi", "mot tin chi", "tin chi bao nhieu", "gia tin chi", "phi tin chi", "hoc phi theo tin chi", "moi tin chi bao nhieu",
-    )):
+    # 5) "Ngoài học phí còn những khoản nào?" / "Phí nhập học có nằm trong học phí không?"
+    if any(marker in question for marker in _FEE_COMPOSITION_MARKERS) and len(rows) >= 2:
+        extras = _fee_rows_text(rows[1:])
+        yes_no = any(m in question for m in ("co nam trong", "nam trong", "toan bo", "co phai"))
+        lead = "Không. " if yes_no else ""
+        note = " (mức chưa áp dụng học bổng)" if table["pre_scholarship"] else ""
         return (
-            "Mức học phí theo tín chỉ tại Trường Đại học Hùng Vương TP.HCM (DHV):\n"
-            "- Theo thông báo chính thức năm 2026: **1.250.000 đồng/tín chỉ** (Học kỳ I sinh viên đăng ký 10 tín chỉ tương ứng 12.500.000 đồng).\n"
-            "- Sinh viên đăng ký tối thiểu 10 tín chỉ/học kỳ.\n"
-            "- Nhà trường có chính sách học phí ổn định và cam kết không tăng học phí trong suốt 4 năm học."
+            f"{lead}Theo bảng phí học kỳ I năm {year} của DHV{note}, {tuition_label[0].lower()}{tuition_label[1:]} là {_money(tuition)}; "
+            f"các khoản thu khác được tính riêng: {extras}."
         )
-
-    # 4. Hỏi phương thức thanh toán học phí, chuyển khoản, ngân hàng
-    if any(marker in normalized for marker in (
-        "thanh toan", "dong tien o dau", "chuyen khoan", "ngan hang", "so tai khoan", "vietcombank", "nop hoc phi the nao",
-    )):
-        return (
-            "Trường Đại học Hùng Vương TP.HCM (DHV) cung cấp các phương thức thanh toán học phí thuận tiện:\n"
-            "1. **Thanh toán trực tiếp**: Tại Phòng Tài chính – Kế toán, Lầu 1, cơ sở 736 Nguyễn Trãi, Phường 11, Quận 5, TP.HCM.\n"
-            "2. **Chuyển khoản ngân hàng**:\n"
-            "   - Ngân hàng: **VietcomBank – Chi Nhánh Phú Nhuận**\n"
-            "   - Số tài khoản: **21.22.23.68.68**\n"
-            "   - Tên tài khoản: Trường Đại học Hùng Vương TP.HCM\n"
-            "3. **Tại các cơ sở tiếp nhận nhập học**: Cơ sở 1: 194 Lê Đức Thọ, P. An Nhơn; Cơ sở 2: 37 Kinh Dương Vương, P. Phú Lâm, TP.HCM."
-        )
-
-    # 5. Hỏi cam kết học phí, học phí có tăng không
-    if is_tuition_increase_question(normalized) or any(marker in normalized for marker in (
-        "co tang khong", "tang hoc phi",
-    )):
-        return (
-            "Trường Đại học Hùng Vương TP.HCM (DHV) cam kết **học phí ổn định, không tăng trong suốt 4 năm đào tạo** cho sinh viên, giúp sinh viên và gia đình hoàn toàn an tâm lập kế hoạch tài chính."
-        )
-
-    # 6. Hỏi thời gian đào tạo, học mấy năm
-    if any(marker in normalized for marker in (
-        "thoi gian dao tao", "dao tao may nam", "hoc may nam", "hoc bao nhieu nam",
-        "may nam tot nghiep", "may nam ra truong", "may nam hoc", "chuong trinh dao tao may nam",
-    )):
-        return (
-            "Tại Trường Đại học Hùng Vương TP.HCM, thời gian đào tạo chuẩn là **4 năm** áp dụng cho tất cả các ngành đào tạo hệ chính quy của trường."
-        )
-
     return None
