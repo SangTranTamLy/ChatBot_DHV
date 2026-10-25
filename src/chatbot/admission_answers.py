@@ -669,6 +669,52 @@ def _evidence_required_document_answer(analysis: QueryAnalysis, evidence: Any) -
     return f"Có. Hướng dẫn nhập học liệt kê {source_line} trong nhóm giấy tờ cần mang theo."
 
 
+def _evidence_cash_payment_answer(evidence: Any) -> str | None:
+    """Answer in-person payment questions with the documented reception facts.
+
+    The guide does not name a cash counter, so the answer says that plainly
+    and gives the verified in-person reception campuses and hours instead.
+    """
+
+    lines = _evidence_text_lines(evidence)
+    hours = next(
+        (
+            line.strip() for line in lines
+            if "tiep nhan nhap hoc" in normalize_question(line)
+            and re.search(r"\b\d{1,2}:\d{2}\b", line)
+        ),
+        None,
+    )
+    campuses = list(dict.fromkeys(
+        match.group(0).strip(" .")
+        for line in lines
+        for match in [re.search(r"Cơ sở\s*[12]\s*:[^\n]+", line, re.IGNORECASE)]
+        if match
+    ))[:2]
+    if not hours or not campuses:
+        return None
+    online = next(
+        (
+            line.strip() for line in lines
+            if "unizone" in normalize_question(line) and "thanh toan" in normalize_question(line)
+        ),
+        None,
+    )
+    parts = [
+        "Tài liệu nhập học DHV 2026 chưa nêu riêng quầy thu học phí bằng tiền mặt.",
+        "Bạn có thể đến nhập học trực tiếp tại:",
+        *(f"- {campus}" for campus in campuses),
+        f"Thời gian: {hours.replace('DHV tiếp nhận nhập học', '').strip()}"
+        + (" (cả Thứ Bảy, Chủ nhật và ngày lễ)." if any(
+            "chu nhat" in normalize_question(line) for line in lines
+        ) else "."),
+    ]
+    if online:
+        parts.append(f"Nếu nhập học trực tuyến: {online.rstrip('.')}.")
+    parts.append("Bạn nên liên hệ bộ phận tuyển sinh để xác nhận hình thức thanh toán tại cơ sở.")
+    return "\n".join(parts)
+
+
 def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     """Render enrollment facts from selected evidence without model synthesis.
 
@@ -682,6 +728,8 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     normalized = normalize_question(analysis.normalized_question)
     chunks = tuple(getattr(evidence, "chunks", ()) or ())
     request = enrollment_request(normalized)
+    if request == "cash_payment":
+        return _evidence_cash_payment_answer(evidence)
     if request in {"reception_hours", "reception_dates"}:
         lines = _evidence_text_lines(evidence)
         matches = []
@@ -1548,7 +1596,13 @@ def _evidence_major_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -
             conditions.append(current)
         if len(conditions) >= 2:
             break
-    conditions = [condition for condition in conditions if condition]
+    # A PDF line can run into the next numbered heading ("... 6 điểm trở lên
+    # 2 Các phương thức xét tuyển ..."); keep only the condition itself.
+    conditions = [
+        re.split(r"\s+\d+\s+(?=[A-ZĐ][a-zà-ỹ]*\s)", condition, maxsplit=1)[0].strip()
+        for condition in conditions
+        if condition
+    ]
     if len(conditions) < 2:
         return None
     return (
@@ -1846,19 +1900,21 @@ def _structured_score_answer(
     facts: Any,
 ) -> str | None:
     rows = []
-    seen_methods: set[str] = set()
+    seen_methods: set[tuple[str, str]] = set()
     for fact in facts or ():
         if not isinstance(fact, Mapping) or fact.get("raw_value") in (None, ""):
             continue
         # A supplementary source can also expose a deadline fact. It belongs
         # in the evidence bundle, but is not a score row.
         method = str(fact.get("method") or "")
-        if method == "deadline" or method in seen_methods:
+        key = (normalize_question(str(fact.get("major_name") or "")), method)
+        if method == "deadline" or key in seen_methods:
             continue
-        seen_methods.add(method)
+        seen_methods.add(key)
         rows.append(fact)
     if not rows:
         return None
+    several_majors = len({key[0] for key in seen_methods if key[0]}) > 1
     grouped: list[str] = []
     for fact in rows:
         label = _method_label(fact.get("method"))
@@ -1868,7 +1924,7 @@ def _structured_score_answer(
         else:
             value = f"{raw_value} điểm"
         major = str(fact.get("major_name") or "").strip()
-        prefix = f"{major}: " if major and len(rows) == 1 else ""
+        prefix = f"{major}: " if major and (len(rows) == 1 or several_majors) else ""
         grouped.append(f"{prefix}{label}: {value}")
     score_type = str(analysis.entities.get("score_type") or "")
     normalized_question = normalize_question(analysis.normalized_question)
@@ -2051,17 +2107,20 @@ _SUPPLEMENTARY_DETAIL_PATTERNS = {
     "supplementary_program_count": r"(\d+)\s+chỉ tiêu tại\s+(\d+)\s+chương trình",
     "supplementary_deadline": r"nhận hồ sơ đến hết ngày\s+(\d{1,2}/\d{1,2}/\d{4})",
     "supplementary_fee": r"((?:miễn phí|lệ phí) xét tuyển[^.;]*)",
+    "supplementary_programs": r"tuyển sinh tại\s+(\d+)\s+chương trình[^:]{0,160}gồm:\s*(.+?)\.(?=\s|$)",
+    "supplementary_audience": r"(Đây là cơ hội dành cho .+?\.)(?=\s|$)",
 }
+_SUPPLEMENTARY_REQUESTS = frozenset({
+    "supplementary_quota", "supplementary_program_count", "supplementary_deadline",
+    "supplementary_fee", "supplementary_deadline_fee", "supplementary_programs",
+    "supplementary_methods", "supplementary_benefits",
+})
 
 
-def _evidence_supplementary_detail_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    """Answer a quota/deadline/fee question from the verified supplementary notice only."""
-
-    request = str(analysis.entities.get("request_type") or "")
-    pattern = _SUPPLEMENTARY_DETAIL_PATTERNS.get(request)
-    if pattern is None:
-        return None
+def _supplementary_notice(analysis: QueryAnalysis, evidence: Any) -> tuple[int, str] | None:
+    """Flattened text of the verified supplementary notice for the requested year."""
     target_year = int(analysis.entities.get("year") or settings.target_year)
+    parts: list[str] = []
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
         try:
@@ -2069,24 +2128,76 @@ def _evidence_supplementary_detail_answer(analysis: QueryAnalysis, evidence: Any
         except (TypeError, ValueError):
             continue
         if (
-            str(metadata.get("category") or "") != "xet_tuyen_bo_sung"
-            or str(metadata.get("status") or "") != "verified"
-            or str(metadata.get("school_code") or "").upper() != "DHV"
-            or year != target_year
+            str(metadata.get("category") or "") == "xet_tuyen_bo_sung"
+            and str(metadata.get("status") or "") == "verified"
+            and str(metadata.get("school_code") or "").upper() == "DHV"
+            and year == target_year
         ):
-            continue
-        match = re.search(pattern, re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or "")), re.IGNORECASE)
-        if not match:
-            continue
-        # Phrase it as the notice's milestone: the round may already be closed.
-        prefix = f"Theo thông báo xét tuyển bổ sung năm {year}, DHV"
-        if request == "supplementary_quota":
-            return f"{prefix} tuyển {match.group(1)} chỉ tiêu tại {match.group(2)} chương trình đào tạo."
-        if request == "supplementary_program_count":
-            return f"{prefix} mở xét tuyển bổ sung cho {match.group(2)} chương trình đào tạo."
-        if request == "supplementary_deadline":
-            return f"{prefix} nhận hồ sơ đến hết ngày {match.group(1)}."
-        return f"{prefix} {match.group(1).strip()}."
+            parts.append(re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or "")))
+    return (target_year, " ".join(parts)) if parts else None
+
+
+def _evidence_supplementary_detail_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """Answer one named detail of the supplementary round from the verified notice only."""
+
+    request = str(analysis.entities.get("request_type") or "")
+    if request not in _SUPPLEMENTARY_REQUESTS:
+        return None
+    notice = _supplementary_notice(analysis, evidence)
+    if notice is None:
+        return None
+    year, text = notice
+
+    def find(key: str) -> re.Match[str] | None:
+        return re.search(_SUPPLEMENTARY_DETAIL_PATTERNS[key], text, re.IGNORECASE)
+
+    # Phrase it as the notice's milestone: the round may already be closed.
+    prefix = f"Theo thông báo xét tuyển bổ sung năm {year}, DHV"
+    quota, deadline, fee = find("supplementary_quota"), find("supplementary_deadline"), find("supplementary_fee")
+
+    if request == "supplementary_quota" and quota:
+        return f"{prefix} tuyển {quota.group(1)} chỉ tiêu tại {quota.group(2)} chương trình đào tạo."
+    if request == "supplementary_program_count" and quota:
+        return f"{prefix} mở xét tuyển bổ sung cho {quota.group(2)} chương trình đào tạo."
+    if request == "supplementary_deadline" and deadline:
+        return f"{prefix} nhận hồ sơ đến hết ngày {deadline.group(1)}."
+    if request == "supplementary_fee" and fee:
+        return f"{prefix} {fee.group(1).strip()}."
+    if request == "supplementary_deadline_fee" and deadline and fee:
+        return f"{prefix} nhận hồ sơ đến hết ngày {deadline.group(1)} và {fee.group(1).strip()}."
+    if request == "supplementary_programs":
+        programs = find("supplementary_programs")
+        if programs:
+            return f"{prefix} xét tuyển bổ sung tại {programs.group(1)} chương trình: {programs.group(2).strip()}."
+        return None
+    if request == "supplementary_methods":
+        folded = normalize_question(text)
+        methods = [
+            label for marker, label in (
+                ("phuong thuc xet ket qua thi tot nghiep", f"kết quả thi tốt nghiệp THPT năm {year}"),
+                ("phuong thuc xet ket qua hoc tap", "kết quả học tập THPT (học bạ)"),
+                ("danh gia nang luc", "kết quả thi Đánh giá năng lực"),
+            ) if marker in folded
+        ]
+        if not methods:
+            return None
+        answer = f"{prefix} xét tuyển bổ sung theo {len(methods)} phương thức: {'; '.join(methods)}."
+        asked = normalize_question(analysis.normalized_question)
+        if any(m in asked for m in ("dgnl", "danh gia nang luc")) and "danh gia nang luc" not in folded:
+            answer += " Thông báo không nêu phương thức Đánh giá năng lực (ĐGNL) cho đợt này."
+        return answer
+    if request == "supplementary_benefits":
+        reasons = []
+        audience = find("supplementary_audience")
+        if audience:
+            reasons.append(audience.group(1).strip())
+        if quota:
+            reasons.append(f"Đợt này có {quota.group(1)} chỉ tiêu tại {quota.group(2)} chương trình đào tạo.")
+        if fee:
+            reasons.append(f"DHV {fee.group(1).strip()}.")
+        if deadline:
+            reasons.append(f"Hạn nhận hồ sơ: hết ngày {deadline.group(1)}.")
+        return f"Theo thông báo xét tuyển bổ sung năm {year}: " + " ".join(reasons) if reasons else None
     return None
 
 

@@ -13,9 +13,17 @@ def normalize_semantic_text(value: str) -> str:
     return re.sub(r"\s+", " ", folded).strip()
 
 
+def is_cash_payment_request(question: str) -> bool:
+    """"Đóng tiền mặt ở đâu?" asks where/when to pay in person."""
+    text = normalize_semantic_text(question)
+    return "tien mat" in text and any(word in text for word in ("dong", "nop", "thanh toan", "tra"))
+
+
 def enrollment_request(question: str) -> str:
     """Identify the requested enrollment fact, independently of the broad intent."""
     text = normalize_semantic_text(question.partition("intent:")[0])
+    if is_cash_payment_request(text):
+        return "cash_payment"
     if "dang ky xet tuyen" in text and re.search(r"\b(?:han|lich)\b|\bkhi nao\b|\bngay nao\b", text):
         return "deadline"
     enrollment_context = any(

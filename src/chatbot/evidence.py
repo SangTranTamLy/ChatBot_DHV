@@ -44,6 +44,11 @@ _INTENT_CONTENT_MARKERS = {
         "hoc bong",
     ),
     "HOI_DANG_KY_XET_TUYEN": (
+        # Result-notification channels (ministry portal, admissions website,
+        # enrollment invitation) are part of the registration journey.
+        "xac nhan nhap hoc",
+        "thu moi nhap hoc",
+        "website tuyen sinh",
         "dang ky xet tuyen",
         "dang ky nguyen vong",
         "dang ky nv",

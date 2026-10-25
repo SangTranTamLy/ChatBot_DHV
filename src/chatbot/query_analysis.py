@@ -16,6 +16,7 @@ from .intent_classifier import IntentPrediction, predict_intent
 from .query_semantics import (
     correct_domain_typos,
     enrollment_request,
+    is_cash_payment_request,
     is_semester_fee_total_question,
     is_tuition_increase_question,
     mentions_optional_english_test,
@@ -157,7 +158,8 @@ _PROGRAM_ALIASES = (
     ("quan tri nhan luc", "Quản trị Nhân lực"),
     ("quan tri marketin", "Quản trị Marketing"),
     ("phan tich du lieu kinh doan", "Phân tích dữ liệu kinh doanh"),
-    ("quan tri nguon nhan luc", "Quản trị Nguồn nhân lực"),
+    # Users often say "nguồn nhân lực"; the verified catalogue name is "Quản trị Nhân lực".
+    ("quan tri nguon nhan luc", "Quản trị Nhân lực"),
     ("quan tri logistics", "Quản trị Logistics"),
     ("logistics", "Quản trị Logistics"),
     ("khoi nghiep va phat trien ben vung", "Khởi nghiệp và Phát triển bền vững"),
@@ -221,6 +223,7 @@ _WEBSITE_REQUEST_MARKERS = (
 )
 _SUPPLEMENTARY_MARKERS = (
     "xet tuyen bo sung",
+    "tuyen bo sung",
     "tuyen sinh bo sung",
     "xet bo sung",
     "dot bo sung",
@@ -1029,10 +1032,26 @@ def _supplementary_request(normalized: str) -> str:
         for clause in re.split(r"[,;]|\b(?:va|con|dong thoi|ngoai ra)\b", normalized)
     ):
         return "supplementary_program_count"
-    if re.search(r"\ble phi\b|\bphi xet tuyen\b|\b(?:mat|ton|mien) phi\b", normalized):
+    asks_fee = bool(re.search(r"\ble phi\b|\bphi xet tuyen\b|\bphi dang ky\b|\b(?:mat|ton|mien|thu) phi\b", normalized))
+    asks_deadline = bool(re.search(
+        r"\bhan (?:nop|nhan|chot|cuoi)\b|\bthoi han\b|\bkhi nao\b|\bbao gio\b|\bden ngay nao\b|\bden khi nao\b",
+        normalized,
+    ))
+    if asks_fee and asks_deadline:
+        return "supplementary_deadline_fee"
+    if asks_fee:
         return "supplementary_fee"
-    if re.search(r"\bhan (?:nop|nhan|chot|cuoi)\b|\bthoi han\b|\bkhi nao\b|\bbao gio\b|\bden ngay nao\b", normalized):
+    if asks_deadline:
         return "supplementary_deadline"
+    if re.search(r"\b(?:nhung|cac)\s+(?:nganh|chuong trinh)\b|\b(?:nganh|chuong trinh) nao\b|\bdanh sach\b", normalized):
+        return "supplementary_programs"
+    if re.search(
+        r"\bphuong thuc\b|\bxet bang\b|\bdung (?:dgnl|diem dgnl|danh gia nang luc)\b|\bchi co\b|\b(?:dgnl|danh gia nang luc)\b.{0,30}\bduoc khong\b",
+        normalized,
+    ):
+        return "supplementary_methods"
+    if re.search(r"\btai sao\b|\bvi sao\b|\bloi ich\b|\buu diem\b|\bco nen\b|\bnen nop\b", normalized):
+        return "supplementary_benefits"
     return ""
 
 
@@ -1548,6 +1567,27 @@ _SCHOLARSHIP_ADJUSTED_FEE_WORDS = (
 )
 
 
+_OTHER_TOPIC_WORDS = ("chuong trinh", "nganh", "hoc phi", "hoc bong", "diem", "ho so", "phuong thuc")
+
+
+def _has_other_topic_clause(normalized: str) -> bool:
+    """A clause without the supplementary marker that asks about another topic."""
+    clauses = re.split(r"[,;]|\b(?:va|con|dong thoi|ngoai ra)\b", normalized)
+    return any(
+        clause.strip()
+        and not _has_supplementary_marker(clause)
+        and any(word in clause for word in _OTHER_TOPIC_WORDS)
+        for clause in clauses
+    )
+
+
+def _is_result_notification_request(normalized: str) -> bool:
+    """Questions asking where/how admission results are announced."""
+    return "trung tuyen" in normalized and any(
+        marker in normalized for marker in ("thong bao", "vao dau", "bao ket qua", "nhan ket qua")
+    )
+
+
 def _is_single_fee_question(normalized: str) -> bool:
     """One fee question even though it also says ``nhập học`` or ``học bổng``.
 
@@ -1557,6 +1597,9 @@ def _is_single_fee_question(normalized: str) -> bool:
     """
 
     if not any(word in normalized for word in _FEE_WORDS):
+        return False
+    if is_cash_payment_request(normalized):
+        # Paying in person is an enrollment-procedure question (where/when).
         return False
     if "hoc phi" in normalized and any(word in normalized for word in _TUITION_PAYMENT_WORDS):
         # Paying tuition (channel, bank account) is one fee question, even if
@@ -1583,6 +1626,12 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
 
     if _is_single_fee_question(normalized):
         return ("HOI_HOC_PHI",)
+    if is_cash_payment_request(normalized):
+        return ("HOI_NHAP_HOC",)
+    if _supplementary_request(normalized) and not _has_other_topic_clause(normalized):
+        # "Phí đăng ký xét tuyển bổ sung", "hạn nộp đợt bổ sung"... are one
+        # detail of the supplementary round, not a second registration topic.
+        return ("HOI_XET_TUYEN_BO_SUNG",)
 
     # ``nhập học`` describes the advisor being contacted here, not a separate
     # request about enrollment procedures. Keep advisor phone questions on
@@ -1984,7 +2033,12 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     score_type = None
     if _has_supplementary_marker(normalized):
         score_type = SUPPLEMENTARY_THRESHOLD
-    elif any(term in normalized for term in ("diem trung tuyen", "diem chuan")) or re.search(r"\bdiem dau(?!\s+vao)\b|\btrung tuyen.{0,30}bao nhieu diem\b", normalized):
+    elif any(term in normalized for term in ("diem trung tuyen", "diem chuan")) or re.search(r"\bdiem dau(?!\s+vao)\b|\btrung tuyen.{0,30}bao nhieu diem\b", normalized) or (
+        # "lấy điểm ... trong đợt 1" names the round-1 admission result.
+        re.search(r"\bdot\s*(?:1|mot)\b", normalized)
+        and "diem" in normalized
+        and not any(term in normalized for term in ("diem san", "nguong", "nhan ho so"))
+    ):
         score_type = ADMISSION_SCORE
     elif any(term in normalized for term in ("diem san", "nguong dau vao", "diem dau vao", "diem nhan ho so", "nguong nhan ho so", "nguong dam bao chat luong", "diem toi thieu", "duoc dang ky")) or (
         admission_method is not None and _is_score_amount_request(normalized)
@@ -2701,6 +2755,8 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     if _is_single_fee_question(normalized):
         # "Các khoản phải đóng khi nhập học" is a fee-table question.
         return "HOI_HOC_PHI"
+    if entities.get("request_type") == "cash_payment":
+        return "HOI_NHAP_HOC"
     if entities.get("request_type") == "enrollment_benefits":
         # Gifts and rights after completing enrollment are documented in the
         # verified enrollment guide, but are distinct from the document
@@ -3395,7 +3451,7 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
             roles = ("ho_so_nhap_hoc",)
         elif request_type in {
             "enrollment_benefits", "enrollment_location", "reception_hours",
-            "reception_dates", "submission_mode",
+            "reception_dates", "submission_mode", "cash_payment",
         }:
             roles = ("thu_tuc_va_quyen_loi_nhap_hoc",)
         elif any(marker in normalized for marker in ("hoc phi", "hoc lieu", "phi nhap hoc")):
@@ -3445,6 +3501,10 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
         roles = ("catalog",)
     elif analysis.intent == "TU_VAN_CHON_NGANH":
         roles = ("catalog", "admission_conditions_and_methods")
+    elif analysis.intent == "HOI_DANG_KY_XET_TUYEN" and _is_result_notification_request(normalized):
+        # Where results are announced: the enrollment guide (ministry portal,
+        # admissions website) and the round-1 score notice.
+        roles = ("thu_tuc_va_quyen_loi_nhap_hoc", "diem_trung_tuyen_dot_1", "admission_conditions_and_methods")
     elif analysis.intent in {"HOI_PHUONG_THUC_XET_TUYEN", "HOI_DANG_KY_XET_TUYEN", "HOI_CACH_TINH_DIEM"}:
         roles = (
             ("xet_tuyen_bo_sung",)
@@ -3456,7 +3516,12 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
         # although their record-level category is ``nguong_dau_vao`` rather
         # than the manifest category ``phuong_thuc_xet_tuyen``.
         roles = ("catalog", "admission_conditions_and_methods")
-        if analysis.entities.get("student_scores") and (
+        major = str(analysis.entities.get("major_name") or "").lower()
+        law_eligibility = major in {"luật", "luật kinh tế"} and (
+            _is_major_eligibility_context(normalized, major)
+            or ("hoc luc" in normalized and "lop 12" in normalized)
+        )
+        if analysis.entities.get("student_scores") and not law_eligibility and (
             analysis.entities.get("major_name") or analysis.entities.get("candidate_majors")
         ):
             # A personal score for a named major is also compared with that
@@ -4104,8 +4169,14 @@ def select_relevant_score_facts(
         ]
         if selected:
             return apply_method_filter(selected)
+    listed_together = len(candidate_names) > 1 and bool(
+        re.search(r"\b(?:va|voi)\b|,", normalized_question)
+    ) and all(normalize_question(name) in normalized_question for name in candidate_names)
     if len(candidate_names) > 1 and (
-        "so sanh" in normalized_question or analysis.intent == "TU_VAN_CHON_NGANH"
+        "so sanh" in normalized_question
+        or analysis.intent == "TU_VAN_CHON_NGANH"
+        # "Ngành Luật và Luật kinh tế lấy điểm ..." asks for each named major.
+        or listed_together
     ):
         # A side-by-side answer needs the selected rows for every option. The
         # single-major narrowing below remains in force for ordinary entity

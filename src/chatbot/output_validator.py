@@ -1120,6 +1120,14 @@ def _score_mapping_failure(
     if intent == "TU_VAN_CHON_NGANH" and entities.get("student_scores"):
         return ""
     if (
+        intent in {"HOI_NGUONG_DAU_VAO", "HOI_DANG_KY_XET_TUYEN"}
+        and any(marker in normalized_question for marker in ("hoc luc", "lop 12"))
+        and "dong thoi" in _fold_text(answer)
+    ):
+        # A combined eligibility rule (grade-12 standing AND exam total) is
+        # quoted from the admission rules; it is not a per-method score lookup.
+        return ""
+    if (
         score_type == "supplementary_threshold"
         and intent == "HOI_XET_TUYEN_BO_SUNG"
         and not any(

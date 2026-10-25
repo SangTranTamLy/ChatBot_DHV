@@ -956,9 +956,21 @@ def _evidence_catalog_answer(
     return None
 
 
+_PROGRAM_RELATION_MARKERS = (
+    "co chuyen nganh", "co nganh", "co chuong trinh", "co dao tao", "dao tao chuyen nganh",
+    "thuoc nganh", "nam trong nganh", "nam o nganh", "la chuyen nganh", "la chuong trinh",
+    "thuoc khoa", "nganh nao",
+)
+
+
 def _evidence_program_relation_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     program = str(analysis.entities.get("program_name") or "").strip()
     if not program:
+        return None
+    question = normalize_question(analysis.normalized_question)
+    if "hoc phan" in question or not any(marker in question for marker in _PROGRAM_RELATION_MARKERS):
+        # "Học phần Quản trị Nguồn nhân lực Quốc tế ..." asks about a course
+        # activity, not whether the programme exists or which major owns it.
         return None
     program_key = normalize_question(program)
     relation = next(
