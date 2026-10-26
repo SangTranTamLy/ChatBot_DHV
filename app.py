@@ -16,7 +16,7 @@ from typing import Any
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.supabase_auth import AuthServiceError, change_password
+from src.supabase_auth import AuthServiceError, change_password, is_supabase_configured
 from src.ui_auth import init_auth, logout, open_auth, render_auth_dialog
 
 
@@ -216,20 +216,21 @@ def _init_session_state() -> None:
         if previous_owner:
             sessions[previous_owner] = {key: deepcopy(st.session_state[key])
                                         for key in chat_keys if key in st.session_state}
-        for key in (*chat_keys, "chat_input", "pending_question", "saved_items", "admission_checklist"):
+        for key in (*chat_keys, "chat_input", "pending_question", "chat_request_in_progress", "saved_items", "admission_checklist"):
             st.session_state.pop(key, None)
         if st.session_state.get("account_page") != "chat":
-            st.session_state.account_page = "explore"
+            st.session_state.account_page = "chat"
         if owner in sessions:
             st.session_state.update(deepcopy(sessions[owner]))
     st.session_state.chat_owner = owner
     if st.session_state.get("messages"):
         st.session_state.setdefault("account_page", "chat")
     else:
-        st.session_state.setdefault("account_page", "explore")
+        st.session_state.setdefault("account_page", "chat")
     st.session_state.setdefault("admission_checklist", {})
     st.session_state.setdefault("saved_items", [])
     st.session_state.setdefault("messages", [])
+    st.session_state.setdefault("chat_request_in_progress", False)
     st.session_state.setdefault("chats", {})
     if not owner:
         st.session_state.chats = {}
@@ -478,63 +479,24 @@ def _history_picker(*, key: str = "history_picker") -> None:
 
 
 def _render_topbar() -> None:
-    page = st.session_state.get("account_page", "explore")
-    chat_active = page == "chat"
-    explore_active = page == "explore"
+    account_label = escape(
+        str((st.session_state.get("auth_user") or {}).get("name") or "Khách truy cập")
+    )
     brand = (
-        '<div class="dhv-brand-lockup" aria-label="DHV, trợ lý tuyển sinh">'
-        '<span class="dhv-brand-cap material-symbols-rounded" aria-label="Mũ tốt nghiệp">school</span>'
-        '<span class="dhv-brand-words"><b>DHV</b><small>TRỢ LÝ TUYỂN SINH</small></span>'
-        '<span class="dhv-brand-divider"></span><span class="dhv-brand-context">Không gian tuyển sinh</span></div>'
+        '<div class="dhv-reference-topbar" aria-label="DHV, trợ lý tuyển sinh">'
+        '<div class="dhv-reference-topbar-brand">'
+        '<span class="material-symbols-rounded">school</span>'
+        '<b>DHV - Trợ lý tuyển sinh</b><i></i>'
+        '<small>Đồng hành cùng lựa chọn của bạn</small></div>'
+        '<div class="dhv-reference-topbar-actions">'
+        '<span class="material-symbols-rounded">search</span>'
+        '<span class="material-symbols-rounded">notifications</span>'
+        '<div class="dhv-reference-guest"><span class="material-symbols-rounded">person</span>'
+        f'<b>{account_label}</b><span class="material-symbols-rounded">expand_more</span></div>'
+        '</div></div>'
     )
     with st.container(key="topbar"):
-        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
-            st.html(brand)
-            st.button(
-                "Khám phá DHV", key="top_nav_explore",
-                type="primary" if explore_active else "tertiary",
-                on_click=_navigate_to, args=("explore",),
-            )
-            st.button(
-                "Hỏi DHV", key="top_nav_chat",
-                type="primary" if chat_active else "tertiary",
-                on_click=_navigate_to, args=("chat",),
-            )
-            st.button(
-                "Lộ trình của tôi", icon=":material/check_circle:", key="top_nav_journey",
-                type="primary" if page == "checklist" else "tertiary",
-                on_click=_navigate_to, args=("checklist",),
-            )
-            with st.popover("Tìm nhanh", icon=":material/search:", key="quick_search", help="Tìm nhanh thông tin tuyển sinh DHV"):
-                with st.form("quick_search_form", clear_on_submit=True, border=False):
-                    query = st.text_input(
-                        "Tìm trong tuyển sinh DHV",
-                        placeholder="Ngành, xét tuyển, học phí…",
-                        label_visibility="collapsed",
-                    )
-                    if st.form_submit_button("Hỏi trợ lý DHV", icon=":material/arrow_forward:", width="stretch") and query.strip():
-                        st.session_state.pending_question = query.strip()
-                        st.session_state.account_page = "chat"
-                        st.rerun()
-                st.caption("Tìm nhanh các thông tin trong dữ liệu tuyển sinh DHV.")
-            _history_picker(key="history_picker_top")
-            st.link_button(
-                "Đăng ký xét tuyển ↗",
-                DHV_OFFICIAL_URLS["apply"],
-                type="primary",
-                help="Mở Cổng đăng ký xét tuyển trực tuyến DHV",
-            )
-            if st.session_state.auth_user:
-                name = st.session_state.auth_user["name"]
-                initials = "".join(part[0] for part in name.split()[-2:]).upper() or "U"
-                with st.popover(initials, key="header_account", help=name):
-                    st.caption(name)
-                    st.button("Tài khoản", icon=":material/person:", key="account_settings",
-                              on_click=_open_profile, width="stretch")
-                    st.button("Đăng xuất", icon=":material/logout:", key="logout",
-                              on_click=_logout_account, width="stretch")
-            else:
-                st.button("Đăng nhập", icon=":material/person:", key="open_login", on_click=open_auth)
+        st.html(brand)
 
 
 def _render_mobile_nav() -> None:
@@ -701,6 +663,8 @@ def _save_current_chat() -> None:
 def _new_chat() -> None:
     st.session_state.account_page = "chat"
     _save_current_chat()
+    st.session_state.pop("pending_question", None)
+    st.session_state.chat_request_in_progress = False
     st.session_state.next_chat += 1
     st.session_state.active_chat = st.session_state.next_chat
     st.session_state.messages = []
@@ -785,69 +749,85 @@ def _render_profile_page() -> None:
 
 
 def _render_sidebar() -> None:
-    """Render the admissions sidebar navigation with clean branding and full-width links."""
+    """Render the focused chat sidebar and keep account actions at the bottom."""
     _save_current_chat()
-    page = st.session_state.get("account_page", "explore")
     with st.sidebar:
         st.html(
-            '<div class="dhv-sidebar-brand" title="Trường Đại học Hùng Vương TP.HCM">'
+            '<div class="dhv-chat-sidebar-brand" aria-label="DHV, trợ lý tuyển sinh">'
             '<div class="dhv-sidebar-badge">'
             '<span class="dhv-sidebar-badge-icon material-symbols-rounded">school</span>'
             '</div>'
-            '<div class="dhv-sidebar-brand-info">'
-            '<b class="dhv-sidebar-brand-name">DHV ADMISSIONS</b>'
-            '<small class="dhv-sidebar-brand-sub">ĐẠI HỌC HÙNG VƯƠNG</small>'
-            '</div>'
+            '<div><b>DHV</b><small>TRỢ LÝ TUYỂN SINH</small>'
+            '</div><span class="dhv-sidebar-collapse material-symbols-rounded">keyboard_double_arrow_left</span>'
             '</div>'
         )
-        for label, icon, target in (
-            ("Khám phá", ":material/dashboard:", "explore"),
-            ("Hỏi DHV", ":material/forum:", "chat"),
-            ("Ngành học", ":material/school:", "majors"),
-            ("So sánh ngành", ":material/compare_arrows:", "compare"),
-            ("Lộ trình của tôi", ":material/task_alt:", "checklist"),
-            ("Sổ tay tuyển sinh", ":material/bookmark:", "notebook"),
-        ):
-            active = page == target
-            st.button(
-                label, icon=icon, key=f"rail_{target}",
-                type="primary" if active else "tertiary", width="stretch",
-                on_click=_navigate_to, args=(target,),
+        st.button(
+            "Cuộc trò chuyện mới", icon=":material/add:", key="new_chat",
+            type="primary", width="stretch", on_click=_new_chat,
+        )
+        with st.container(key="chat_history_list"):
+            st.html(
+                '<div class="dhv-chat-sidebar-label">'
+                '<span><b class="material-symbols-rounded">schedule</b>GẦN ĐÂY</span>'
+                '</div>'
             )
-        with st.container(key="rail_official_links"):
-            st.html('<div class="dhv-sidebar-sec-label"><span>LIÊN KẾT NHANH</span></div>')
-            st.link_button(
-                "Đăng ký xét tuyển ↗",
-                DHV_OFFICIAL_URLS["apply"],
-                type="primary",
-                width="stretch",
-                help="Mở Cổng đăng ký xét tuyển trực tuyến DHV",
-            )
-            st.link_button(
-                "Cổng tuyển sinh ↗",
-                DHV_OFFICIAL_URLS["portal"],
-                type="tertiary",
-                width="stretch",
-                help="Mở Cổng thông tin tuyển sinh chính thức",
-            )
-        with st.container(key="rail_bottom"):
-            st.button(
-                "Trợ giúp & Hỗ trợ", icon=":material/help_outline:", key="rail_help",
-                type="primary" if page == "help" else "tertiary", width="stretch",
-                on_click=_navigate_to, args=("help",),
-            )
-            if st.session_state.auth_user:
-                name = st.session_state.auth_user["name"]
-                st.button(
-                    name, icon=":material/person:", key="rail_profile",
-                    type="primary" if page == "profile" else "tertiary", width="stretch",
-                    on_click=_open_profile, help=f"Tài khoản: {name}",
+            if not st.session_state.auth_user:
+                st.caption("Đăng nhập để xem các cuộc trò chuyện gần đây.")
+            elif not st.session_state.chats:
+                st.caption("Các cuộc trò chuyện đã lưu sẽ xuất hiện ở đây.")
+            else:
+                recent_chats = sorted(
+                    st.session_state.chats.items(),
+                    key=lambda item: item[1].get("updated_at") or "",
+                    reverse=True,
                 )
+                for chat_id, chat in recent_chats[:8]:
+                    title = next(
+                        (row.get("content", "") for row in chat.get("messages", [])
+                         if isinstance(row, Mapping) and row.get("role") == "user"),
+                        "Cuộc trò chuyện mới",
+                    )
+                    st.button(
+                        str(title)[:52], key=f"sidebar_chat_{chat_id}",
+                        type="primary" if chat_id == st.session_state.active_chat else "tertiary",
+                        icon=":material/chat_bubble_outline:", width="stretch",
+                        on_click=_open_chat, args=(chat_id,),
+                    )
+        if not st.session_state.auth_user or not st.session_state.chats:
+            st.html(
+                '<div class="dhv-sidebar-ornament">'
+                '<span>Kiến tạo<br>tương lai<br>cùng DHV</span><i></i></div>'
+            )
+        with st.container(key="chat_sidebar_footer"):
+            with st.popover("Trợ giúp", icon=":material/help_outline:", key="chat_help_menu"):
+                with st.container(key="chat_help_popup", gap="small"):
+                    st.html('<div class="dhv-help-popup-heading">'
+                            '<span class="material-symbols-rounded">support_agent</span>'
+                            '<div><b>Trợ giúp DHV</b><small>Đồng hành cùng bạn</small></div></div>')
+                    st.caption("Hỏi ngay trong khung chat về ngành học, học phí, học bổng và xét tuyển.")
+            if st.session_state.auth_user:
+                user = st.session_state.auth_user
+                name = str(user.get("name") or "Tài khoản")
+                initials = "".join(part[0] for part in name.split()[-2:]).upper() or "U"
+                with st.popover(
+                    f"**{initials}** {name}", key="chat_account_menu", width="stretch",
+                ):
+                    with st.container(key="chat_account_identity"):
+                        st.html('<div class="dhv-account-popup-identity">'
+                                f'<span class="dhv-account-avatar">{escape(initials)}</span>'
+                                f'<div><b>{escape(name)}</b><small>Tài khoản cá nhân</small></div></div>')
+                    st.button(
+                        "Hồ sơ cá nhân", icon=":material/person:", key="chat_account_profile",
+                        width="stretch", on_click=_open_profile,
+                    )
+                    st.button(
+                        "Đăng xuất", icon=":material/logout:", key="chat_account_logout",
+                        width="stretch", on_click=_logout_account,
+                    )
             else:
                 st.button(
                     "Đăng nhập", icon=":material/login:", key="rail_login",
-                    type="tertiary", width="stretch", on_click=open_auth,
-                    help="Đăng nhập tài khoản",
+                    type="secondary", width="stretch", on_click=open_auth,
                 )
 
 
@@ -1113,6 +1093,141 @@ def _render_conversation() -> None:
             st.info(PRIVACY_REMINDER, icon=":material/shield:")
 
 
+def _render_simple_chat_history() -> None:
+    """Render the conversation without secondary notebook actions."""
+    for message in st.session_state.messages:
+        if not isinstance(message, Mapping):
+            continue
+        role = message.get("role")
+        if role not in {"user", "assistant"}:
+            continue
+        with st.chat_message(role, avatar=":material/school:" if role == "assistant" else None):
+            if role == "user":
+                st.markdown(str(message.get("content") or ""), unsafe_allow_html=False)
+            else:
+                _render_assistant_content(message)
+
+
+def _render_clean_conversation() -> None:
+    """Render a compact chat-first landing before the first message."""
+    if not st.session_state.messages:
+        with st.container(key="chat_landing_reference"):
+            st.html(
+                '<div class="dhv-reference-breadcrumb">'
+                '<span class="material-symbols-rounded">home</span>'
+                '<span>Trợ lý tuyển sinh</span><i>/</i><b>Trò chuyện cùng DHV</b></div>'
+                '<section class="dhv-reference-hero">'
+                '<div class="dhv-reference-hero-copy">'
+                '<div class="dhv-reference-kicker"><i></i>TRƯỜNG ĐẠI HỌC HÙNG VƯƠNG TP.HCM</div>'
+                '<h1>Chọn hướng đi của<br>bạn cùng <em>DHV.</em></h1>'
+                '<p>Tìm hiểu ngành học, học phí và phương thức xét tuyển trong một '
+                'cuộc trò chuyện. Bắt đầu bằng điều bạn đang quan tâm nhất, '
+                'chúng tôi luôn sẵn sàng đồng hành cùng bạn.</p>'
+                '<div class="dhv-reference-topics">'
+                '<span><b class="material-symbols-rounded">school</b>Ngành học</span>'
+                '<span><b class="material-symbols-rounded">description</b>Học phí</span>'
+                '<span><b class="material-symbols-rounded">group</b>Xét tuyển</span>'
+                '</div></div>'
+                '<div class="dhv-reference-hero-photo">'
+                '<img src="/app/static/dhv-chat-hero-v1.png" '
+                'alt="Sinh viên DHV tại Trường Đại học Hùng Vương TP.HCM">'
+                '<div class="dhv-reference-campus-badge">'
+                '<span class="material-symbols-rounded">location_on</span>'
+                '<div><b>Không gian học tập tại DHV</b><small>Hiện đại · Năng động · Sáng tạo</small></div>'
+                '<span class="material-symbols-rounded">arrow_forward</span></div>'
+                '</div></section>'
+            )
+            with st.container(key="landing_details_reference"):
+                composer_col, official_col = st.columns([.72, .28], gap="medium")
+                with composer_col:
+                    with st.container(key="landing_composer_reference"):
+                        st.html(
+                            '<div class="dhv-reference-composer-heading">'
+                            '<span class="material-symbols-rounded">auto_awesome</span>'
+                            '<div><b>Trợ lý tuyển sinh DHV</b>'
+                            '<small>Đặt câu hỏi về ngành học, học phí, phương thức xét tuyển, đời sống sinh viên...</small></div>'
+                            '<div class="dhv-reference-ready"><i></i>Luôn sẵn sàng hỗ trợ bạn</div></div>'
+                        )
+                        st.chat_input(
+                            "Bạn muốn hỏi điều gì về tuyển sinh DHV?",
+                            key="chat_input", height=96, submit_mode="disable",
+                            on_submit=_submit_chat_question,
+                            disabled=st.session_state.chat_request_in_progress,
+                        )
+                        st.html(
+                            '<div class="dhv-reference-suggestion-title">'
+                            '<span class="material-symbols-rounded">lightbulb</span>'
+                            '<b>GỢI Ý CÂU HỎI PHỔ BIẾN</b></div>'
+                        )
+                        with st.container(key="landing_suggestions_reference",
+                                          horizontal=True, gap="small", wrap=False):
+                            suggestions = (
+                                ("Học phí ngành CNTT\nnăm 2026 là bao nhiêu?", "Học phí ngành Công nghệ thông tin bao nhiêu?"),
+                                ("Điều kiện xét tuyển\nvào DHV?", "Điều kiện xét tuyển vào DHV là gì?"),
+                                ("Phương thức\nxét tuyển năm 2026", "Năm 2026 DHV xét tuyển theo phương thức nào?"),
+                                ("Ngành nào phù hợp\nvới năng lực của tôi?", "DHV có những ngành đào tạo nào phù hợp với tôi?"),
+                            )
+                            for index, (title, question) in enumerate(suggestions):
+                                st.button(title, key=f"chat_suggestion_{index}",
+                                          type="secondary", on_click=_queue_question,
+                                          args=(question,),
+                                          disabled=st.session_state.chat_request_in_progress,
+                                          width="stretch")
+                with official_col:
+                    with st.container(key="landing_official_reference"):
+                        st.html(
+                            '<div class="dhv-reference-official-heading">'
+                            '<span class="material-symbols-rounded">bookmark</span>'
+                            '<div><b>Kênh chính thức của DHV</b>'
+                            '<small>Cập nhật thông tin tuyển sinh nhanh chóng và chính xác nhất.</small></div></div>'
+                        )
+                        for icon, label, caption, url in (
+                            ("school", "Cổng tuyển sinh DHV", "Thông tin tuyển sinh, đăng ký xét tuyển", DHV_OFFICIAL_URLS["portal"]),
+                            ("language", "Website nhà trường", "Khám phá về DHV", DHV_OFFICIAL_URLS["home"]),
+                            ("description", "Đăng ký xét tuyển", "Nộp hồ sơ trực tuyến", DHV_OFFICIAL_URLS["apply"]),
+                            ("phone_in_talk", "Liên hệ tư vấn", f"Hotline: {DHV_OFFICIAL_URLS['hotline_display']}", DHV_OFFICIAL_URLS["hotline"]),
+                        ):
+                            st.html(
+                                '<a class="dhv-reference-official-link" '
+                                f'href="{escape(url)}" target="_blank" rel="noreferrer">'
+                                f'<span class="material-symbols-rounded">{icon}</span>'
+                                f'<div><b>{escape(label)}</b><small>{escape(caption)}</small></div>'
+                                '<span class="material-symbols-rounded">chevron_right</span></a>'
+                            )
+            st.html(
+                '<footer class="dhv-reference-footer">'
+                '<div class="dhv-reference-footer-brand"><b>DHV</b>'
+                '<span>TRƯỜNG ĐẠI HỌC HÙNG VƯƠNG TP.HCM'
+                '<small>KIẾN THỨC · HOẠT ĐỘNG · CỘNG ĐỒNG · HỘI NHẬP</small></span></div>'
+                '<div class="dhv-reference-footer-tagline">'
+                '<em>Cùng bạn kiến tạo tương lai</em><i></i></div>'
+                '<img class="dhv-reference-skyline" src="/app/static/dhv-city-skyline.svg" '
+                'alt="" aria-hidden="true"></footer>'
+            )
+
+    else:
+        with st.container(key="conversation_layout"):
+            _render_simple_chat_history()
+
+
+def _queue_question(question: str) -> None:
+    """Record a submission before rerendering, and accept only one pending turn."""
+    clean_question = question.strip()
+    if (not clean_question or st.session_state.get("chat_request_in_progress")
+            or st.session_state.get("pending_question")):
+        return
+    st.session_state.messages.append({"role": "user", "content": clean_question})
+    st.session_state.pending_question = clean_question
+    st.session_state.chat_request_in_progress = True
+    st.session_state.account_page = "chat"
+
+
+def _submit_chat_question() -> None:
+    question = st.session_state.get("chat_input")
+    if isinstance(question, str):
+        _queue_question(question)
+
+
 def _render_profile_view() -> None:
     with st.container(key="profile_workspace"):
         with st.container(key="page_breadcrumb", horizontal=True, vertical_alignment="center"):
@@ -1121,12 +1236,245 @@ def _render_profile_view() -> None:
         _render_profile_page()
 
 
-def _record_and_render_exchange(question: str) -> None:
-    """Lưu trữ và hiển thị một lượt hỏi đáp, bao gồm xử lý lỗi service an toàn."""
+def _is_admin_user() -> bool:
+    user = st.session_state.get("auth_user")
+    return isinstance(user, Mapping) and user.get("role") == "admin"
 
-    st.session_state.messages.append({"role": "user", "content": question})
-    with st.chat_message("user"):
-        st.markdown(question, unsafe_allow_html=False)
+
+def _admin_source_inventory() -> tuple[list[Path], list[str], str, int | None]:
+    """Read the current instance's processed knowledge files and Chroma count."""
+    from src.config.settings import settings
+
+    root = Path(settings.processed_data_dir)
+    files = sorted(root.rglob("*.json")) if root.is_dir() else []
+    categories = sorted({path.parent.name for path in files})
+    vector_path = Path(settings.chroma_persist_dir) / "chroma.sqlite3"
+    vector_status = "Chưa tạo" if not vector_path.is_file() else "Không đọc được"
+    vector_count: int | None = None
+    if vector_path.is_file():
+        try:
+            import chromadb
+
+            client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
+            collection = client.get_collection(settings.chroma_collection)
+            vector_count = int(collection.count())
+            vector_status = "Sẵn sàng" if vector_count else "Đang trống"
+        except Exception:
+            vector_status = "Cần kiểm tra"
+    return files, categories, vector_status, vector_count
+
+
+def _render_admin_login_gate() -> None:
+    with st.container(key="admin_gate"):
+        left, right = st.columns([1.15, .85], gap="large", vertical_alignment="center")
+        with left:
+            st.html(
+                '<div class="dhv-admin-gate-brand"><span class="material-symbols-rounded">school</span>'
+                '<div><b>DHV</b><small>QUẢN TRỊ CHATBOT</small></div></div>'
+                '<div class="dhv-admin-gate-copy"><small>KHÔNG GIAN RIÊNG CỦA QUẢN TRỊ VIÊN</small>'
+                '<h1>Giữ nguồn đúng.<br><em>Giữ câu trả lời tin cậy.</em></h1>'
+                '<p>Theo dõi dữ liệu tuyển sinh và kiểm tra chất lượng câu trả lời của trợ lý DHV.</p></div>'
+            )
+        with right:
+            with st.container(key="admin_login_card"):
+                st.html('<div class="dhv-admin-card-badge"><span class="material-symbols-rounded">shield</span> KHU VỰC QUẢN TRỊ</div>')
+                if not st.session_state.auth_user:
+                    st.markdown("### Đăng nhập quản trị")
+                    st.caption("Dùng tài khoản Supabase riêng đã được cấp quyền admin.")
+                    if not is_supabase_configured():
+                        st.warning("Ứng dụng chưa được kết nối Supabase.")
+                    if st.button("Đăng nhập", icon=":material/login:", type="primary", key="admin_login", width="stretch"):
+                        open_auth("login")
+                        st.rerun()
+                else:
+                    st.markdown("### Tài khoản này chưa có quyền quản trị")
+                    st.caption("Đăng xuất tài khoản hiện tại rồi đăng nhập bằng tài khoản admin riêng.")
+                    st.button("Đăng xuất tài khoản hiện tại", icon=":material/logout:", key="admin_gate_logout", width="stretch", on_click=_logout_account)
+
+
+def _render_admin_console() -> None:
+    """Admin-only console. The URL is not a permission check; Supabase app_metadata is."""
+    if not st.session_state.auth_user or not _is_admin_user():
+        _render_admin_login_gate()
+        return
+
+    from src.config.settings import settings
+
+    files, categories, vector_status, vector_count = _admin_source_inventory()
+    page = st.session_state.get("admin_page", "overview")
+    allowed_pages = {"overview", "sources", "quality"}
+    if page not in allowed_pages:
+        page = "overview"
+        st.session_state.admin_page = page
+
+    with st.sidebar:
+        st.html(
+            '<div class="dhv-admin-side-brand"><span class="material-symbols-rounded">school</span>'
+            '<div><b>DHV</b><small>ADMIN CONSOLE</small></div></div>'
+        )
+        st.html('<div class="dhv-admin-side-label">QUẢN LÝ CHATBOT</div>')
+        for label, icon, target in (
+            ("Tổng quan", "dashboard", "overview"),
+            ("Nguồn tài liệu", "description", "sources"),
+            ("Kiểm tra câu trả lời", "fact_check", "quality"),
+        ):
+            if st.button(
+                label, icon=f":material/{icon}:", key=f"admin_nav_{target}",
+                type="primary" if page == target else "tertiary", width="stretch",
+            ):
+                st.session_state.admin_page = target
+                st.rerun()
+        with st.container(key="admin_sidebar_footer"):
+            st.html(
+                '<div class="dhv-admin-current-user"><span class="material-symbols-rounded">admin_panel_settings</span>'
+                '<div><b>Quản trị viên</b><small>Quyền truy cập đã xác minh</small></div></div>'
+            )
+            if st.button("Về chatbot", icon=":material/arrow_back:", key="admin_exit", width="stretch"):
+                st.query_params.clear()
+                st.rerun()
+            st.button("Đăng xuất", icon=":material/logout:", key="admin_logout", width="stretch", on_click=_logout_account)
+
+    labels = {
+        "overview": ("TỔNG QUAN", "Trung tâm quản trị DHV", "Tình trạng dữ liệu đang được dùng bởi chatbot trên máy chủ này."),
+        "sources": ("TRI THỨC DHV", "Nguồn tài liệu", "Danh sách tệp JSON đã xử lý trong kho dữ liệu hiện tại."),
+        "quality": ("KIỂM TRA CHATBOT", "Thử câu hỏi", "Gửi câu hỏi thử qua cùng pipeline đang phục vụ người dùng."),
+    }
+    eyebrow, title, description = labels[page]
+    with st.container(key="admin_console"):
+        with st.container(key="admin_topbar", horizontal=True, vertical_alignment="center"):
+            st.html(
+                '<div class="dhv-admin-topbrand"><span class="material-symbols-rounded">shield</span>'
+                '<b>Quản trị chatbot tuyển sinh DHV</b></div>'
+            )
+            st.html('<span class="dhv-admin-live"><i></i> KHU VỰC QUẢN TRỊ</span>')
+        st.html(
+            f'<div class="dhv-admin-page-heading"><small>{escape(eyebrow)}</small>'
+            f'<h1>{escape(title)}</h1><p>{escape(description)}</p></div>'
+        )
+
+        if page == "overview":
+            vector_value = f"{vector_count:,}" if vector_count is not None else vector_status
+            stat_data = (
+                ("Tài liệu đã xử lý", str(len(files)), "Tệp JSON trong kho hiện tại", "description"),
+                ("Nhóm dữ liệu", str(len(categories)), "Các chủ đề có tài liệu", "category"),
+                ("Bản ghi tìm kiếm", vector_value, "Collection Chroma đang cấu hình", "database"),
+            )
+            with st.container(key="admin_stats", horizontal=True, gap="small"):
+                for label, value, caption, icon in stat_data:
+                    st.html(
+                        '<article class="dhv-admin-stat">'
+                        f'<div><span>{escape(label)}</span><i class="material-symbols-rounded">{escape(icon)}</i></div>'
+                        f'<strong>{escape(value)}</strong><small>{escape(caption)}</small></article>'
+                    )
+            col_sources, col_tools = st.columns([1.1, .9], gap="medium")
+            with col_sources:
+                with st.container(key="admin_overview_sources"):
+                    st.markdown("### Nguồn dữ liệu")
+                    st.caption(f"{len(files)} tệp · {len(categories)} nhóm · {vector_status}")
+                    if files:
+                        for path in files[:5]:
+                            st.html(
+                                '<div class="dhv-admin-file-row"><span class="material-symbols-rounded">description</span>'
+                                f'<div><b>{escape(path.stem.replace("_", " "))}</b>'
+                                f'<small>{escape(path.parent.name.replace("_", " "))}</small></div></div>'
+                            )
+                    else:
+                        st.info("Chưa tìm thấy tài liệu đã xử lý trên máy chủ này.")
+                    if st.button("Mở danh sách nguồn", icon=":material/arrow_forward:", key="admin_overview_sources_open"):
+                        st.session_state.admin_page = "sources"
+                        st.rerun()
+            with col_tools:
+                with st.container(key="admin_overview_quality"):
+                    st.markdown("### Kiểm tra câu trả lời")
+                    st.caption("Thử một câu hỏi bằng chính bộ truy xuất và mô hình hiện tại.")
+                    st.html(
+                        '<div class="dhv-admin-callout"><span class="material-symbols-rounded">fact_check</span>'
+                        '<div><b>Không dùng số liệu minh họa</b><small>Chỉ hiển thị trạng thái đọc được từ tệp và Chroma trên máy chủ.</small></div></div>'
+                    )
+                    if st.button("Mở công cụ kiểm tra", icon=":material/arrow_forward:", key="admin_overview_quality_open", type="primary"):
+                        st.session_state.admin_page = "quality"
+                        st.rerun()
+            st.caption("Các câu hỏi của user chưa được ghi vào nhật ký tập trung, nên bảng này không tạo số liệu lượt hỏi hoặc hàng chờ giả.")
+
+        elif page == "sources":
+            with st.container(key="admin_sources_panel"):
+                st.markdown("### Kho tài liệu đã xử lý")
+                st.caption(f"Thư mục: `{Path(settings.processed_data_dir)}` · Vector store: {vector_status}")
+                if not files:
+                    st.info("Kho dữ liệu hiện tại chưa có tệp JSON đã xử lý.")
+                else:
+                    for index, path in enumerate(files):
+                        try:
+                            modified = datetime.fromtimestamp(path.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
+                            size_kb = max(1, round(path.stat().st_size / 1024))
+                        except OSError:
+                            modified, size_kb = "Không đọc được", 0
+                        st.html(
+                            '<div class="dhv-admin-source-row">'
+                            '<span class="dhv-admin-file-icon material-symbols-rounded">description</span>'
+                            f'<div><b>{escape(path.stem.replace("_", " "))}</b>'
+                            f'<small>{escape(path.parent.name.replace("_", " "))} · Cập nhật {escape(modified)}</small></div>'
+                            f'<span class="dhv-admin-file-size">{size_kb} KB</span></div>'
+                        )
+                st.info("Màn hình chỉ đọc. Tệp nguồn chỉ được thêm sau khi qua quy trình xác minh và dựng lại Chroma của dự án.")
+
+        else:
+            with st.container(key="admin_quality_panel"):
+                st.markdown("### Chạy thử truy vấn")
+                st.caption("Kết quả là phản hồi trực tiếp từ pipeline hiện tại; thao tác này không lưu câu hỏi vào dữ liệu người dùng.")
+                with st.form("admin_question_form", clear_on_submit=False, border=False):
+                    question = st.text_area(
+                        "Câu hỏi cần kiểm tra", key="admin_test_question",
+                        placeholder="Ví dụ: DHV có học bổng không?", height=100,
+                    )
+                    submitted = st.form_submit_button("Chạy kiểm tra", icon=":material/play_arrow:", type="primary")
+                if submitted:
+                    if not question.strip():
+                        st.warning("Nhập câu hỏi trước khi chạy.")
+                    else:
+                        from src.chatbot.chat_service import ask_chatbot
+                        from src.chatbot.query_analysis import ConversationState
+
+                        try:
+                            with st.spinner("Đang chạy truy xuất và tạo câu trả lời..."):
+                                result = ask_chatbot(
+                                    question.strip(),
+                                    conversation_state=ConversationState().to_dict(),
+                                    conversation_history=[],
+                                    bypass_cache=True,
+                                )
+                            st.session_state.admin_quality_result = result
+                            st.session_state.admin_quality_question = question.strip()
+                        except Exception:
+                            st.session_state.admin_quality_result = {
+                                "answer": GENERIC_ERROR_ANSWER, "status": "error", "sources": [],
+                            }
+                            st.session_state.admin_quality_question = question.strip()
+                result = st.session_state.get("admin_quality_result")
+                if isinstance(result, Mapping):
+                    st.divider()
+                    st.caption(f"Câu hỏi: {st.session_state.get('admin_quality_question', '')} · Trạng thái: {result.get('status', 'không rõ')}")
+                    st.markdown(str(result.get("answer") or GENERIC_ERROR_ANSWER))
+                    sources = result.get("sources")
+                    if isinstance(sources, list) and sources:
+                        st.markdown("**Nguồn được trả về**")
+                        for source in sources:
+                            if not isinstance(source, Mapping):
+                                continue
+                            title = str(source.get("title") or "Nguồn DHV")
+                            url = str(source.get("url") or "")
+                            if _is_official_url(url):
+                                st.link_button(title, url, key=f"admin_source_link_{abs(hash(url))}")
+                            else:
+                                st.markdown(f"- {escape(title)}")
+                    trace = result.get("trace")
+                    if isinstance(trace, Mapping):
+                        with st.expander("Chi tiết truy xuất", expanded=False):
+                            st.json(trace, expanded=False)
+
+
+def _record_and_render_exchange(question: str) -> None:
+    """Answer the user turn already recorded by the submission callback."""
 
     with st.chat_message("assistant", avatar=":material/school:"):
         with st.spinner("Đang tra cứu thông tin tuyển sinh..."):
@@ -1159,47 +1507,47 @@ from src.chatbot.chat_service import ask_chatbot
 from src.chatbot.query_analysis import ConversationState
 from src.chatbot.warmup import start_background_warmup, wait_for_warmup
 
-start_background_warmup()
 _init_session_state()
-_render_sidebar()
-_render_topbar()
-_render_mobile_nav()
-
-if st.session_state.get("messages") and st.session_state.get("account_page") == "explore":
-    st.session_state.account_page = "chat"
-page = st.session_state.get("account_page", "explore")
-show_profile = bool(st.session_state.auth_user) and page == "profile"
-selected_question: str | None = None
-typed_question: str | None = None
-
-if show_profile:
-    _render_profile_view()
-elif page == "chat":
-    _render_conversation()
-    typed_question = st.chat_input(
-        "Hỏi thêm về điều bạn quan tâm…",
-        key="chat_input",
-        submit_mode="disable",
-    )
-    with st.container(key="chat_note"):
-        st.caption(
-            "Đối chiếu kênh chính thức: [Cổng tuyển sinh](https://tuyensinh.dhv.edu.vn/) · "
-            "[Đăng ký trực tuyến](https://tuyensinh.dhv.edu.vn/dangky) · "
-            "Hotline: [028 7100 0888](tel:02871000888) · "
-            "[Zalo Tuyển sinh](https://zalo.me/1822829687649866202)"
-        )
-elif page in {"majors", "compare", "checklist", "notebook", "help"}:
-    selected_question = _render_workspace_page(page)
+admin_console_route = st.query_params.get("console") == "admin"
+if admin_console_route:
+    _render_admin_console()
 else:
-    selected_question = _render_welcome()
+    start_background_warmup()
+    page = st.session_state.get("account_page", "chat")
+    if page not in {"chat", "profile"}:
+        page = "chat"
+        st.session_state.account_page = page
+    _render_sidebar()
+    _render_topbar()
 
-queued_question = st.session_state.pop("pending_question", None)
-question_to_send = queued_question or typed_question or selected_question
-if isinstance(question_to_send, str) and question_to_send.strip():
-    st.session_state.account_page = "chat"
-    _record_and_render_exchange(question_to_send.strip())
-    _save_current_chat()
-    st.rerun()
+    show_profile = bool(st.session_state.auth_user) and page == "profile"
+    if show_profile:
+        _render_profile_view()
+    else:
+        _render_clean_conversation()
+        if st.session_state.messages:
+            st.chat_input(
+                "Nhập câu hỏi về tuyển sinh DHV...",
+                key="chat_input", submit_mode="disable",
+                on_submit=_submit_chat_question,
+                disabled=st.session_state.chat_request_in_progress,
+            )
+        with st.container(key="chat_note"):
+            st.caption(
+                "Thông tin quan trọng vui lòng đối chiếu tại "
+                "[Cổng tuyển sinh DHV](https://tuyensinh.dhv.edu.vn/)."
+            )
+
+    queued_question = st.session_state.get("pending_question")
+    if isinstance(queued_question, str) and queued_question.strip():
+        try:
+            with st.container(key="conversation_pending_answer"):
+                _record_and_render_exchange(queued_question)
+            st.session_state.pop("pending_question", None)
+            _save_current_chat()
+        finally:
+            st.session_state.chat_request_in_progress = False
+        st.rerun()
 
 if st.session_state.auth_view and not st.session_state.auth_user:
     render_auth_dialog()

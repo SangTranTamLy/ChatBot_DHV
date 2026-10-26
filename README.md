@@ -10,6 +10,21 @@ Chatbot chạy cục bộ bằng Streamlit, Ollama và ChromaDB. Câu trả lờ
 - Phân tích ý định, trường, năm và ngữ cảnh câu hỏi; hỗ trợ tách một số câu hỏi nhiều ý trước khi tìm dữ liệu.
 - Tìm kiếm kết hợp từ khóa BM25 và vector, sau đó lọc evidence trước khi tạo câu trả lời.
 - Chặn câu hỏi trường ngoài hoặc ngoài phạm vi trước khi truy xuất dữ liệu DHV.
+- Giao diện chatbot tập trung cho user, hồ sơ cá nhân và khu quản trị riêng được bảo vệ bằng quyền Supabase Auth.
+
+## Khu quản trị
+
+Khu quản trị không có liên kết trong giao diện user. Mở trực tiếp ứng dụng với tham số `?console=admin`, ví dụ `http://localhost:8501/?console=admin`, rồi đăng nhập bằng tài khoản Supabase riêng đã được cấp quyền admin. Tài khoản chỉ được xem trang quản trị khi `app_metadata.role` do quản trị viên Supabase cấp có giá trị `admin`; vai trò trong `user_metadata` không được tin cậy.
+
+Để cấp quyền cho một tài khoản Supabase đã tạo, mở **SQL Editor** trong Supabase và chạy câu lệnh dưới đây sau khi thay email mẫu bằng email admin chính xác:
+
+```sql
+update auth.users
+set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role":"admin"}'::jsonb
+where lower(email) = lower('admin@example.com');
+```
+
+Kiểm tra câu lệnh chỉ cập nhật đúng một tài khoản. Admin cần đăng xuất rồi đăng nhập lại để ứng dụng tải quyền mới. Hạ quyền bằng câu lệnh `raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) - 'role'` với cùng điều kiện email. Trang admin hiện xem trạng thái nguồn JSON/Chroma trên máy chủ và chạy thử câu hỏi qua pipeline; trang chưa ghi nhật ký hội thoại người dùng hoặc cho phép sửa trực tiếp tài liệu.
 
 ## Luồng xử lý
 

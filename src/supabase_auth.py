@@ -182,11 +182,18 @@ def _authenticated_user(client: Any, user: Any) -> dict[str, str]:
     email = _value(user, "email")
     if not user_id or not email:
         raise AuthServiceError("Không xác nhận được tài khoản. Vui lòng đăng nhập lại.")
-    return {
+    authenticated = {
         "id": str(user_id),
         "name": _profile_name(client, str(user_id)),
         "email": str(email).strip().lower(),
     }
+    # Supabase app_metadata can only be changed through trusted admin-side
+    # operations. Never use user_metadata as a permission source: users can
+    # edit it themselves through Auth APIs.
+    app_metadata = _value(user, "app_metadata", {})
+    if isinstance(app_metadata, Mapping) and app_metadata.get("role") == "admin":
+        authenticated["role"] = "admin"
+    return authenticated
 
 
 def _safe_sign_out(client: Any) -> None:
