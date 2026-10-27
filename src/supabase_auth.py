@@ -7,6 +7,7 @@ server-side Streamlit session; passwords are never persisted by this module.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -27,6 +28,8 @@ class AuthConfigurationError(AuthServiceError):
 
 _EMAIL_RE = re.compile(r"[^@\s]+@[^@\s.]+(?:\.[^@\s.]+)+")
 _CLIENT_FACTORY: Callable[..., Any] | None = None
+PASSWORD_RECOVERY_REDIRECT_URL = "http://localhost:8501/?auth=recovery"
+PASSWORD_RECOVERY_SESSION_TTL_SECONDS = 15 * 60
 
 
 def _read_setting(name: str) -> str | None:
@@ -305,6 +308,120 @@ def change_password(tokens: Mapping[str, Any], current_password: str,
         raise AuthServiceError(
             "Không đổi được mật khẩu. Hãy kiểm tra mật khẩu hiện tại và thử lại."
         ) from exc
+
+
+def request_password_recovery(email: str) -> bool:
+    """Request a reset email without revealing whether the account exists.
+
+    The fixed local redirect is intentionally not caller-controlled. Supabase
+    returns successfully for unknown addresses without sending an email, so
+    those requests do not consume the project's email-send quota.
+    """
+
+    clean_email = validate_email(email)
+    try:
+        client = _create_client()
+        client.auth.reset_password_for_email(
+            clean_email,
+            {"redirect_to": PASSWORD_RECOVERY_REDIRECT_URL},
+        )
+        return True
+    except AuthConfigurationError:
+        raise
+    except Exception as exc:
+        # Do not expose provider/send errors that could differ based on whether
+        # an account exists. Log only the exception class, never the email or
+        # any token/provider payload.
+        logging.getLogger(__name__).warning(
+            "Password recovery request failed (%s)", type(exc).__name__
+        )
+        return False
+
+
+def _recovery_auth_context(tokens: Mapping[str, Any]) -> tuple[Any, str, int]:
+    """Verify a recovery JWT with Supabase and bind it to its matching user."""
+
+    access_token = tokens.get("access_token") if isinstance(tokens, Mapping) else None
+    refresh_token = tokens.get("refresh_token") if isinstance(tokens, Mapping) else None
+    if (
+        not isinstance(access_token, str)
+        or not isinstance(refresh_token, str)
+        or not access_token
+        or not refresh_token
+        or len(access_token) > 16_384
+        or len(refresh_token) > 16_384
+    ):
+        raise AuthServiceError(
+            "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Hãy yêu cầu liên kết mới."
+        )
+
+    client = _create_client()
+    try:
+        claims_response = client.auth.get_claims(access_token)
+        claims = _value(claims_response, "claims")
+        if not isinstance(claims, Mapping):
+            raise ValueError("Missing verified JWT claims")
+
+        user_id = str(claims.get("sub") or "")
+        expires_at = int(claims.get("exp") or 0)
+        methods = claims.get("amr") or []
+        is_recovery = isinstance(methods, list) and any(
+            _value(method, "method") == "recovery" for method in methods
+        )
+        if not user_id or expires_at <= int(time.time()) or not is_recovery:
+            raise ValueError("JWT is not an active recovery session")
+
+        user_response = client.auth.get_user(access_token)
+        user = _value(user_response, "user") or user_response
+        if str(_value(user, "id") or "") != user_id:
+            raise ValueError("Recovery token user does not match verified subject")
+
+        # Install only the already-verified recovery session on this operation-
+        # scoped client so update_user uses the same subject and session.
+        client.auth.set_session(access_token, refresh_token)
+        return client, user_id, expires_at
+    except Exception as exc:
+        if isinstance(exc, AuthServiceError):
+            raise
+        raise AuthServiceError(
+            "Liên kết đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Hãy yêu cầu liên kết mới."
+        ) from exc
+
+
+def verify_password_recovery(tokens: Mapping[str, Any]) -> dict[str, Any]:
+    """Verify the recovery session before the UI shows the new-password form."""
+
+    _, user_id, expires_at = _recovery_auth_context(tokens)
+    return {"user_id": user_id, "expires_at": expires_at}
+
+
+def reset_password_with_recovery(
+    tokens: Mapping[str, Any], new_password: str, confirmation: str
+) -> str:
+    """Set a new password using a verified recovery session, then revoke refresh sessions."""
+
+    validate_password_pair(new_password, confirmation)
+    client, user_id, _ = _recovery_auth_context(tokens)
+    try:
+        response = client.auth.update_user({"password": new_password})
+        updated_user = _value(response, "user") or response
+        updated_id = _value(updated_user, "id")
+        if updated_id and str(updated_id) != user_id:
+            raise ValueError("Updated user did not match recovery subject")
+    except Exception as exc:
+        raise AuthServiceError(
+            "Không thể đặt mật khẩu mới. Hãy kiểm tra yêu cầu mật khẩu và thử lại."
+        ) from exc
+
+    # Successful password reset remains successful even if revocation cannot
+    # reach Auth. Access JWTs already issued can remain valid until expiry.
+    try:
+        client.auth.sign_out({"scope": "global"})
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Global sign-out after password recovery failed (%s)", type(exc).__name__
+        )
+    return user_id
 
 
 def logout_user(tokens: Mapping[str, Any] | None) -> None:

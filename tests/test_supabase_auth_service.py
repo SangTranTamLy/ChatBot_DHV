@@ -3,7 +3,17 @@
 from unittest import TestCase
 from unittest.mock import patch
 
-from src.supabase_auth import AuthServiceError, change_password, login_user, register_user, restore_auth_session
+from src.supabase_auth import (
+    AuthServiceError,
+    PASSWORD_RECOVERY_REDIRECT_URL,
+    change_password,
+    login_user,
+    register_user,
+    request_password_recovery,
+    reset_password_with_recovery,
+    restore_auth_session,
+    verify_password_recovery,
+)
 
 
 class _Query:
@@ -33,6 +43,14 @@ class _Auth:
         self.login_args = None
         self.update_args = None
         self.signed_out = False
+        self.sign_out_options = None
+        self.reset_args = None
+        self.reset_error = None
+        self.claims = {
+            "sub": "user-1",
+            "exp": 4_000_000_000,
+            "amr": [{"method": "recovery"}],
+        }
 
     def sign_up(self, args):
         self.signup_args = args
@@ -44,8 +62,14 @@ class _Auth:
             raise ValueError("invalid credentials")
         return {"user": self.user, "session": self.session}
 
-    def sign_out(self):
+    def sign_out(self, options=None):
         self.signed_out = True
+        self.sign_out_options = options
+
+    def reset_password_for_email(self, email, options=None):
+        self.reset_args = (email, options)
+        if self.reset_error:
+            raise self.reset_error
 
     def get_session(self):
         return self.session
@@ -58,8 +82,11 @@ class _Auth:
         }
         return self.session
 
-    def get_user(self):
+    def get_user(self, _jwt=None):
         return {"user": self.user}
+
+    def get_claims(self, _jwt=None):
+        return {"claims": self.claims}
 
     def update_user(self, args):
         self.update_args = args
@@ -124,6 +151,66 @@ class SupabaseAuthServiceTests(TestCase):
                 "WrongPass123",
                 "NewPassword123",
                 "NewPassword123",
+            )
+        self.assertIsNone(self.client.auth.update_args)
+
+    def test_password_recovery_request_uses_fixed_callback_and_normalizes_email(self):
+        self.assertTrue(request_password_recovery(" AN@example.com "))
+        self.assertEqual(
+            self.client.auth.reset_args,
+            ("an@example.com", {"redirect_to": PASSWORD_RECOVERY_REDIRECT_URL}),
+        )
+
+    def test_password_recovery_send_errors_do_not_leak_account_state(self):
+        self.client.auth.reset_error = ValueError("mail provider detail")
+        self.assertFalse(request_password_recovery("an@example.com"))
+
+    def test_recovery_session_requires_verified_recovery_amr_and_matching_subject(self):
+        verified = verify_password_recovery({
+            "access_token": "recovery-access",
+            "refresh_token": "recovery-refresh",
+        })
+        self.assertEqual(verified["user_id"], "user-1")
+
+        self.client.auth.claims["amr"] = [{"method": "password"}]
+        with self.assertRaises(AuthServiceError):
+            verify_password_recovery({
+                "access_token": "normal-access",
+                "refresh_token": "normal-refresh",
+            })
+
+        self.client.auth.claims["amr"] = [{"method": "recovery"}]
+        self.client.auth.claims["sub"] = "another-user"
+        with self.assertRaises(AuthServiceError):
+            verify_password_recovery({
+                "access_token": "recovery-access",
+                "refresh_token": "recovery-refresh",
+            })
+
+        self.client.auth.claims["sub"] = "user-1"
+        self.client.auth.claims["exp"] = 1
+        with self.assertRaises(AuthServiceError):
+            verify_password_recovery({
+                "access_token": "expired-access",
+                "refresh_token": "expired-refresh",
+            })
+
+    def test_recovery_password_update_validates_pair_then_revokes_refresh_sessions(self):
+        tokens = {
+            "access_token": "recovery-access",
+            "refresh_token": "recovery-refresh",
+        }
+        user_id = reset_password_with_recovery(tokens, "NewPassword123", "NewPassword123")
+        self.assertEqual(user_id, "user-1")
+        self.assertEqual(self.client.auth.update_args, {"password": "NewPassword123"})
+        self.assertEqual(self.client.auth.sign_out_options, {"scope": "global"})
+
+    def test_recovery_does_not_update_when_password_pair_is_invalid(self):
+        with self.assertRaises(AuthServiceError):
+            reset_password_with_recovery(
+                {"access_token": "recovery-access", "refresh_token": "recovery-refresh"},
+                "NewPassword123",
+                "AnotherPassword123",
             )
         self.assertIsNone(self.client.auth.update_args)
 

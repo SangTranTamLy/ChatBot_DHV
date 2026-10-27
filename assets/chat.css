@@ -488,7 +488,6 @@ body, [data-testid="stAppViewContainer"] {
     background: var(--dhv-surface);
 }
 [data-testid="stSidebar"][aria-expanded="true"] {
-    width: 240px !important; min-width: 240px !important; max-width: 240px !important;
     z-index: 60; border-right: 1px solid var(--dhv-line);
     background: #ffffff;
     box-shadow: 2px 0 16px rgba(25, 43, 101, 0.04);
@@ -1161,10 +1160,19 @@ body, [data-testid="stAppViewContainer"] {
     background-position: center, 37% 72% !important;
     background-size: cover !important;
 }
-[data-testid="stSidebarUserContent"] { padding: 1.4rem 1rem 1rem !important; }
+[data-testid="stSidebarUserContent"] {
+    height:100dvh !important;
+    min-height:100dvh !important;
+    padding:.75rem 0 .5rem !important;
+    overflow-y:auto !important;
+}
 [data-testid="stSidebarUserContent"] > [data-testid="stVerticalBlock"] {
     display: flex !important; flex-direction: column !important;
-    min-height: calc(100dvh - 3.8rem) !important; gap: .75rem !important;
+    align-items:stretch !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:100% !important;
+    gap:.75rem !important;
 }
 .dhv-chat-sidebar-brand { display:flex; align-items:center; gap:.7rem; padding:.2rem .55rem 1.15rem; }
 .dhv-chat-sidebar-brand > div:last-child { display:flex; flex-direction:column; gap:.2rem; }
@@ -2404,23 +2412,49 @@ body, [data-testid="stAppViewContainer"] {
     min-height:0 !important;
     padding:0 2.3rem .2rem !important;
 }
-[data-testid="stSidebar"] { border-right:1px solid #284263 !important; }
+[data-testid="stSidebar"] {
+    border-right:1px solid #173d68 !important;
+    resize:none !important;
+    transition:width .18s ease,min-width .18s ease,max-width .18s ease !important;
+}
 [data-testid="stSidebar"] > div:first-child {
     width:100% !important;
     box-sizing:border-box !important;
-    background:
-        linear-gradient(180deg,#082f63f2 0%,#082f63e8 31%,#0829519e 64%,#061d3edb 86%,#041a38f2 100%),
-        url("/app/static/dhv-campus-background.png") 28% 76%/cover no-repeat !important;
+    background:#082b59 !important;
 }
 [data-testid="stSidebarResizeHandle"],
 [data-testid="stSidebarResizeHandle"]:hover,
-[data-testid="stSidebarResizeHandle"]:active {
-    right:0 !important;
-    width:8px !important;
-    cursor:col-resize !important;
-    background:transparent !important;
-    background-image:none !important;
-    box-shadow:none !important;
+[data-testid="stSidebarResizeHandle"]:active,
+[data-testid="stSidebar"] > .eelgd2m3,
+[data-testid="stSidebar"] > div.eelgd2m3,
+[data-testid="stSidebar"] > div[style*="cursor: col-resize"],
+[data-testid="stSidebar"] > div[style*="cursor:col-resize"],
+[data-testid="stSidebar"] > div[style*="right: -6px"],
+[data-testid="stSidebar"] > div[style*="right:-6px"],
+[data-testid="stSidebar"] [class*="eelgd2m3"] {
+    display:none !important;
+    pointer-events:none !important;
+    width:0 !important;
+    min-width:0 !important;
+    opacity:0 !important;
+    cursor:default !important;
+}
+[data-testid="stSidebarResizeHandle"]::before,
+[data-testid="stSidebarResizeHandle"]::after {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-expanded) {
+    width:17rem !important;
+    min-width:17rem !important;
+    max-width:17rem !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) {
+    width:3.5rem !important;
+    min-width:3.5rem !important;
+    max-width:3.5rem !important;
+}
+[data-testid="stSidebarUserContent"] [data-testid="stElementContainer"]:has(.dhv-sidebar-mode-marker) {
+    display:none !important;
 }
 [data-testid="stSidebar"] [data-testid="stSidebarContent"] {
     padding:0 !important;
@@ -2431,15 +2465,27 @@ body, [data-testid="stAppViewContainer"] {
 }
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
     position:relative !important;
-    padding:.55rem 1.25rem 7.25rem !important;
-    background:transparent !important;
-    background-image:none !important;
+    height:100dvh !important;
+    min-height:100dvh !important;
+    box-sizing:border-box !important;
+    padding:.65rem .75rem 6.75rem !important;
+    background-color:#082b59 !important;
+    background-image:linear-gradient(180deg,#082b59f7 0%,#082b59ed 34%,#082b59c2 66%,#061f43eb 86%,#041a38fa 100%),
+                     url("/app/static/dhv-campus-background.png") !important;
+    background-position:center,28% 76% !important;
+    background-size:cover !important;
+    overflow-y:auto !important;
     box-shadow:none !important;
     border:0 !important;
 }
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] > [data-testid="stVerticalBlock"] {
-    min-height:calc(100dvh - 2.5rem) !important;
-    gap:.5rem !important;
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:stretch !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:100% !important;
+    gap:.6rem !important;
     background:transparent !important;
     background-image:none !important;
     box-shadow:none !important;
@@ -2449,17 +2495,83 @@ body, [data-testid="stAppViewContainer"] {
     position:relative;
     display:flex;
     align-items:center;
-    gap:.9rem;
-    min-height:3.75rem;
-    margin:0 0 .35rem !important;
-    padding:.15rem .15rem .3rem !important;
+    gap:.65rem;
+    min-height:3.2rem;
+    margin:0 0 .15rem !important;
+    padding:.1rem 2.35rem .2rem .1rem !important;
     border-bottom:0 !important;
+}
+.st-key-sidebar_compact_toggle {
+    position:absolute !important;
+    z-index:45 !important;
+    top:.85rem !important;
+    right:.65rem !important;
+    width:2rem !important;
+    height:2rem !important;
+    margin:0 !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button {
+    position:relative !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:2rem !important;
+    min-width:2rem !important;
+    min-height:2rem !important;
+    padding:0 !important;
+    border:1px solid transparent !important;
+    border-radius:.7rem !important;
+    background:transparent !important;
+    box-shadow:none !important;
+    overflow:hidden !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button::before {
+    content:"";
+    position:absolute;
+    top:50%;
+    left:50%;
+    display:block;
+    width:1.15rem;
+    height:1.05rem;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 18'%3E%3Crect x='1.5' y='1.5' width='17' height='15' rx='3' fill='none' stroke='%23dce8f8' stroke-width='1.5'/%3E%3Cpath d='M7.5 2v14' fill='none' stroke='%23dce8f8' stroke-width='1.5'/%3E%3C/svg%3E") center/contain no-repeat;
+    opacity:1;
+    transform:translate(-50%,-50%);
+    transition:opacity .12s ease;
+}
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button::after {
+    content:"school";
+    position:absolute;
+    top:50%;
+    left:50%;
+    color:#fff;
+    font-family:"DHV Material Symbols";
+    font-size:1.55rem;
+    font-weight:400;
+    font-feature-settings:"liga";
+    font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;
+    line-height:1;
+    opacity:0;
+    transform:translate(-50%,-50%);
+    transition:opacity .12s ease;
+}
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button:hover {
+    background:#ffffff14 !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button p {
+    display:none !important;
+}
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button [data-testid="stIconMaterial"],
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button [role="img"],
+[data-testid="stSidebar"] .st-key-sidebar_compact_toggle button svg {
+    display:none !important;
+    margin:0 !important;
+    color:#fff !important;
 }
 .dhv-chat-sidebar-brand .dhv-sidebar-badge {
     display:grid;
     place-items:center;
-    width:3.15rem;
-    height:3.15rem;
+    width:2.7rem;
+    height:2.7rem;
     flex:none;
     border:0;
     border-radius:0;
@@ -2469,66 +2581,54 @@ body, [data-testid="stAppViewContainer"] {
 .dhv-chat-sidebar-brand .dhv-sidebar-badge-icon {
     color:#fff;
     font-family:"DHV Material Symbols";
-    font-size:2.75rem;
+    font-size:2.35rem;
 }
 .dhv-chat-sidebar-brand b {
     display:block;
     color:#fff;
-    font-size:1.7rem;
+    font-size:1.48rem;
     line-height:1;
     letter-spacing:.015em;
 }
 .dhv-chat-sidebar-brand small {
     display:block;
-    margin-top:.35rem;
+    margin-top:.28rem;
     color:#d9e7f8;
-    font-size:.62rem;
+    font-size:.56rem;
     font-weight:800;
     letter-spacing:.17em;
 }
-.dhv-sidebar-collapse {
-    position:absolute;
-    top:.3rem;
-    right:0;
-    display:grid;
-    place-items:center;
-    width:2.2rem;
-    height:2.2rem;
-    border:1px solid #ffffff55;
-    border-radius:50%;
-    color:#fff;
-    font-family:"DHV Material Symbols";
-    font-size:1.35rem;
-}
 [data-testid="stSidebar"] .st-key-new_chat button {
-    min-height:3.55rem !important;
+    min-height:3.05rem !important;
     border:1px solid #ff617d !important;
-    border-radius:.75rem !important;
+    border-radius:.85rem !important;
     background:linear-gradient(135deg,#ff244a,#e70e34) !important;
-    box-shadow:0 .65rem 1.45rem #02162d44 !important;
+    box-shadow:0 .5rem 1.15rem #02162d38 !important;
 }
 [data-testid="stSidebar"] .st-key-new_chat button p {
     color:#fff !important;
-    font-size:.92rem !important;
+    font-size:.84rem !important;
     font-weight:750 !important;
 }
 [data-testid="stSidebar"] .st-key-new_chat button span { color:#fff !important; }
 .st-key-chat_history_list {
     flex:0 1 auto !important;
     min-height:0 !important;
-    max-height:calc(100dvh - 26rem);
-    margin-top:0;
+    max-height:calc(100dvh - 23rem);
+    margin-top:.05rem;
+    padding:.45rem !important;
     overflow-y:auto;
-    background:transparent !important;
-    border:0 !important;
-    box-shadow:none !important;
+    background:#ffffff0a !important;
+    border:1px solid #ffffff12 !important;
+    border-radius:1rem !important;
+    box-shadow:inset 0 1px #ffffff0a !important;
 }
 .st-key-chat_history_list > [data-testid="stVerticalBlock"] { gap:.35rem !important; }
 .dhv-chat-sidebar-label {
     display:flex;
     align-items:center;
     justify-content:space-between;
-    margin:.05rem .15rem .4rem;
+    margin:.05rem .1rem .3rem;
     color:#fff;
 }
 .dhv-chat-sidebar-label > span {
@@ -2545,11 +2645,11 @@ body, [data-testid="stAppViewContainer"] {
 }
 .dhv-chat-sidebar-label small { display:none !important; }
 .st-key-chat_history_list [data-testid="stButton"] button {
-    min-height:3.35rem;
+    min-height:3rem;
     justify-content:flex-start;
-    padding:.7rem .65rem !important;
+    padding:.55rem .55rem !important;
     border:0 !important;
-    border-bottom:1px solid #ffffff13 !important;
+    border-bottom:1px solid #ffffff0d !important;
     border-radius:.7rem !important;
     background:transparent !important;
     box-shadow:none !important;
@@ -2582,7 +2682,7 @@ body, [data-testid="stAppViewContainer"] {
     position:relative !important;
     flex:1 1 auto !important;
     height:auto !important;
-    min-height:12rem !important;
+    min-height:9rem !important;
     width:100% !important;
     align-self:stretch !important;
     margin:0 !important;
@@ -2591,11 +2691,11 @@ body, [data-testid="stAppViewContainer"] {
 }
 .dhv-sidebar-ornament span {
     position:absolute;
-    right:.6rem;
-    top:48%;
+    right:.35rem;
+    top:50%;
     color:#edf5ff;
     font-family:"Segoe Script","Brush Script MT",cursive;
-    font-size:1.35rem;
+    font-size:1.18rem;
     font-style:italic;
     line-height:1.02;
     text-align:center;
@@ -2604,24 +2704,200 @@ body, [data-testid="stAppViewContainer"] {
 }
 .dhv-sidebar-ornament i {
     position:absolute;
-    top:calc(48% + 4.4rem);
-    right:.7rem;
-    width:4.7rem;
+    top:calc(50% + 3.9rem);
+    right:.45rem;
+    width:4.15rem;
     height:.16rem;
     border-radius:999px;
     background:#f31d43;
     transform:rotate(-12deg);
 }
 .st-key-chat_sidebar_footer {
-    position:sticky !important;
-    margin-top:auto !important;
-    left:auto !important;
-    right:auto !important;
-    bottom:0 !important;
+    position:absolute !important;
+    z-index:20 !important;
+    right:.75rem !important;
+    bottom:.4rem !important;
+    left:.75rem !important;
+    margin:0 !important;
+    width:auto !important;
+    max-height:none !important;
+    overflow:visible !important;
+    padding:.55rem 0 max(.55rem,env(safe-area-inset-bottom)) !important;
+    border:0 !important;
+    border-top:1px solid #ffffff24 !important;
+    background:transparent !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebarUserContent"] > [data-testid="stVerticalBlock"]
+> [data-testid="stElementContainer"]:has(.st-key-chat_sidebar_footer) {
+    position:static !important;
+    flex:0 0 0 !important;
+    width:0 !important;
+    height:0 !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+}
+.st-key-chat_sidebar_footer > [data-testid="stVerticalBlock"] {
     width:100% !important;
-    padding:.9rem 1.25rem max(.85rem,env(safe-area-inset-bottom)) !important;
-    border-top:1px solid #ffffff24;
-    background:linear-gradient(180deg,#082951f2,#041d3efb) !important;
+    box-sizing:border-box !important;
+}
+
+/* Compact sidebar: a deliberate icon rail, not a freely resizable panel. */
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) > div:first-child,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) [data-testid="stSidebarUserContent"] {
+    background:linear-gradient(180deg,#ffffff 0%,#f6f9fd 100%) !important;
+    background-image:linear-gradient(180deg,#ffffff 0%,#f6f9fd 100%) !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact),
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) > div:first-child,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) [data-testid="stSidebarContent"],
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) [data-testid="stSidebarUserContent"] {
+    border:0 !important;
+    border-right:0 !important;
+    outline:0 !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) > div:first-child {
+    box-shadow:6px 0 24px rgba(8,43,89,.07) !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) [data-testid="stSidebarUserContent"] {
+    padding:0 0 4.75rem !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .dhv-chat-sidebar-brand,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_history_list,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) [data-testid="stElementContainer"]:has(.dhv-sidebar-ornament) {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle {
+    top:.625rem !important;
+    right:auto !important;
+    left:.625rem !important;
+    width:2.25rem !important;
+    height:2.25rem !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button {
+    width:2.25rem !important;
+    min-width:2.25rem !important;
+    min-height:2.25rem !important;
+    border:0 !important;
+    border-radius:.85rem !important;
+    background:#fff !important;
+    box-shadow:0 4px 14px rgba(8,43,89,.08) !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button:hover {
+    background:#eef3fa !important;
+    box-shadow:0 5px 16px rgba(8,43,89,.11) !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button::before {
+    display:block;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 18'%3E%3Crect x='1.5' y='1.5' width='17' height='15' rx='3' fill='none' stroke='%23272a2f' stroke-width='1.5'/%3E%3Cpath d='M7.5 2v14' fill='none' stroke='%23272a2f' stroke-width='1.5'/%3E%3C/svg%3E");
+    opacity:0;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button::after {
+    color:#082b59;
+    opacity:1;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button:hover::before {
+    opacity:1;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button:hover::after {
+    opacity:0;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat {
+    position:absolute !important;
+    z-index:30 !important;
+    top:3.55rem !important;
+    left:.625rem !important;
+    width:2.25rem !important;
+    height:2.25rem !important;
+    margin:0 !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button {
+    width:2.25rem !important;
+    min-width:2.25rem !important;
+    min-height:2.25rem !important;
+    padding:0 !important;
+    border:0 !important;
+    border-radius:.85rem !important;
+    background:#edf3fb !important;
+    box-shadow:0 3px 12px rgba(8,43,89,.06) !important;
+    justify-content:center !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button:hover {
+    background:#fff0f3 !important;
+    box-shadow:0 5px 16px rgba(239,24,61,.11) !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button p {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button [role="img"],
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button [data-testid="stIconMaterial"],
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button svg {
+    margin:0 !important;
+    color:#082b59 !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button:hover [role="img"],
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button:hover [data-testid="stIconMaterial"],
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-new_chat button:hover svg {
+    color:#ef183d !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_sidebar_footer {
+    right:.625rem !important;
+    bottom:.625rem !important;
+    left:.625rem !important;
+    padding:.3rem 0 !important;
+    border:0 !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_sidebar_footer > [data-testid="stVerticalBlock"] {
+    gap:.35rem !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_help_menu {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_help_menu [data-testid="stPopoverButton"],
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-rail_login button,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_account_menu [data-testid="stPopoverButton"] {
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:2.25rem !important;
+    min-width:2.25rem !important;
+    min-height:2.25rem !important;
+    padding:0 !important;
+    border:0 !important;
+    border-radius:.85rem !important;
+    background:#fff !important;
+    box-shadow:0 3px 12px rgba(8,43,89,.07) !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_help_menu [data-testid="stPopoverButton"]:hover,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-rail_login button:hover,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_account_menu [data-testid="stPopoverButton"]:hover {
+    background:#eef3fa !important;
+    box-shadow:0 5px 16px rgba(8,43,89,.1) !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_help_menu [data-testid="stPopoverButton"] p,
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-rail_login button p {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_help_menu [role="img"],
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-rail_login [role="img"] {
+    margin:0 !important;
+    color:#082b59 !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_account_menu [data-testid="stPopoverButton"] p {
+    justify-content:center !important;
+    gap:0 !important;
+    color:transparent !important;
+    font-size:0 !important;
+}
+[data-testid="stSidebar"]:has(.dhv-sidebar-is-compact) .st-key-chat_account_menu [data-testid="stPopoverButton"] p strong {
+    width:2rem !important;
+    height:2rem !important;
+    color:#fff !important;
+    background:linear-gradient(145deg,#174b82,#082b59) !important;
+    font-size:.68rem !important;
+    box-shadow:inset 0 0 0 2px #ffffff55 !important;
 }
 
 .st-key-topbar {
@@ -2933,42 +3209,52 @@ body, [data-testid="stAppViewContainer"] {
 .dhv-reference-suggestion-title {
     display:flex;
     align-items:center;
-    gap:.45rem;
+    gap:.4rem;
     margin:.05rem 0 0;
     padding-top:.15rem;
     border-top:0;
     color:#345b88;
 }
-.dhv-reference-suggestion-title span {
+.dhv-reference-suggestion-title .dhv-reference-suggestion-icon {
+    display:inline-grid;
+    place-items:center;
+    flex:0 0 1.15rem;
+    width:1.15rem;
+    height:1.15rem;
     font-family:"DHV Material Symbols";
     font-size:1.15rem;
+    font-feature-settings:"liga";
+    font-variation-settings:"FILL" 0,"wght" 500,"GRAD" 0,"opsz" 20;
+    line-height:1;
+    color:#123b75;
 }
-.dhv-reference-suggestion-title b { font-size:.63rem; letter-spacing:.11em; }
+.dhv-reference-suggestion-title b { font-size:.63rem; line-height:1.15rem; letter-spacing:.11em; }
 .st-key-landing_suggestions_reference {
-    gap:.55rem !important;
+    gap:.4rem !important;
     overflow:visible !important;
 }
 .st-key-landing_suggestions_reference [data-testid="stButton"] {
-    flex:1 1 0 !important;
+    flex:0 0 auto !important;
     min-width:0 !important;
+    width:auto !important;
 }
 .st-key-landing_suggestions_reference [data-testid="stButton"] button {
-    width:100%;
-    min-height:3.05rem;
-    padding:.45rem .7rem !important;
+    width:auto !important;
+    min-height:2rem !important;
+    padding:.32rem .7rem !important;
     border:1px solid #d9e6f4 !important;
-    border-radius:1.3rem !important;
+    border-radius:999px !important;
     background:linear-gradient(180deg,#fbfdff,#f3f8fe) !important;
     color:#30557f !important;
     box-shadow:none !important;
 }
 .st-key-landing_suggestions_reference [data-testid="stButton"] button p {
     color:inherit !important;
-    font-size:.68rem;
-    font-weight:500;
-    line-height:1.35;
+    font-size:.65rem;
+    font-weight:600;
+    line-height:1.2;
     text-align:center;
-    white-space:pre-line;
+    white-space:nowrap;
 }
 .st-key-landing_official_reference { padding:.9rem 1rem .5rem; }
 .st-key-landing_official_reference > [data-testid="stVerticalBlock"] { gap:0 !important; }
@@ -3121,5 +3407,773 @@ body, [data-testid="stAppViewContainer"] {
     .dhv-reference-campus-badge { right:.75rem; bottom:.7rem; padding:.5rem .65rem; }
     .dhv-reference-ready { display:none; }
     .st-key-landing_suggestions_reference { flex-wrap:wrap !important; }
-    .st-key-landing_suggestions_reference [data-testid="stButton"] { flex:1 1 calc(50% - .3rem) !important; }
+    .st-key-landing_suggestions_reference [data-testid="stButton"] { flex:0 1 auto !important; max-width:100% !important; }
+    .st-key-landing_suggestions_reference [data-testid="stButton"] button { max-width:100% !important; }
+    .st-key-landing_suggestions_reference [data-testid="stButton"] button p { white-space:normal; }
+}
+
+/* Sidebar v3 — one clean, namespaced layout. The DHV image, navy/red palette,
+   school-mark icon and existing widget keys stay intact; only the composition
+   is owned by this block. */
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) {
+    border:0 !important;
+    border-right:0 !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) > div:first-child {
+    width:100% !important;
+    background:#082b59 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarContent"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarUserContent"] {
+    border:0 !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarUserContent"] {
+    position:relative !important;
+    height:100dvh !important;
+    min-height:100dvh !important;
+    box-sizing:border-box !important;
+    overflow:hidden !important;
+    padding:.7rem .75rem 6.4rem !important;
+    background-color:#082b59 !important;
+    background-image:linear-gradient(180deg,#082b59f7 0%,#082b59ed 34%,#082b59c2 66%,#061f43eb 86%,#041a38fa 100%),
+                     url("/app/static/dhv-campus-background.png") !important;
+    background-position:center,28% 76% !important;
+    background-size:cover !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarUserContent"] > [data-testid="stVerticalBlock"] {
+    position:relative !important;
+    display:flex !important;
+    flex-direction:column !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:100% !important;
+    gap:.55rem !important;
+    padding:0 !important;
+    background:transparent !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) {
+    width:17rem !important;
+    min-width:17rem !important;
+    max-width:17rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) {
+    width:3.5rem !important;
+    min-width:3.5rem !important;
+    max-width:3.5rem !important;
+}
+
+/* Expanded composition: brand, primary CTA, history, then the fixed footer. */
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand {
+    display:flex;
+    align-items:center;
+    gap:.65rem;
+    flex:none;
+    min-height:3.35rem;
+    margin:0 0 .15rem;
+    padding:.1rem .15rem .2rem;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand > div:last-child {
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+    gap:.22rem;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand .dhv-sidebar-badge {
+    display:grid;
+    place-items:center;
+    flex:none;
+    width:2.7rem;
+    height:2.7rem;
+    background:transparent;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand .dhv-sidebar-badge-icon {
+    color:#fff;
+    font-family:"DHV Material Symbols";
+    font-size:2.35rem;
+    line-height:1;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand b {
+    color:#fff;
+    font-size:1.48rem;
+    line-height:1;
+    letter-spacing:.015em;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand small {
+    color:#d9e7f8;
+    font-size:.56rem;
+    font-weight:800;
+    letter-spacing:.17em;
+    white-space:nowrap;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-sidebar_compact_toggle {
+    position:absolute !important;
+    z-index:45 !important;
+    top:.75rem !important;
+    right:.55rem !important;
+    width:2rem !important;
+    height:2rem !important;
+    margin:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-sidebar_compact_toggle button {
+    position:relative !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:2rem !important;
+    min-width:2rem !important;
+    min-height:2rem !important;
+    padding:0 !important;
+    border:1px solid #ffffff30 !important;
+    border-radius:.72rem !important;
+    background:#ffffff0a !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-sidebar_compact_toggle button:hover {
+    background:#ffffff18 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-sidebar_compact_toggle button p,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-sidebar_compact_toggle button [data-testid="stIconMaterial"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-sidebar_compact_toggle button [role="img"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-sidebar_compact_toggle button svg {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat {
+    flex:none !important;
+    width:100% !important;
+    margin:.1rem 0 .1rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat button {
+    min-height:3.05rem !important;
+    border:1px solid #ff617d !important;
+    border-radius:.85rem !important;
+    background:linear-gradient(135deg,#ff244a,#e70e34) !important;
+    box-shadow:0 .5rem 1.15rem #02162d38 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat button p {
+    color:#fff !important;
+    font-size:.84rem !important;
+    font-weight:750 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat button [role="img"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat button [data-testid="stIconMaterial"] {
+    color:#fff !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list {
+    flex:0 1 auto !important;
+    min-height:0 !important;
+    max-height:calc(100dvh - 21rem) !important;
+    margin:.1rem 0 0 !important;
+    padding:.45rem !important;
+    overflow-y:auto !important;
+    background:#ffffff0a !important;
+    border:1px solid #ffffff14 !important;
+    border-radius:1rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list > [data-testid="stVerticalBlock"] {
+    gap:.3rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-chat-sidebar-label {
+    display:flex;
+    align-items:center;
+    margin:.05rem .1rem .3rem;
+    color:#fff;
+    font-size:.68rem;
+    font-weight:800;
+    letter-spacing:.08em;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stCaptionContainer"] {
+    color:#b3c8e1 !important;
+    font-size:.72rem !important;
+    line-height:1.55;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button {
+    min-height:2.85rem !important;
+    padding:.5rem .55rem !important;
+    border:0 !important;
+    border-bottom:1px solid #ffffff10 !important;
+    border-radius:.65rem !important;
+    background:transparent !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button:hover,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button[kind="primary"] {
+    background:#ffffff14 !important;
+    box-shadow:inset 2px 0 #36a7ff !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button p {
+    color:#edf5ff !important;
+    font-size:.72rem !important;
+    text-align:left;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-ornament {
+    position:relative;
+    flex:1 1 auto;
+    min-height:8rem;
+    pointer-events:none;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-ornament span {
+    position:absolute;
+    right:.25rem;
+    top:50%;
+    color:#edf5ff;
+    font-family:"Segoe Script","Brush Script MT",cursive;
+    font-size:1.18rem;
+    font-style:italic;
+    line-height:1.02;
+    text-align:center;
+    text-shadow:0 2px 8px #03183288;
+    transform:translateY(-50%) rotate(-9deg);
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-ornament i {
+    position:absolute;
+    top:calc(50% + 3.9rem);
+    right:.4rem;
+    width:4.1rem;
+    height:.16rem;
+    border-radius:999px;
+    background:#f31d43;
+    transform:rotate(-12deg);
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer {
+    position:absolute !important;
+    z-index:20 !important;
+    right:.75rem !important;
+    bottom:.4rem !important;
+    left:.75rem !important;
+    width:auto !important;
+    margin:0 !important;
+    padding:.55rem 0 max(.55rem,env(safe-area-inset-bottom)) !important;
+    border-top:1px solid #ffffff24 !important;
+    background:transparent !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer > [data-testid="stVerticalBlock"] {
+    gap:.3rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer [data-testid="stPopover"] > button,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer > [data-testid="stElementContainer"] > [data-testid="stButton"] button {
+    min-height:2.35rem !important;
+    border:0 !important;
+    border-radius:.65rem !important;
+    background:transparent !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer [data-testid="stPopover"] > button:hover,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer > [data-testid="stElementContainer"] > [data-testid="stButton"] button:hover {
+    background:#ffffff12 !important;
+}
+
+/* Compact rail: keep the same icons, with only three intentional anchor points. */
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) [data-testid="stSidebarUserContent"] {
+    padding:0 !important;
+    background:#fff !important;
+    background-image:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-dhv_sidebar_v3 > [data-testid="stVerticalBlock"] {
+    align-items:center !important;
+    gap:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .dhv-sidebar-v3-brand,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-chat_history_list,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .dhv-sidebar-v3-ornament {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle {
+    top:.625rem !important;
+    right:auto !important;
+    left:.625rem !important;
+    width:2.25rem !important;
+    height:2.25rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button {
+    width:2.25rem !important;
+    min-width:2.25rem !important;
+    min-height:2.25rem !important;
+    border:0 !important;
+    border-radius:.78rem !important;
+    background:#fff !important;
+    box-shadow:0 4px 14px #082b5914 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-sidebar_compact_toggle button:hover {
+    background:#eef3fa !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-new_chat {
+    position:absolute !important;
+    top:3.55rem !important;
+    left:.625rem !important;
+    width:2.25rem !important;
+    height:2.25rem !important;
+    margin:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-new_chat button {
+    width:2.25rem !important;
+    min-width:2.25rem !important;
+    min-height:2.25rem !important;
+    padding:0 !important;
+    border:0 !important;
+    border-radius:.78rem !important;
+    background:#edf3fb !important;
+    box-shadow:0 3px 12px #082b590f !important;
+    justify-content:center !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-new_chat button p {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-new_chat button [role="img"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-new_chat button [data-testid="stIconMaterial"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-new_chat button svg {
+    margin:0 !important;
+    color:#082b59 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-chat_sidebar_footer {
+    right:.625rem !important;
+    bottom:.625rem !important;
+    left:.625rem !important;
+    padding:.2rem 0 !important;
+    border:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-chat_help_menu {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-rail_login button,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-chat_account_menu [data-testid="stPopoverButton"] {
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:2.25rem !important;
+    min-width:2.25rem !important;
+    min-height:2.25rem !important;
+    padding:0 !important;
+    border:0 !important;
+    border-radius:.78rem !important;
+    background:#fff !important;
+    box-shadow:0 4px 14px #082b5914 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-rail_login button p {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-rail_login [role="img"] {
+    margin:0 !important;
+    color:#082b59 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-chat_account_menu [data-testid="stPopoverButton"] p {
+    justify-content:center !important;
+    gap:0 !important;
+    color:transparent !important;
+    font-size:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-compact) .st-key-chat_account_menu [data-testid="stPopoverButton"] p strong {
+    display:inline-grid !important;
+    place-items:center !important;
+    width:2rem !important;
+    height:2rem !important;
+    color:#fff !important;
+    background:linear-gradient(145deg,#174b82,#082b59) !important;
+    font-size:.68rem !important;
+    box-shadow:inset 0 0 0 2px #ffffff55 !important;
+}
+
+@media(max-width:700px) {
+    [data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3):has(.dhv-sidebar-is-expanded) {
+        width:16rem !important;
+        min-width:16rem !important;
+        max-width:16rem !important;
+    }
+}
+
+/* Fixed sidebar composition — matched to the original DHV sidebar reference. */
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3),
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) > div:first-child,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarContent"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarUserContent"] {
+    scrollbar-gutter:auto !important;
+    border-right:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) {
+    width:15rem !important;
+    min-width:15rem !important;
+    max-width:15rem !important;
+    resize:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) > div:first-child,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarUserContent"] {
+    width:100% !important;
+    background-color:#082b59 !important;
+    background-image:linear-gradient(180deg,#082b59f4 0%,#082b59e8 34%,#082b59c4 65%,#061f43ec 88%,#041a38fa 100%),
+                     url("/app/static/dhv-campus-background.png") !important;
+    background-position:center,28% 76% !important;
+    background-size:cover !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarUserContent"] {
+    padding:.65rem .65rem 6.2rem !important;
+    overflow:hidden !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [data-testid="stSidebarUserContent"] > [data-testid="stVerticalBlock"] {
+    gap:.5rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand {
+    min-height:3rem !important;
+    margin:0 0 .25rem !important;
+    padding:.05rem .1rem !important;
+    gap:.65rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand .dhv-sidebar-badge {
+    width:2.55rem !important;
+    height:2.55rem !important;
+    border-radius:.72rem !important;
+    background:#ef183d !important;
+    box-shadow:0 8px 18px #061a3880 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand .dhv-sidebar-badge-icon {
+    font-size:1.65rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand b {
+    font-size:1.45rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-brand small {
+    margin-top:.18rem !important;
+    font-size:.55rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat {
+    margin:.1rem .05rem .25rem !important;
+    width:calc(100% - .1rem) !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat button {
+    min-height:2.85rem !important;
+    border-radius:.72rem !important;
+    box-shadow:0 .45rem 1rem #02162d42 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-new_chat button p {
+    font-size:.82rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list {
+    max-height:calc(100dvh - 23rem) !important;
+    margin:.15rem .05rem 0 !important;
+    padding:.1rem 0 !important;
+    background:transparent !important;
+    border:0 !important;
+    border-radius:0 !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-chat-sidebar-label {
+    margin:.15rem .15rem .35rem !important;
+    color:#c8dbf1 !important;
+    font-size:.6rem !important;
+    letter-spacing:.12em !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stCaptionContainer"] {
+    padding:.05rem .15rem !important;
+    color:#acc2dc !important;
+    font-size:.7rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button {
+    min-height:2.25rem !important;
+    padding:.35rem .15rem !important;
+    border:0 !important;
+    border-radius:.45rem !important;
+    background:transparent !important;
+    box-shadow:none !important;
+    justify-content:flex-start !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button:hover,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button[kind="primary"] {
+    background:#ffffff12 !important;
+    box-shadow:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button [data-testid="stIconMaterial"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button [role="img"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button svg {
+    display:none !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button p {
+    color:#edf5ff !important;
+    font-size:.73rem !important;
+    font-weight:500 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-ornament {
+    min-height:9rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer {
+    right:.65rem !important;
+    bottom:.3rem !important;
+    left:.65rem !important;
+    padding:.55rem 0 max(.45rem,env(safe-area-inset-bottom)) !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer [data-testid="stPopover"] > button,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer > [data-testid="stElementContainer"] > [data-testid="stButton"] button {
+    min-height:2.35rem !important;
+    padding:.4rem .55rem !important;
+    border:0 !important;
+    border-radius:.55rem !important;
+    background:transparent !important;
+    box-shadow:none !important;
+    justify-content:flex-start !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer .st-key-chat_account_menu [data-testid="stPopoverButton"] {
+    min-height:2.8rem !important;
+    padding:.35rem .45rem !important;
+    border:1px solid #ffffff2a !important;
+    border-radius:.7rem !important;
+    background:#ffffff0d !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_sidebar_footer .st-key-chat_account_menu [data-testid="stPopoverButton"] p strong {
+    width:2rem !important;
+    height:2rem !important;
+    background:#edf3fb !important;
+    color:#082b59 !important;
+}
+
+@media(max-width:700px) {
+    [data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) {
+        width:15rem !important;
+        min-width:15rem !important;
+        max-width:15rem !important;
+    }
+}
+
+/* Compact campus badge — match the approved reference treatment. */
+.dhv-reference-campus-badge {
+    right:1rem !important;
+    bottom:.8rem !important;
+    gap:.55rem !important;
+    padding:.38rem .7rem !important;
+    border:1px solid #dce7f4 !important;
+    border-radius:.68rem !important;
+    background:#fffffff5 !important;
+    box-shadow:0 .4rem 1rem #06244b18 !important;
+}
+.dhv-reference-campus-badge > span {
+    display:grid !important;
+    place-items:center !important;
+    width:1.8rem !important;
+    height:1.8rem !important;
+    flex:0 0 1.8rem !important;
+    border-radius:50% !important;
+    background:#eef4fb !important;
+    color:#ef183d !important;
+    font-size:1.05rem !important;
+}
+.dhv-reference-campus-badge > div {
+    gap:.08rem !important;
+}
+.dhv-reference-campus-badge b {
+    color:#173b6b !important;
+    font-size:.65rem !important;
+    line-height:1.2 !important;
+    white-space:nowrap !important;
+}
+.dhv-reference-campus-badge small {
+    color:#758aa5 !important;
+    font-size:.57rem !important;
+    line-height:1.2 !important;
+    white-space:nowrap !important;
+}
+
+/* Let the recent-conversation area use the free space above the fixed footer. */
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list {
+    flex:1 1 auto !important;
+    min-height:0 !important;
+    height:auto !important;
+    max-height:none !important;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+    min-width:0 !important;
+    max-width:100% !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list > [data-testid="stVerticalBlock"] {
+    min-height:0 !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    overflow-x:hidden !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stElementContainer"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button {
+    min-width:0 !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .st-key-chat_history_list [data-testid="stButton"] button p {
+    min-width:0 !important;
+    max-width:100% !important;
+    overflow:hidden !important;
+    text-overflow:ellipsis !important;
+    white-space:nowrap !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) .dhv-sidebar-v3-ornament {
+    flex:0 0 5.5rem !important;
+    height:5.5rem !important;
+    min-height:5.5rem !important;
+    max-height:5.5rem !important;
+}
+
+/* Every conversation owns one compact three-dot actions menu. */
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_row_"] {
+    align-items:center !important;
+    min-width:0 !important;
+    max-width:100% !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_row_"] > [data-testid="stElementContainer"]:has([class*="st-key-chat_actions_"]) {
+    flex:0 0 auto !important;
+    width:2.25rem !important;
+    min-width:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] {
+    flex:0 0 auto !important;
+    width:2.25rem !important;
+    min-width:0 !important;
+    margin:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopoverButton"] {
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    width:2.1rem !important;
+    min-width:2.1rem !important;
+    min-height:2.1rem !important;
+    padding:0 !important;
+    border:0 !important;
+    border-radius:.5rem !important;
+    background:transparent !important;
+    color:#dbe9f8 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopoverButton"] p {
+    width:0 !important;
+    overflow:hidden !important;
+    font-size:0 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopoverButton"] [data-testid="stIconMaterial"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopoverButton"] [role="img"],
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopoverButton"] svg {
+    display:block !important;
+    color:inherit !important;
+    font-size:1.25rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopoverButton"]:hover,
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopoverButton"]:focus-visible {
+    background:#ffffff18 !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopover"] {
+    min-width:10rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopover"] [data-testid="stButton"] button {
+    min-height:2.3rem !important;
+    justify-content:flex-start !important;
+    border:0 !important;
+    border-radius:.45rem !important;
+    background:transparent !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopover"] [data-testid="stButton"] button:hover {
+    background:#edf4fb !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] [data-testid="stPopover"] [data-testid="stButton"] p {
+    font-size:.76rem !important;
+}
+/* Portalled conversation menu: compact, readable, and independent of the navy sidebar. */
+[data-testid="stPopoverBody"]:has([class*="st-key-rename_chat_"]),
+[data-testid="stPopoverBody"]:has([class*="st-key-delete_chat_"]) {
+    width:11.5rem !important;
+    min-width:11.5rem !important;
+    max-width:calc(100vw - 1.5rem) !important;
+    padding:.35rem !important;
+    border:1px solid #d8e3f0 !important;
+    border-radius:.72rem !important;
+    background:#ffffff !important;
+    color:#173354 !important;
+    box-shadow:0 12px 28px #071c3c2e,0 2px 8px #071c3c12 !important;
+    overflow:hidden !important;
+}
+[data-testid="stPopoverBody"]:has([class*="st-key-rename_chat_"]) > [data-testid="stVerticalBlock"],
+[data-testid="stPopoverBody"]:has([class*="st-key-delete_chat_"]) > [data-testid="stVerticalBlock"] {
+    gap:.2rem !important;
+}
+[data-testid="stPopoverBody"]:has([class*="st-key-rename_chat_"]) [data-testid="stButton"] button,
+[data-testid="stPopoverBody"]:has([class*="st-key-delete_chat_"]) [data-testid="stButton"] button {
+    min-height:2.25rem !important;
+    padding:.45rem .55rem !important;
+    border:0 !important;
+    border-radius:.48rem !important;
+    background:transparent !important;
+    color:#173354 !important;
+    justify-content:flex-start !important;
+}
+[data-testid="stPopoverBody"]:has([class*="st-key-rename_chat_"]) [data-testid="stButton"] button:hover,
+[data-testid="stPopoverBody"]:has([class*="st-key-delete_chat_"]) [data-testid="stButton"] button:hover {
+    background:#eef4fb !important;
+    color:#102c52 !important;
+}
+[data-testid="stPopoverBody"]:has([class*="st-key-rename_chat_"]) [data-testid="stButton"] button p,
+[data-testid="stPopoverBody"]:has([class*="st-key-delete_chat_"]) [data-testid="stButton"] button p,
+[data-testid="stPopoverBody"]:has([class*="st-key-rename_chat_"]) [data-testid="stButton"] button [role="img"],
+[data-testid="stPopoverBody"]:has([class*="st-key-delete_chat_"]) [data-testid="stButton"] button [role="img"] {
+    color:inherit !important;
+    opacity:1 !important;
+    font-size:.76rem !important;
+}
+[data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_rename_row_"] {
+    padding:.25rem 0 !important;
+}
+
+/* User-message tools and branch navigation remain compact and unobtrusive. */
+[class*="st-key-message_actions_"] {
+    min-height:0 !important;
+    margin-top:.2rem !important;
+    opacity:0 !important;
+    pointer-events:none !important;
+    transition:opacity .16s ease !important;
+}
+[data-testid="stChatMessage"]:hover [class*="st-key-message_actions_"] {
+    opacity:1 !important;
+    pointer-events:auto !important;
+}
+[class*="st-key-message_actions_"] [data-testid="stButton"] button {
+    min-height:1.8rem !important;
+    padding:.2rem .5rem !important;
+    border:0 !important;
+    border-radius:.45rem !important;
+    background:transparent !important;
+    color:#587396 !important;
+    font-size:.72rem !important;
+}
+[class*="st-key-message_branch_nav_"] {
+    align-items:center !important;
+    gap:.15rem !important;
+    margin:.15rem 0 .15rem 3rem !important;
+    min-height:1.8rem !important;
+}
+[class*="st-key-message_branch_nav_"] [data-testid="stCaptionContainer"] {
+    width:auto !important;
+    min-width:2.4rem !important;
+    text-align:center !important;
+    color:#6f86a3 !important;
+    font-size:.72rem !important;
+}
+[class*="st-key-message_branch_nav_"] [data-testid="stButton"] button {
+    min-height:1.7rem !important;
+    padding:.15rem .35rem !important;
+    border:0 !important;
+    border-radius:.4rem !important;
+    background:transparent !important;
+    color:#526f95 !important;
+    font-size:.7rem !important;
+}
+[class*="st-key-message_branch_preview_"] {
+    margin:.15rem 0 .7rem 3rem !important;
+    padding:.55rem .7rem !important;
+    border-left:2px solid #c7d7ec !important;
+    border-radius:0 .55rem .55rem 0 !important;
+    background:#f4f8fd !important;
+    color:#36557b !important;
+    font-size:.83rem !important;
+}
+
+@media(max-width:700px) {
+    [data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"],
+    [class*="st-key-message_actions_"] {
+        opacity:1 !important;
+        pointer-events:auto !important;
+    }
 }

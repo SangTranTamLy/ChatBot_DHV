@@ -73,7 +73,7 @@ class AuthScreenTests(TestCase):
             patch("src.ui_auth._LIVE_CONFIRMATION_INPUT", return_value=SimpleNamespace(value=None)),
         ):
             at = AppTest.from_file(str(APP)).run(timeout=30)
-            at.button(key="open_login").click().run(timeout=30)
+            at.button(key="rail_login").click().run(timeout=30)
             at.button(key="auth_register").click().run(timeout=30)
             at.text_input(key="register_name").set_value("Nguyễn An")
             at.text_input(key="register_email").set_value("AN@example.com")
@@ -97,7 +97,7 @@ class AuthScreenTests(TestCase):
             login.assert_called_once_with("an@example.com", "DemoPass123")
 
             at.session_state["messages"] = [{"role": "user", "content": "Private chat"}]
-            at.button(key="logout").click().run(timeout=30)
+            at.button(key="chat_account_logout").click().run(timeout=30)
             self.assertFalse(at.exception)
             self.assertIsNone(at.session_state["auth_user"])
             self.assertIsNone(at.session_state["auth_tokens"])
@@ -109,7 +109,7 @@ class AuthScreenTests(TestCase):
             patch("src.ui_auth.login_user", side_effect=AuthServiceError("Email hoặc mật khẩu chưa đúng.")),
         ):
             at = AppTest.from_file(str(APP)).run(timeout=30)
-            at.button(key="open_login").click().run(timeout=30)
+            at.button(key="rail_login").click().run(timeout=30)
             at.text_input(key="login_email").set_value("unknown@example.com")
             at.text_input(key="login_password").set_value("WrongPass123")
             at.button(key="submit_login").click().run(timeout=30)
@@ -117,6 +117,61 @@ class AuthScreenTests(TestCase):
         self.assertIsNone(at.session_state["auth_user"])
         self.assertEqual(at.session_state["auth_view"], "login")
         self.assertTrue(any("Email hoặc mật khẩu chưa đúng" in message.value for message in at.error))
+
+    def test_forgot_password_shows_generic_notice_even_when_provider_sends_no_email(self):
+        with (
+            patch("src.ui_auth.is_supabase_configured", return_value=True),
+            patch("src.ui_auth.request_password_recovery", return_value=False) as request_reset,
+        ):
+            at = AppTest.from_file(str(APP))
+            at.run(timeout=30)
+            at.button(key="rail_login").click().run(timeout=30)
+            at.button(key="auth_forgot_password").click().run(timeout=30)
+            at.text_input(key="password_recovery_email").set_value("unknown@example.com")
+            at.button(key="submit_password_recovery_request").click().run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertEqual(at.session_state["auth_view"], "forgot")
+        self.assertTrue(any("Nếu email này đã đăng ký" in message.value for message in at.success))
+        self.assertFalse(any("không tồn tại" in message.value.lower() for message in at.error))
+        request_reset.assert_called_once_with("unknown@example.com")
+
+    def test_invalid_recovery_callback_shows_retry_without_loading_chat_or_admin(self):
+        at = AppTest.from_file(str(APP))
+        at.query_params["auth"] = "recovery"
+        at.session_state["password_recovery_link_checked"] = True
+        at.session_state["password_recovery_link_error"] = True
+        at.run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertTrue(any("Liên kết không hợp lệ hoặc đã hết hạn" in item.value for item in at.error))
+        self.assertTrue(any(button.key == "password_recovery_retry" for button in at.button))
+        self.assertFalse(any(button.key == "new_chat" for button in at.button))
+
+    def test_verified_recovery_callback_can_set_password_and_return_success(self):
+        tokens = {"access_token": "recovery-access", "refresh_token": "recovery-refresh"}
+        with (
+            patch("src.ui_auth.verify_password_recovery", return_value={
+                "user_id": "user-1", "expires_at": 4_000_000_000,
+            }),
+            patch("src.ui_auth.reset_password_with_recovery", return_value="user-1") as reset,
+            patch("src.ui_auth._LIVE_PASSWORD_INPUT", return_value=SimpleNamespace(value=None)),
+            patch("src.ui_auth._LIVE_CONFIRMATION_INPUT", return_value=SimpleNamespace(value=None)),
+        ):
+            at = AppTest.from_file(str(APP))
+            at.query_params["auth"] = "recovery"
+            at.session_state["password_recovery_link_checked"] = True
+            at.session_state["password_recovery_tokens"] = tokens
+            at.session_state["password_recovery_password_live"] = {"value": "NewPass123"}
+            at.session_state["password_recovery_confirmation_live"] = {"value": "NewPass123"}
+            at.run(timeout=30)
+            at.button(key="submit_password_recovery").click().run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertEqual(at.session_state["password_recovery_status"], "success")
+        self.assertTrue(any("Mật khẩu đã được đặt lại thành công" in item.value for item in at.toast))
+        self.assertIsNone(at.session_state["password_recovery_tokens"])
+        reset.assert_called_once_with(tokens, "NewPass123", "NewPass123")
 
     def test_guest_chat_and_account_chat_remain_isolated(self):
         at = AppTest.from_file(str(APP))

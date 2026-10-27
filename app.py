@@ -17,7 +17,13 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.supabase_auth import AuthServiceError, change_password, is_supabase_configured
-from src.ui_auth import init_auth, logout, open_auth, render_auth_dialog
+from src.ui_auth import (
+    init_auth,
+    logout,
+    open_auth,
+    render_auth_dialog,
+    render_password_recovery_page,
+)
 
 
 load_dotenv()
@@ -210,13 +216,18 @@ def _init_session_state() -> None:
     user = st.session_state.get("auth_user")
     owner = user["email"].strip().casefold() if user else None
     sessions = st.session_state.setdefault("account_chat_sessions", {})
-    chat_keys = ("messages", "chats", "active_chat", "next_chat", "conversation_state", "state")
+    chat_keys = (
+        "messages", "chats", "active_chat", "next_chat", "conversation_state", "state",
+        "message_branches", "message_branch_view",
+    )
     previous_owner = st.session_state.get("chat_owner")
     if "chat_owner" in st.session_state and previous_owner != owner:
         if previous_owner:
             sessions[previous_owner] = {key: deepcopy(st.session_state[key])
                                         for key in chat_keys if key in st.session_state}
-        for key in (*chat_keys, "chat_input", "pending_question", "chat_request_in_progress", "saved_items", "admission_checklist"):
+        for key in (*chat_keys, "chat_input", "pending_question", "chat_request_in_progress",
+                    "saved_items", "admission_checklist", "editing_message_index",
+                    "message_edit_error"):
             st.session_state.pop(key, None)
         if st.session_state.get("account_page") != "chat":
             st.session_state.account_page = "chat"
@@ -230,6 +241,10 @@ def _init_session_state() -> None:
     st.session_state.setdefault("admission_checklist", {})
     st.session_state.setdefault("saved_items", [])
     st.session_state.setdefault("messages", [])
+    st.session_state.setdefault("message_branches", {})
+    st.session_state.setdefault("message_branch_view", {})
+    st.session_state.setdefault("editing_message_index", None)
+    st.session_state.setdefault("message_edit_error", None)
     st.session_state.setdefault("chat_request_in_progress", False)
     st.session_state.setdefault("chats", {})
     if not owner:
@@ -397,8 +412,137 @@ def _render_assistant_content(message: Mapping[str, Any]) -> None:
     _render_answer_markdown(answer)
 
 
+def _begin_message_edit(index: int) -> None:
+    st.session_state.editing_message_index = index
+    st.session_state.message_edit_error = None
+    st.session_state.pop(f"message_edit_input_{index}", None)
+
+
+def _cancel_message_edit(index: int) -> None:
+    st.session_state.editing_message_index = None
+    st.session_state.message_edit_error = None
+    st.session_state.pop(f"message_edit_input_{index}", None)
+
+
+def _switch_message_branch(index: int, direction: int) -> None:
+    key = str(index)
+    branches = st.session_state.get("message_branches", {}).get(key, [])
+    total = len(branches) + 1
+    current = int(st.session_state.get("message_branch_view", {}).get(key, len(branches)))
+    next_index = max(0, min(total - 1, current + direction))
+    st.session_state.message_branch_view[key] = next_index
+
+
+def _apply_message_edit(index: int) -> None:
+    messages = st.session_state.get("messages", [])
+    if not (0 <= index < len(messages)):
+        st.session_state.editing_message_index = None
+        return
+    edited = str(st.session_state.get(f"message_edit_input_{index}") or "").strip()
+    if not edited:
+        st.session_state.message_edit_error = {
+            "index": index, "message": "Nhập nội dung mới trước khi lưu."
+        }
+        return
+
+    old_suffix = deepcopy(messages[index:])
+    branch_key = str(index)
+    branches = st.session_state.setdefault("message_branches", {})
+    branches.setdefault(branch_key, []).append({
+        "messages": old_suffix,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    })
+    st.session_state.messages = deepcopy(messages[:index]) + [
+        {"role": "user", "content": edited}
+    ]
+    st.session_state.message_branch_view[branch_key] = len(branches[branch_key])
+    st.session_state.editing_message_index = None
+    st.session_state.message_edit_error = None
+    st.session_state.pop(f"message_edit_input_{index}", None)
+    st.session_state.pending_question = edited
+    st.session_state.chat_request_in_progress = True
+    st.session_state.account_page = "chat"
+    # Rebuild follow-up context from the messages that remain before the edit.
+    state = ConversationState().to_dict()
+    st.session_state.conversation_state = state
+    st.session_state.state = dict(state)
+
+
+def _render_message_branch_switcher(index: int) -> None:
+    branches = st.session_state.get("message_branches", {}).get(str(index), [])
+    if not isinstance(branches, list) or not branches:
+        return
+    total = len(branches) + 1
+    key = str(index)
+    current = int(st.session_state.get("message_branch_view", {}).get(key, len(branches)))
+    current = max(0, min(total - 1, current))
+    with st.container(key=f"message_branch_nav_{index}", horizontal=True, gap="small"):
+        st.button(
+            "Phiên trước", icon=":material/chevron_left:",
+            key=f"message_branch_prev_{index}", type="tertiary", width="content",
+            disabled=current <= 0, on_click=_switch_message_branch,
+            args=(index, -1),
+        )
+        st.caption(f"{current + 1} / {total}")
+        st.button(
+            "Phiên sau", icon=":material/chevron_right:",
+            key=f"message_branch_next_{index}", type="tertiary", width="content",
+            disabled=current >= total - 1, on_click=_switch_message_branch,
+            args=(index, 1),
+        )
+    if current < len(branches):
+        previous_messages = branches[current].get("messages", [])
+        previous_answer = next(
+            (row for row in previous_messages
+             if isinstance(row, Mapping) and row.get("role") == "assistant"),
+            None,
+        )
+        if previous_answer:
+            with st.container(key=f"message_branch_preview_{index}"):
+                st.caption("Câu trả lời của phiên trước")
+                _render_assistant_content(previous_answer)
+
+
+def _render_user_message(message: Mapping[str, Any], index: int) -> None:
+    with st.chat_message("user"):
+        if st.session_state.get("editing_message_index") == index:
+            st.text_area(
+                "Chỉnh sửa tin nhắn",
+                value=str(message.get("content") or ""),
+                key=f"message_edit_input_{index}", height=96,
+                label_visibility="collapsed",
+            )
+            error = st.session_state.get("message_edit_error")
+            if isinstance(error, Mapping) and error.get("index") == index:
+                st.error(str(error.get("message") or "Không lưu được tin nhắn."))
+            save_col, cancel_col = st.columns(2, gap="small")
+            with save_col:
+                st.button(
+                    "Lưu & cập nhật", icon=":material/check:", type="primary",
+                    key=f"message_edit_save_{index}", width="stretch",
+                    on_click=_apply_message_edit, args=(index,),
+                )
+            with cancel_col:
+                st.button(
+                    "Hủy", icon=":material/close:", key=f"message_edit_cancel_{index}",
+                    width="stretch", on_click=_cancel_message_edit, args=(index,),
+                )
+        else:
+            st.markdown(str(message.get("content") or ""), unsafe_allow_html=False)
+            with st.container(
+                key=f"message_actions_{index}", horizontal=True,
+                vertical_alignment="center", gap="small",
+            ):
+                st.button(
+                    "Sửa", icon=":material/edit:", type="tertiary",
+                    key=f"message_edit_{index}", help="Sửa câu hỏi này",
+                    on_click=_begin_message_edit, args=(index,),
+                )
+    _render_message_branch_switcher(index)
+
+
 def _render_chat_history() -> None:
-    """Hiển thị các tin nhắn đã lưu của người dùng và trợ lý bằng giao diện chat bubble."""
+    """Hiển thị tin nhắn và cho phép sửa câu hỏi của người dùng."""
 
     for index, message in enumerate(st.session_state.messages):
         if not isinstance(message, Mapping):
@@ -407,20 +551,17 @@ def _render_chat_history() -> None:
         if role not in {"user", "assistant"}:
             continue
 
-        with st.chat_message(
-            role,
-            avatar=":material/school:" if role == "assistant" else None,
-        ):
-            if role == "user":
-                st.markdown(str(message.get("content") or ""), unsafe_allow_html=False)
-            else:
+        if role == "user":
+            _render_user_message(message, index)
+        else:
+            with st.chat_message("assistant", avatar=":material/school:"):
                 _render_assistant_content(message)
-        if role == "assistant" and st.button(
-            "Lưu vào sổ tay", icon=":material/bookmark_add:", key=f"save_answer_{index}",
-            type="tertiary",
-        ):
-            _save_answer(message)
-            st.toast("Đã lưu trong phiên hiện tại.", icon=":material/bookmark:")
+            if st.button(
+                "Lưu vào sổ tay", icon=":material/bookmark_add:", key=f"save_answer_{index}",
+                type="tertiary",
+            ):
+                _save_answer(message)
+                st.toast("Đã lưu trong phiên hiện tại.", icon=":material/bookmark:")
 
 
 def _navigate_to(page: str) -> None:
@@ -446,11 +587,13 @@ def _history_picker(*, key: str = "history_picker") -> None:
                 open_auth()
                 st.rerun()
             return
-        if not st.session_state.chats:
+        visible_chat_ids = _active_chat_ids()
+        if not visible_chat_ids:
             st.caption("Các cuộc trò chuyện đã lưu sẽ xuất hiện ở đây.")
             return
         groups = {"Hôm nay": [], "Hôm qua": [], "Trước đó": []}
-        for chat_id, chat in st.session_state.chats.items():
+        for chat_id in visible_chat_ids:
+            chat = st.session_state.chats[chat_id]
             stamp = chat.get("updated_at")
             try:
                 day = date.fromisoformat(stamp[:10]) if stamp else None
@@ -467,10 +610,7 @@ def _history_picker(*, key: str = "history_picker") -> None:
             for chat_id, chat in sorted(
                 chats, key=lambda item: item[1].get("updated_at") or "", reverse=True
             ):
-                title = next(
-                    (row["content"] for row in chat["messages"] if row.get("role") == "user"),
-                    "Cuộc trò chuyện",
-                )
+                title = _chat_title(chat)
                 st.button(
                     str(title)[:70], icon=":material/chat_bubble_outline:", type="tertiary",
                     key=f"{key}_chat_{chat_id}", help=str(title), width="stretch",
@@ -479,21 +619,12 @@ def _history_picker(*, key: str = "history_picker") -> None:
 
 
 def _render_topbar() -> None:
-    account_label = escape(
-        str((st.session_state.get("auth_user") or {}).get("name") or "Khách truy cập")
-    )
     brand = (
         '<div class="dhv-reference-topbar" aria-label="DHV, trợ lý tuyển sinh">'
         '<div class="dhv-reference-topbar-brand">'
         '<span class="material-symbols-rounded">school</span>'
         '<b>DHV - Trợ lý tuyển sinh</b><i></i>'
-        '<small>Đồng hành cùng lựa chọn của bạn</small></div>'
-        '<div class="dhv-reference-topbar-actions">'
-        '<span class="material-symbols-rounded">search</span>'
-        '<span class="material-symbols-rounded">notifications</span>'
-        '<div class="dhv-reference-guest"><span class="material-symbols-rounded">person</span>'
-        f'<b>{account_label}</b><span class="material-symbols-rounded">expand_more</span></div>'
-        '</div></div>'
+        '<small>Đồng hành cùng lựa chọn của bạn</small></div></div>'
     )
     with st.container(key="topbar"):
         st.html(brand)
@@ -653,11 +784,41 @@ def _render_welcome() -> str | None:
 def _save_current_chat() -> None:
     """Keep conversations local to this browser session, with their own context."""
     if st.session_state.auth_user and st.session_state.messages:
+        existing = st.session_state.chats.get(st.session_state.active_chat, {})
         st.session_state.chats[st.session_state.active_chat] = {
             "messages": deepcopy(st.session_state.messages),
             "conversation_state": deepcopy(st.session_state.conversation_state),
-            "updated_at": st.session_state.chats.get(st.session_state.active_chat, {}).get("updated_at"),
+            "updated_at": existing.get("updated_at"),
+            "title": existing.get("title"),
+            "deleted_at": existing.get("deleted_at"),
+            "message_branches": deepcopy(st.session_state.get("message_branches", {})),
         }
+
+
+def _chat_title(chat: Mapping[str, Any]) -> str:
+    """Return the saved title, falling back to the first user prompt."""
+
+    saved_title = str(chat.get("title") or "").strip()
+    if saved_title:
+        return saved_title
+    for message in chat.get("messages", []):
+        if isinstance(message, Mapping) and message.get("role") == "user":
+            content = str(message.get("content") or "").strip()
+            if content:
+                return content
+    return "Cuộc trò chuyện mới"
+
+
+def _active_chat_ids() -> list[int]:
+    """List visible, non-deleted conversations in recent-first order."""
+
+    chats = [
+        (chat_id, chat)
+        for chat_id, chat in st.session_state.get("chats", {}).items()
+        if isinstance(chat, Mapping) and not chat.get("deleted_at")
+    ]
+    chats.sort(key=lambda item: item[1].get("updated_at") or "", reverse=True)
+    return [chat_id for chat_id, _ in chats]
 
 
 def _new_chat() -> None:
@@ -668,6 +829,9 @@ def _new_chat() -> None:
     st.session_state.next_chat += 1
     st.session_state.active_chat = st.session_state.next_chat
     st.session_state.messages = []
+    st.session_state.message_branches = {}
+    st.session_state.message_branch_view = {}
+    st.session_state.editing_message_index = None
     state = ConversationState().to_dict()
     st.session_state.conversation_state = state
     st.session_state.state = dict(state)
@@ -679,10 +843,15 @@ def _open_chat(chat_id: int) -> None:
     st.session_state.account_page = "chat"
     _save_current_chat()
     saved = st.session_state.chats[chat_id]
+    if saved.get("deleted_at"):
+        return
     st.session_state.active_chat = chat_id
     st.session_state.messages = deepcopy(saved["messages"])
     st.session_state.conversation_state = deepcopy(saved["conversation_state"])
     st.session_state.state = deepcopy(saved["conversation_state"])
+    st.session_state.message_branches = deepcopy(saved.get("message_branches", {}))
+    st.session_state.message_branch_view = {}
+    st.session_state.editing_message_index = None
 
 
 def _open_profile() -> None:
@@ -749,86 +918,83 @@ def _render_profile_page() -> None:
 
 
 def _render_sidebar() -> None:
-    """Render the focused chat sidebar and keep account actions at the bottom."""
+    """Render the fixed DHV navigation sidebar."""
     _save_current_chat()
     with st.sidebar:
-        st.html(
-            '<div class="dhv-chat-sidebar-brand" aria-label="DHV, trợ lý tuyển sinh">'
-            '<div class="dhv-sidebar-badge">'
-            '<span class="dhv-sidebar-badge-icon material-symbols-rounded">school</span>'
-            '</div>'
-            '<div><b>DHV</b><small>TRỢ LÝ TUYỂN SINH</small>'
-            '</div><span class="dhv-sidebar-collapse material-symbols-rounded">keyboard_double_arrow_left</span>'
-            '</div>'
-        )
-        st.button(
-            "Cuộc trò chuyện mới", icon=":material/add:", key="new_chat",
-            type="primary", width="stretch", on_click=_new_chat,
-        )
-        with st.container(key="chat_history_list"):
+        with st.container(key="dhv_sidebar_v3"):
             st.html(
-                '<div class="dhv-chat-sidebar-label">'
-                '<span><b class="material-symbols-rounded">schedule</b>GẦN ĐÂY</span>'
+                '<div class="dhv-sidebar-v3-brand" aria-label="DHV, trợ lý tuyển sinh">'
+                '<div class="dhv-sidebar-badge">'
+                '<span class="dhv-sidebar-badge-icon material-symbols-rounded">school</span>'
+                '</div>'
+                '<div><b>DHV</b><small>TRỢ LÝ TUYỂN SINH</small>'
+                '</div>'
                 '</div>'
             )
-            if not st.session_state.auth_user:
-                st.caption("Đăng nhập để xem các cuộc trò chuyện gần đây.")
-            elif not st.session_state.chats:
-                st.caption("Các cuộc trò chuyện đã lưu sẽ xuất hiện ở đây.")
-            else:
-                recent_chats = sorted(
-                    st.session_state.chats.items(),
-                    key=lambda item: item[1].get("updated_at") or "",
-                    reverse=True,
-                )
-                for chat_id, chat in recent_chats[:8]:
-                    title = next(
-                        (row.get("content", "") for row in chat.get("messages", [])
-                         if isinstance(row, Mapping) and row.get("role") == "user"),
-                        "Cuộc trò chuyện mới",
-                    )
-                    st.button(
-                        str(title)[:52], key=f"sidebar_chat_{chat_id}",
-                        type="primary" if chat_id == st.session_state.active_chat else "tertiary",
-                        icon=":material/chat_bubble_outline:", width="stretch",
-                        on_click=_open_chat, args=(chat_id,),
-                    )
-        if not st.session_state.auth_user or not st.session_state.chats:
-            st.html(
-                '<div class="dhv-sidebar-ornament">'
-                '<span>Kiến tạo<br>tương lai<br>cùng DHV</span><i></i></div>'
+            st.button(
+                "Cuộc trò chuyện mới",
+                icon=":material/add:",
+                key="new_chat",
+                type="primary", width="stretch", on_click=_new_chat,
             )
-        with st.container(key="chat_sidebar_footer"):
-            with st.popover("Trợ giúp", icon=":material/help_outline:", key="chat_help_menu"):
-                with st.container(key="chat_help_popup", gap="small"):
-                    st.html('<div class="dhv-help-popup-heading">'
-                            '<span class="material-symbols-rounded">support_agent</span>'
-                            '<div><b>Trợ giúp DHV</b><small>Đồng hành cùng bạn</small></div></div>')
-                    st.caption("Hỏi ngay trong khung chat về ngành học, học phí, học bổng và xét tuyển.")
-            if st.session_state.auth_user:
-                user = st.session_state.auth_user
-                name = str(user.get("name") or "Tài khoản")
-                initials = "".join(part[0] for part in name.split()[-2:]).upper() or "U"
-                with st.popover(
-                    f"**{initials}** {name}", key="chat_account_menu", width="stretch",
-                ):
-                    with st.container(key="chat_account_identity"):
-                        st.html('<div class="dhv-account-popup-identity">'
-                                f'<span class="dhv-account-avatar">{escape(initials)}</span>'
-                                f'<div><b>{escape(name)}</b><small>Tài khoản cá nhân</small></div></div>')
-                    st.button(
-                        "Hồ sơ cá nhân", icon=":material/person:", key="chat_account_profile",
-                        width="stretch", on_click=_open_profile,
-                    )
-                    st.button(
-                        "Đăng xuất", icon=":material/logout:", key="chat_account_logout",
-                        width="stretch", on_click=_logout_account,
-                    )
-            else:
-                st.button(
-                    "Đăng nhập", icon=":material/login:", key="rail_login",
-                    type="secondary", width="stretch", on_click=open_auth,
+            with st.container(key="chat_history_list"):
+                st.html(
+                    '<div class="dhv-chat-sidebar-label">'
+                    '<span><b class="material-symbols-rounded">schedule</b>GẦN ĐÂY</span>'
+                    '</div>'
                 )
+                if not st.session_state.auth_user:
+                    st.caption("Đăng nhập để xem các cuộc trò chuyện gần đây.")
+                else:
+                    visible_chat_ids = _active_chat_ids()
+                    if not visible_chat_ids:
+                        st.caption("Các cuộc trò chuyện đã lưu sẽ xuất hiện ở đây.")
+                    else:
+                        for chat_id in visible_chat_ids[:20]:
+                            chat = st.session_state.chats[chat_id]
+                            title = _chat_title(chat)
+                            st.button(
+                                title[:52], key=f"sidebar_chat_{chat_id}",
+                                type="primary" if chat_id == st.session_state.active_chat else "tertiary",
+                                icon=":material/chat_bubble_outline:", width="stretch",
+                                on_click=_open_chat, args=(chat_id,),
+                            )
+            if not st.session_state.auth_user or not _active_chat_ids():
+                st.html(
+                    '<div class="dhv-sidebar-v3-ornament">'
+                    '<span>Kiến tạo<br>tương lai<br>cùng DHV</span><i></i></div>'
+                )
+            with st.container(key="chat_sidebar_footer"):
+                with st.popover("Trợ giúp", icon=":material/help_outline:", key="chat_help_menu"):
+                    with st.container(key="chat_help_popup", gap="small"):
+                        st.html('<div class="dhv-help-popup-heading">'
+                                '<span class="material-symbols-rounded">support_agent</span>'
+                                '<div><b>Trợ giúp DHV</b><small>Đồng hành cùng bạn</small></div></div>')
+                        st.caption("Hỏi ngay trong khung chat về ngành học, học phí, học bổng và xét tuyển.")
+                if st.session_state.auth_user:
+                    user = st.session_state.auth_user
+                    name = str(user.get("name") or "Tài khoản")
+                    initials = "".join(part[0] for part in name.split()[-2:]).upper() or "U"
+                    with st.popover(
+                        f"**{initials}** {name}", key="chat_account_menu", width="stretch",
+                    ):
+                        with st.container(key="chat_account_identity"):
+                            st.html('<div class="dhv-account-popup-identity">'
+                                    f'<span class="dhv-account-avatar">{escape(initials)}</span>'
+                                    f'<div><b>{escape(name)}</b><small>Tài khoản cá nhân</small></div></div>')
+                        st.button(
+                            "Hồ sơ cá nhân", icon=":material/person:", key="chat_account_profile",
+                            width="stretch", on_click=_open_profile,
+                        )
+                        st.button(
+                            "Đăng xuất", icon=":material/logout:", key="chat_account_logout",
+                            width="stretch", on_click=_logout_account,
+                        )
+                else:
+                    st.button(
+                        "Đăng nhập", icon=":material/login:", key="rail_login",
+                        type="secondary", width="stretch", on_click=open_auth,
+                    )
 
 
 def _page_heading(kicker: str, title: str, description: str, icon: str) -> None:
@@ -1094,17 +1260,17 @@ def _render_conversation() -> None:
 
 
 def _render_simple_chat_history() -> None:
-    """Render the conversation without secondary notebook actions."""
-    for message in st.session_state.messages:
+    """Render the conversation with user-message editing controls."""
+    for index, message in enumerate(st.session_state.messages):
         if not isinstance(message, Mapping):
             continue
         role = message.get("role")
         if role not in {"user", "assistant"}:
             continue
-        with st.chat_message(role, avatar=":material/school:" if role == "assistant" else None):
-            if role == "user":
-                st.markdown(str(message.get("content") or ""), unsafe_allow_html=False)
-            else:
+        if role == "user":
+            _render_user_message(message, index)
+        else:
+            with st.chat_message("assistant", avatar=":material/school:"):
                 _render_assistant_content(message)
 
 
@@ -1134,7 +1300,7 @@ def _render_clean_conversation() -> None:
                 '<div class="dhv-reference-campus-badge">'
                 '<span class="material-symbols-rounded">location_on</span>'
                 '<div><b>Không gian học tập tại DHV</b><small>Hiện đại · Năng động · Sáng tạo</small></div>'
-                '<span class="material-symbols-rounded">arrow_forward</span></div>'
+                '</div>'
                 '</div></section>'
             )
             with st.container(key="landing_details_reference"):
@@ -1156,23 +1322,24 @@ def _render_clean_conversation() -> None:
                         )
                         st.html(
                             '<div class="dhv-reference-suggestion-title">'
-                            '<span class="material-symbols-rounded">lightbulb</span>'
+                            '<span class="material-symbols-rounded dhv-reference-suggestion-icon" '
+                            'aria-hidden="true">lightbulb</span>'
                             '<b>GỢI Ý CÂU HỎI PHỔ BIẾN</b></div>'
                         )
                         with st.container(key="landing_suggestions_reference",
-                                          horizontal=True, gap="small", wrap=False):
+                                          horizontal=True, gap="small", wrap=True):
                             suggestions = (
-                                ("Học phí ngành CNTT\nnăm 2026 là bao nhiêu?", "Học phí ngành Công nghệ thông tin bao nhiêu?"),
-                                ("Điều kiện xét tuyển\nvào DHV?", "Điều kiện xét tuyển vào DHV là gì?"),
-                                ("Phương thức\nxét tuyển năm 2026", "Năm 2026 DHV xét tuyển theo phương thức nào?"),
-                                ("Ngành nào phù hợp\nvới năng lực của tôi?", "DHV có những ngành đào tạo nào phù hợp với tôi?"),
+                                ("Học phí ngành CNTT năm 2026 là bao nhiêu?", "Học phí ngành Công nghệ thông tin bao nhiêu?"),
+                                ("Điều kiện xét tuyển vào DHV?", "Điều kiện xét tuyển vào DHV là gì?"),
+                                ("Phương thức xét tuyển năm 2026", "Năm 2026 DHV xét tuyển theo phương thức nào?"),
+                                ("Ngành nào phù hợp với năng lực của tôi?", "DHV có những ngành đào tạo nào phù hợp với tôi?"),
                             )
                             for index, (title, question) in enumerate(suggestions):
                                 st.button(title, key=f"chat_suggestion_{index}",
                                           type="secondary", on_click=_queue_question,
                                           args=(question,),
                                           disabled=st.session_state.chat_request_in_progress,
-                                          width="stretch")
+                                          width="content")
                 with official_col:
                     with st.container(key="landing_official_reference"):
                         st.html(
@@ -1497,6 +1664,12 @@ def _record_and_render_exchange(question: str) -> None:
 
 
 _inject_chat_styles()
+if st.query_params.get("auth") == "recovery":
+    # Recovery callbacks carry short-lived credentials in the URL fragment.
+    # Handle this route before normal auth restoration or chat/admin rendering.
+    render_password_recovery_page()
+    st.stop()
+
 init_auth()
 if st.session_state.pop("auth_login_notice", False):
     st.toast("Đăng nhập thành công.", icon=":material/check_circle:", duration=4)
@@ -1549,5 +1722,7 @@ else:
             st.session_state.chat_request_in_progress = False
         st.rerun()
 
-if st.session_state.auth_view and not st.session_state.auth_user:
+if st.session_state.auth_view and (
+    not st.session_state.auth_user or st.session_state.auth_view == "forgot"
+):
     render_auth_dialog()

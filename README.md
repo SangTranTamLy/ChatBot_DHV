@@ -1,231 +1,265 @@
-# ChatBot DHV
+# DHV Admissions Chatbot
 
-> Trợ lý tra cứu thông tin tuyển sinh Trường Đại học Hùng Vương TP.HCM.
+> Trợ lý AI giúp tra cứu thông tin tuyển sinh Trường Đại học Hùng Vương TP.HCM (DHV) từ tài liệu chính thức đã xác minh.
 
-Chatbot chạy cục bộ bằng Streamlit, Ollama và ChromaDB. Câu trả lời được tạo từ dữ liệu DHV đã xác minh; nếu không có evidence phù hợp, bot cần báo chưa có thông tin thay vì tự đoán.
+Ứng dụng chạy cục bộ bằng Streamlit, dùng Ollama để tạo câu trả lời và ChromaDB để tìm kiếm tài liệu. Khi không có bằng chứng phù hợp, chatbot được thiết kế để báo chưa có thông tin thay vì tự suy đoán.
 
-## Chức năng
+## Mục lục
 
-- Tra cứu thông tin trường/website DHV, ngành/chương trình, phương thức và điều kiện xét tuyển, điểm, học phí, học bổng, hồ sơ và nhập học.
-- Phân tích ý định, trường, năm và ngữ cảnh câu hỏi; hỗ trợ tách một số câu hỏi nhiều ý trước khi tìm dữ liệu.
-- Tìm kiếm kết hợp từ khóa BM25 và vector, sau đó lọc evidence trước khi tạo câu trả lời.
-- Chặn câu hỏi trường ngoài hoặc ngoài phạm vi trước khi truy xuất dữ liệu DHV.
-- Giao diện chatbot tập trung cho user, hồ sơ cá nhân và khu quản trị riêng được bảo vệ bằng quyền Supabase Auth.
+- [Tổng quan](#tong-quan)
+- [Công nghệ](#cong-nghe)
+- [Bắt đầu nhanh](#bat-dau-nhanh)
+- [Cấu hình](#cau-hinh)
+- [Tài khoản Supabase](#tai-khoan-supabase)
+- [Khu quản trị](#khu-quan-tri)
+- [Dữ liệu, huấn luyện và đánh giá](#du-lieu-huan-luyen-va-danh-gia)
+- [Kiểm thử](#kiem-thu)
+- [Cấu trúc dự án](#cau-truc-du-an)
+- [Giới hạn và bảo mật](#gioi-han-va-bao-mat)
 
-## Khu quản trị
+## Tổng quan
 
-Khu quản trị không có liên kết trong giao diện user. Mở trực tiếp ứng dụng với tham số `?console=admin`, ví dụ `http://localhost:8501/?console=admin`, rồi đăng nhập bằng tài khoản Supabase riêng đã được cấp quyền admin. Tài khoản chỉ được xem trang quản trị khi `app_metadata.role` do quản trị viên Supabase cấp có giá trị `admin`; vai trò trong `user_metadata` không được tin cậy.
+Chatbot hỗ trợ các câu hỏi về:
 
-Để cấp quyền cho một tài khoản Supabase đã tạo, mở **SQL Editor** trong Supabase và chạy câu lệnh dưới đây sau khi thay email mẫu bằng email admin chính xác:
+- Ngành và chương trình đào tạo.
+- Phương thức, điều kiện và điểm xét tuyển.
+- Học phí, các khoản thu và học bổng.
+- Hồ sơ, thủ tục và quyền lợi nhập học.
+- Thông tin chung về DHV.
 
-```sql
-update auth.users
-set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role":"admin"}'::jsonb
-where lower(email) = lower('admin@example.com');
-```
-
-Kiểm tra câu lệnh chỉ cập nhật đúng một tài khoản. Admin cần đăng xuất rồi đăng nhập lại để ứng dụng tải quyền mới. Hạ quyền bằng câu lệnh `raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) - 'role'` với cùng điều kiện email. Trang admin hiện xem trạng thái nguồn JSON/Chroma trên máy chủ và chạy thử câu hỏi qua pipeline; trang chưa ghi nhật ký hội thoại người dùng hoặc cho phép sửa trực tiếp tài liệu.
-
-## Luồng xử lý
-
-```text
-Câu hỏi
-  → Nhận diện ý định, trường, năm và ngữ cảnh
-  → Kiểm tra phạm vi an toàn
-  → Tách câu phức tạp khi phù hợp
-  → Tìm kiếm BM25 + vector trong ChromaDB
-  → Lọc và kiểm tra evidence
-  → Qwen trả lời hoặc báo chưa có dữ liệu
-```
+Luồng trả lời kết hợp phân tích câu hỏi, kiểm tra phạm vi, tìm kiếm từ khóa và vector, lọc bằng chứng rồi mới tạo câu trả lời. Khu quản trị là một trang riêng, chỉ tài khoản được cấp vai trò admin mới truy cập được.
 
 ## Công nghệ
 
-- Python 3.10 trở lên (khuyến nghị Python 3.12)
-- Streamlit
-- Ollama: model trong `.env` (mẫu dùng `qwen2.5:7b-instruct-q4_0`; máy nhẹ có thể dùng `qwen2.5:3b`)
-- Embedding: mẫu dùng Sentence Transformers `paraphrase-multilingual-MiniLM-L12-v2`; hỗ trợ Ollama nếu Chroma được xây với backend đó
-- ChromaDB, BM25, RRF và Pytest
+| Thành phần | Công nghệ |
+|---|---|
+| Giao diện | Streamlit |
+| Mô hình trả lời | Ollama, mặc định trong mẫu là Qwen 2.5 7B |
+| Tìm kiếm ngữ nghĩa | ChromaDB và Sentence Transformers |
+| Xác thực, hồ sơ và đổi mật khẩu | Supabase Auth và PostgreSQL |
+| Kiểm thử | Pytest |
 
-## Cài đặt và chạy trên Windows
+Python `3.12` được khuyến nghị. Python `3.10` trở lên được hỗ trợ.
 
-Tải project và mở PowerShell tại thư mục vừa tải:
+## Bắt đầu nhanh
 
-```powershell
+### 1. Tạo môi trường Python
+
+Windows PowerShell:
+
+~~~powershell
 git clone https://github.com/SangTranTamLy/ChatBot_DHV.git
 Set-Location ChatBot_DHV
-python -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
-```
+~~~
 
-Nếu PowerShell chặn kích hoạt môi trường, chỉ áp dụng cho cửa sổ hiện tại rồi kích hoạt lại:
+macOS hoặc Linux:
 
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\.venv\Scripts\Activate.ps1
-```
-
-## Cài đặt và chạy trên macOS
-
-Cài [Python 3.12](https://www.python.org/downloads/macos/) và Git (có thể cài Git bằng `xcode-select --install`), sau đó mở Terminal tại thư mục muốn lưu project. Có thể kiểm tra Python bằng `python3 --version` và Git bằng `git --version`.
-
-```bash
+~~~bash
 git clone https://github.com/SangTranTamLy/ChatBot_DHV.git
 cd ChatBot_DHV
-python3 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 if [ ! -f .env ]; then cp .env.example .env; fi
-```
+~~~
 
-Mỗi lần mở Terminal mới để làm việc, kích hoạt lại môi trường bằng `source .venv/bin/activate` trong thư mục project.
+Nếu PowerShell không cho kích hoạt môi trường, chỉ áp dụng chính sách cho cửa sổ hiện tại:
 
-Nếu muốn dùng embedding qua Ollama thay cho Sentence Transformers, đặt `EMBEDDING_BACKEND=ollama` và `EMBEDDING_MODEL=nomic-embed-text` trong `.env`, tải thêm `ollama pull nomic-embed-text`, rồi tạo lại vector store với `--reset`.
+~~~powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+~~~
 
-## Ollama
+### 2. Cài và chạy Ollama
 
-Ollama có thể đã chạy nền. Nếu chưa chạy, mở terminal riêng và chạy:
+Cài Ollama từ [ollama.com](https://ollama.com/), sau đó tải model khớp với biến `OLLAMA_MODEL` trong file `.env`:
 
-```bash
+~~~bash
+ollama pull qwen2.5:7b-instruct-q4_0
+~~~
+
+Ollama thường tự chạy nền. Nếu chưa chạy, mở một terminal riêng và chạy:
+
+~~~bash
 ollama serve
-```
+~~~
 
-Ở terminal khác, kiểm tra/tải model (ví dụ):
+Máy cấu hình thấp có thể đổi OLLAMA_MODEL thành qwen2.5:3b trong .env rồi tải model đó bằng ollama pull qwen2.5:3b.
 
-```bash
-ollama list
-ollama pull qwen2.5:7b-instruct-q4_0
-```
+### 3. Tạo dữ liệu truy xuất lần đầu
 
-Tải model đúng với `OLLAMA_MODEL` trong `.env`. Nếu dùng embedding Ollama, tải thêm model tương ứng với `EMBEDDING_MODEL`; cấu hình mẫu dùng Sentence Transformers nên không cần tải `nomic-embed-text` qua Ollama.
+PDF nguồn và manifest nằm trong data/raw/. Các tệp JSON đã xử lý và ChromaDB được sinh cục bộ, không lưu trong Git. Chạy từ thư mục gốc dự án:
 
-Nếu `ollama serve` báo cổng `11434` đã được sử dụng, thường là Ollama đã chạy; kiểm tra bằng `ollama list`, không cần mở thêm server.
-
-Trên macOS, cài Ollama từ [trang tải chính thức](https://ollama.com/download/mac) rồi mở ứng dụng Ollama. Trang tải hiện yêu cầu macOS 14 Sonoma trở lên. Sau đó mở Terminal và tải model như sau:
-
-```bash
-ollama list
-ollama pull qwen2.5:7b-instruct-q4_0
-```
-
-Nếu Ollama chưa chạy nền, mở một Terminal riêng và chạy `ollama serve`. Model cần khớp với `OLLAMA_MODEL` trong `.env`.
-
-## Dữ liệu lần chạy đầu
-
-Các file nguồn gồm PDF trong `data/raw/` và `data/raw/manifest.json`. `data/processed/` và `chroma_db/` là dữ liệu sinh cục bộ, không được lưu trong Git; vì vậy một bản clone mới cần tạo chúng trước khi chạy chatbot.
-
-```shell
+~~~bash
 python -m src.ingestion.prepare_processed_from_raw
 python -m src.ingestion.build_vector_db --all-years --reset
-```
+~~~
 
-Trên macOS, kích hoạt `.venv` rồi tạo dữ liệu lần đầu:
+Lệnh đầu trích xuất và kiểm tra các tài liệu nguồn. Lệnh thứ hai tạo lại ChromaDB từ tài liệu đã xác minh. Tùy chọn `--reset` xóa vector store đang cấu hình trước khi xây lại; không chạy lệnh này khi chỉ muốn khởi động ứng dụng.
 
-```bash
-python -m src.ingestion.prepare_processed_from_raw
-python -m src.ingestion.build_vector_db --year 2026 --reset
-```
+Nếu chỉ cần năm mặc định, có thể xây collection cho `TARGET_YEAR` bằng:
 
-**Lưu ý:** lệnh trích xuất mặc định làm mới thư mục JSON đầu ra. `--reset` ở lệnh xây Chroma sẽ đặt lại vector store được cấu hình trong `.env`. Chỉ chạy khi chủ động tái tạo dữ liệu; không cần chạy lại mỗi lần mở chatbot.
+~~~bash
+python -m src.ingestion.build_vector_db --reset
+~~~
 
-- Mặc định project dùng `TARGET_YEAR=2026`.
-- Nếu chỉ lập chỉ mục năm mặc định, dùng `python -m src.ingestion.build_vector_db --reset`.
-- Dùng `--all-years` nếu cần tra cứu cả dữ liệu 2024 và 2026. Dữ liệu học phí 2024 chỉ áp dụng cho câu hỏi năm 2024.
-- Loader chỉ nạp tài liệu đã xác minh, đúng năm, đúng trường và có nguồn hợp lệ.
+Mẫu `.env` đặt `TARGET_YEAR=2026`. Dùng `--all-years` để đưa các năm có trong nguồn vào cùng collection; câu hỏi lịch sử nên nêu rõ năm.
+
+### 4. Khởi động ứng dụng
+
+~~~bash
+streamlit run app.py
+~~~
+
+Mở địa chỉ Streamlit in ra trong terminal, mặc định là http://localhost:8501.
 
 ## Cấu hình
 
-Các giá trị mặc định nằm trong `.env.example`; chỉnh trong `.env` nếu môi trường của bạn khác.
+Sao chép .env.example thành .env rồi chỉnh các giá trị phù hợp với máy. Các biến thường dùng:
 
-| Biến | Mặc định | Ý nghĩa |
+| Biến | Giá trị trong mẫu | Mục đích |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Địa chỉ Ollama |
-| `OLLAMA_MODEL` | `qwen2.5:7b-instruct-q4_0` | Model trả lời |
-| `EMBEDDING_BACKEND` | `sentence-transformers` | Backend embedding |
+| `OLLAMA_MODEL` | `qwen2.5:7b-instruct-q4_0` | Model tạo câu trả lời |
+| `OLLAMA_TIMEOUT_SECONDS` | `90` | Thời gian chờ model |
+| `EMBEDDING_BACKEND` | `sentence-transformers` | Backend tạo embedding |
 | `EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Model embedding |
 | `TARGET_YEAR` | `2026` | Năm dữ liệu mặc định |
-| `PROCESSED_DATA_DIR` | `data/processed` | JSON đã xử lý |
-| `CHROMA_PERSIST_DIR` | `chroma_db` | Vector store cục bộ |
+| `RETRIEVER_TOP_K` | `4` | Số kết quả truy xuất |
+| `CHROMA_PERSIST_DIR` | `chroma_db` | Thư mục lưu vector store |
 | `CHROMA_COLLECTION` | `dhv_admissions_2026` | Tên collection |
+| `PROCESSED_DATA_DIR` | `data/processed` | Thư mục JSON đã xử lý |
+| `SUPABASE_URL` | để trống | URL của dự án Supabase |
+| `SUPABASE_PUBLISHABLE_KEY` | để trống | Publishable key dùng cho ứng dụng |
+| `SUPABASE_ANON_KEY` | để trống | Tên biến tương thích ngược với anon key |
 
-## Khởi động giao diện
+Nếu dùng Ollama làm embedding thay cho Sentence Transformers, đặt EMBEDDING_BACKEND=ollama, đổi EMBEDDING_MODEL thành nomic-embed-text, tải model bằng ollama pull nomic-embed-text và xây lại ChromaDB.
 
-Từ thư mục gốc, sau khi môi trường và dữ liệu đã sẵn sàng:
+Chatbot có thể chạy ở chế độ khách khi chưa cấu hình Supabase. Supabase là cần thiết cho đăng ký, đăng nhập, hồ sơ cá nhân, đổi mật khẩu và quyền admin.
 
-```shell
-streamlit run app.py
-```
+## Tài khoản Supabase
 
-Trên macOS, kích hoạt `.venv` rồi chạy `streamlit run app.py`.
+### Cấu hình ban đầu
 
-Mở địa chỉ được Streamlit hiển thị, mặc định là <http://localhost:8501>.
+1. Tạo dự án Supabase và điền SUPABASE_URL cùng SUPABASE_PUBLISHABLE_KEY vào .env.
+2. Trong Supabase SQL Editor, chạy migration [20261024000000_create_profiles.sql](supabase/migrations/20261024000000_create_profiles.sql) một lần để tạo hồ sơ, trigger và chính sách RLS.
+3. Trong Authentication → Sign In / Providers, bật đăng ký Email và mật khẩu. Cấu hình hiện tại tắt xác nhận email để phù hợp bản demo; người đăng ký chưa phải chứng minh quyền sở hữu email.
+4. Trong Authentication → URL Configuration, thêm URL sau vào danh sách Redirect URLs để dùng luồng quên mật khẩu khi chạy cục bộ:
+
+   http://localhost:8501/?auth=recovery
+
+Không đưa service-role/secret key vào .env của ứng dụng hoặc mã nguồn. Chỉ dùng publishable key; ứng dụng không cần quyền vượt RLS để thao tác tài khoản thông thường.
+
+### Đăng nhập và khôi phục mật khẩu
+
+Người dùng đăng ký bằng tên, email và mật khẩu; hồ sơ tên được tạo trong public.profiles. Email thuộc Supabase Auth, mật khẩu do Supabase Auth quản lý dưới dạng hash và không được lưu trong bảng hồ sơ.
+
+Luồng quên mật khẩu gửi liên kết qua email. Giao diện luôn dùng cùng một thông báo để không tiết lộ email nào đã đăng ký; email không có tài khoản sẽ không nhận liên kết. Email thử nghiệm có thể bị giới hạn bởi SMTP mặc định của Supabase; xem [hướng dẫn SMTP](https://supabase.com/docs/guides/auth/auth-smtp) nếu cần gửi đến địa chỉ ngoài phạm vi dự án.
+
+## Khu quản trị
+
+Khu quản trị không có liên kết từ giao diện chatbot. Mở trực tiếp:
+
+http://localhost:8501/?console=admin
+
+Sau đó đăng nhập bằng tài khoản Supabase đã được quản trị viên cấp vai trò admin. Ứng dụng chỉ tin app_metadata.role; không cấp quyền bằng user_metadata.
+
+Để cấp quyền cho tài khoản, chạy trong Supabase SQL Editor và thay địa chỉ mẫu bằng email admin:
+
+~~~sql
+update auth.users
+set raw_app_meta_data =
+    coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role":"admin"}'::jsonb
+where lower(email) = lower('admin@example.com');
+~~~
+
+Kiểm tra câu lệnh chỉ cập nhật đúng một tài khoản. Admin cần đăng xuất rồi đăng nhập lại để tải vai trò mới. Để gỡ quyền, chạy:
+
+~~~sql
+update auth.users
+set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) - 'role'
+where lower(email) = lower('admin@example.com');
+~~~
+
+Trang quản trị hiện phục vụ kiểm tra trạng thái dữ liệu và chạy thử câu hỏi qua pipeline; không chỉnh sửa trực tiếp tài liệu nguồn.
+
+## Dữ liệu, huấn luyện và đánh giá
+
+### Nguồn kiến thức
+
+- data/raw/ chứa PDF tuyển sinh DHV và manifest ghi nguồn, năm, trạng thái xác minh.
+- data/processed/ chứa JSON được sinh từ PDF; đây là dữ liệu cục bộ.
+- chroma_db/ chứa vector store được xây từ JSON đã kiểm tra.
+
+Chỉ tài liệu được xác minh, thuộc DHV và đáp ứng quy tắc nguồn mới được nạp vào bộ truy xuất.
+
+### Dữ liệu huấn luyện và ví dụ trả lời
+
+- data/intent/samples.jsonl chứa câu hỏi đã gán nhãn để huấn luyện bộ nhận diện intent. Chạy python -m src.chatbot.train_intent_model để sinh lại train/test và model.
+- data/training/response_examples.jsonl chứa ví dụ hỗ trợ cách diễn đạt. Các ví dụ này không thay thế bằng chứng truy xuất và không dùng để học thuộc số liệu.
+- data/evaluation/qa_master_500.jsonl là bộ 500 câu dùng đánh giá/regression, không phải dữ liệu fine-tune Qwen.
+
+Bộ 500 câu chuẩn hóa xuất phát từ data/evaluation/raw/Nhóm 4_Thu_Thap_Q&A.xlsx. Quy trình và quy tắc dữ liệu được mô tả trong [data/evaluation/README.md](data/evaluation/README.md).
+
+### Đánh giá offline
+
+evaluation/ chứa bộ dev/holdout nhỏ để kiểm tra hợp đồng truy xuất và trả lời. Chạy báo cáo từ thư mục gốc:
+
+~~~bash
+python -m evaluation.run_evaluation --split all
+~~~
+
+Kết quả đánh giá cục bộ được ghi vào reports/ và không commit.
 
 ## Kiểm thử
 
-```shell
+Chạy unit và regression tests:
+
+~~~bash
 python -m pytest tests -q
-python -m compileall -q src tests
-```
+~~~
 
-Bộ 500 câu tại `data/evaluation/qa_master_500.jsonl` dùng để đánh giá/regression, không phải dữ liệu để chatbot học thuộc hay fine-tune model.
+Chạy riêng các kiểm thử xác thực Supabase:
 
-## Cập nhật câu hỏi training và cách trả lời
+~~~bash
+python -m pytest tests/test_supabase_auth_service.py tests/test_ui_auth.py -q
+~~~
 
-- `data/intent/samples.jsonl`: câu hỏi và nhãn intent, dùng để huấn luyện bộ nhận diện nhỏ chạy offline. Không chứa đáp án làm nguồn kiến thức.
-- `data/intent/train.jsonl`, `test.jsonl` và `models/intent_classifier.json`: sinh lại bằng lệnh dưới, chia 80/20 tất định. Không sửa thủ công file model.
-- `data/training/response_examples.jsonl`: cặp câu hỏi, ngữ cảnh mẫu và câu trả lời tự nhiên. Prompt chỉ lấy tối đa hai ví dụ để hướng dẫn cách diễn đạt; số liệu trong ví dụ không được thay cho ngữ cảnh truy hồi hiện tại.
-- PDF/JSON nguồn mới là căn cứ trả lời thông tin tuyển sinh. Bộ 500 câu đánh giá được giữ riêng, không đưa vào tập training. Đây không phải fine-tuning trọng số model Ollama.
+## Cấu trúc dự án
 
-```shell
-python -m src.chatbot.train_intent_model
-python -m pytest tests/test_intent_classifier.py tests/test_context_time_partial.py -q
-```
+~~~text
+app.py                         Giao diện Streamlit và điều hướng
+assets/                        CSS giao diện
+static/                        Ảnh, font và tài nguyên tĩnh
+src/chatbot/                   Phân tích câu hỏi, truy xuất và tạo câu trả lời
+src/retrieval/                 Tìm kiếm và lọc bằng chứng
+src/ingestion/                 Đọc PDF, tạo JSON và xây ChromaDB
+src/models/                    Kết nối Ollama
+src/config/                    Đọc cấu hình
+src/ui_auth.py                 Giao diện xác thực
+src/supabase_auth.py           Tích hợp Supabase Auth
+supabase/migrations/            Migration hồ sơ và RLS
+data/raw/                       PDF nguồn và manifest
+data/processed/                 JSON sinh cục bộ
+data/intent/                    Mẫu và nhãn nhận diện intent
+data/training/                  Ví dụ diễn đạt
+data/evaluation/                Bộ câu hỏi đánh giá
+evaluation/                     Công cụ đánh giá offline
+models/                         Model intent
+scripts/                        Công cụ kiểm tra và đánh giá
+tests/                          Unit và regression tests
+~~~
 
-Sau khi thay model intent hoặc ví dụ trả lời, khởi động lại ứng dụng để tải lại cache. Khi bổ sung câu training, tránh câu trùng hoặc nhãn mâu thuẫn; câu ngắn phụ thuộc ngữ cảnh phải kiểm tra bằng chuỗi hội thoại, không gán thành câu độc lập tùy ý.
+## Giới hạn và bảo mật
 
-Với câu hỏi hiện tại về nhận hồ sơ/đăng ký, chatbot kiểm tra thời hạn theo ngày Việt Nam. Nếu chưa có cửa sổ thời gian rõ ràng hoặc các hạn mâu thuẫn, chatbot không khẳng định đợt đang mở. Câu hỏi lịch sử vẫn được trả lời như lịch sử. Câu trả lời theo thời điểm không được lưu vào answer cache.
-
-## Ví dụ câu hỏi
-
-- `DHV xét tuyển bằng những phương thức nào?`
-- `Điều kiện xét tuyển học bạ năm 2026 là gì?`
-- `Học phí DHV năm 2024 bao nhiêu?`
-- `Hồ sơ nhập học cần những gì?`
-
-## Cấu trúc chính
-
-```text
-app.py                 Giao diện Streamlit
-assets/                CSS cho giao diện
-static/                Ảnh và tài nguyên tĩnh của giao diện
-src/chatbot/           Phân tích câu hỏi, state, điều phối RAG và trả lời
-src/retrieval/         Tìm kiếm, hợp nhất và lọc kết quả
-src/ingestion/         Trích xuất, kiểm tra JSON và xây ChromaDB
-src/prompts/           Prompt cho model
-src/models/            Kết nối model cục bộ
-data/raw/              PDF nguồn và manifest
-data/processed/        JSON sinh từ PDF (local, không commit)
-data/intent/           Ví dụ và nhãn huấn luyện bộ nhận diện intent
-data/training/         Ví dụ định dạng câu trả lời
-data/evaluation/       Bộ câu hỏi chuẩn để đánh giá hồi quy
-evaluation/            Bộ chạy và quy tắc đánh giá offline
-models/                Model đã huấn luyện cho nhận diện intent
-chroma_db/             Vector store (local, không commit)
-scripts/               Công cụ audit, kiểm tra và đánh giá
-tests/                 Unit/regression tests
-reports/               Báo cáo cục bộ; được giữ lại và loại khỏi Git
-```
-
-## Phạm vi và giới hạn
-
-- Chỉ trả lời theo dữ liệu DHV đã xác minh; trường ngoài phạm vi được chặn, dữ liệu thiếu thì bot báo chưa có thông tin.
-- Năm mặc định là 2026. Để hỏi dữ liệu lịch sử, nêu rõ năm trong câu hỏi; hội thoại kế thừa năm cũ hiện vẫn cần QA kiểm tra thêm.
-- Project đang trong giai đoạn phát triển và kiểm thử, chưa có xác nhận QA cuối cùng để dùng production.
-- Không nhập CCCD, số điện thoại, email hoặc thông tin cá nhân nhạy cảm vào chatbot. Với thông tin quan trọng, hãy đối chiếu kênh chính thức của trường.
-
-`.env`, môi trường Python, JSON đã xử lý, ChromaDB và `reports/` là file/thư mục cục bộ được loại khỏi Git. Không đưa khóa bí mật lên GitHub.
-
-Các cache và thư mục tạm như `__pycache__/`, `.pytest_cache/`, `.pytest-temp/` và `.qa_tmp/` được tạo lại khi chạy ứng dụng hoặc kiểm thử; chúng không chứa mã nguồn của project và không cần commit.
+- Dự án đang trong giai đoạn phát triển; cần đánh giá và cấu hình thêm trước khi dùng production.
+- Chatbot chỉ tra cứu dữ liệu DHV đã nạp. Thông tin quan trọng cần đối chiếu các kênh chính thức của trường.
+- Không nhập CCCD, mật khẩu, số điện thoại hoặc thông tin cá nhân nhạy cảm vào câu hỏi.
+- .env, Supabase secret key, dữ liệu sinh cục bộ, ChromaDB và báo cáo riêng không được commit.
+- Tắt xác nhận email là lựa chọn cho bản demo, không xác thực quyền sở hữu địa chỉ email.
