@@ -72,12 +72,12 @@ _FILLERS = {
     "ban", "bot", "ad", "admin", "dhv", "ai", "tro", "ly", "oi", "nhe", "nha",
     "a", "ah", "da", "vay", "the", "nhieu", "rat", "lam", "qua", "minh", "toi", "em",
     "anh", "chi", "moi", "nguoi", "voi", "nhi", "ha", "hen", "roi",
-    "cho", "hoi", "co", "the", "khong", "ko", "k", "gi", "va", "ne", "nghe",
+    "cho", "hoi", "co", "khong", "ko", "k", "gi", "va", "ne", "nghe",
 }
 
 # Any of these means the user is actually asking about admissions/school.
 _ADMISSION_SIGNALS = [
-    "nganh", "hoc phi", "hoc bong", "diem", "xet tuyen", "thpt", "hoc ba", "dgnl", "h_sca",
+    "nganh", "hoc phi", "hoc bong", "diem", "xet tuyen", "thpt", "hoc ba", "dgnl", "h sca",
     "ho so", "nhap hoc", "lich", "thoi gian", "co so", "dia chi", "hotline", "website",
     "chuyen nganh", "chuong trinh", "tin chi", "mon", "to hop", "hoc ky", "hoc ki",
     "thanh lap", "lich su", "truong o dau", "phuong thuc", "san", "trung tuyen", "xet bo sung",
@@ -108,26 +108,26 @@ def _build_reply(intent: str, has_history: bool) -> SmalltalkReply:
             "Nếu chưa tìm thấy thông tin phù hợp, mình sẽ nói rõ để bạn tiện kiểm tra thêm với nhà trường.\n\n"
             + _CAPABILITY_TEXT
         )
-        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS)
+        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS.copy())
 
-    elif intent == "capabilities":
+    if intent == "capabilities":
         answer = (
             _CAPABILITY_TEXT + "\n\n"
             "Bạn đang quan tâm đến ngành học, phương thức xét tuyển hay học bổng nào của DHV? "
             "Cứ nhắn cho mình biết nhé!"
         )
-        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS)
+        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS.copy())
 
-    elif intent == "greeting":
+    if intent == "greeting":
         answer = (
             "Xin chào bạn! Rất vui được gặp bạn 🌸.\n\n"
             "Mình là Trợ lý tư vấn tuyển sinh của **Trường Đại học Hùng Vương TP.HCM (DHV)**. "
             "Bạn đang quan tâm đến ngành đào tạo, phương thức xét tuyển, điểm chuẩn hay học phí, học bổng năm 2026 của trường nè? "
             "Hãy nhắn cho mình câu hỏi của bạn nhé!"
         )
-        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS)
+        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS.copy())
 
-    elif intent == "thanks":
+    if intent == "thanks":
         answer = (
             "Dạ không có chi nè! Rất vui vì đã hỗ trợ được cho bạn. "
             "Nếu bạn cần thêm thông tin gì về tuyển sinh DHV 2026, cứ nhắn cho mình bất cứ lúc nào nhé! 😊"
@@ -140,20 +140,20 @@ def _build_reply(intent: str, has_history: bool) -> SmalltalkReply:
             suggestions=["Trường có những ngành nào?", "Mức học phí năm 2026", "Chính sách học bổng"],
         )
 
-    elif intent == "goodbye":
+    if intent == "goodbye":
         answer = (
             "Tạm biệt bạn nhé! Chúc bạn luôn tự tin, học tập tốt và đạt được kết quả như ý. "
             "Hẹn sớm gặp lại bạn tại Trường Đại học Hùng Vương TP.HCM (DHV) nha! 🎓"
         )
         return SmalltalkReply(intent=intent, answer=answer, suggestions=[])
 
-    elif intent == "ack":
+    if intent == "ack":
         answer = (
             "Dạ vâng! Bạn cần mình giải đáp thêm thông tin gì về tuyển sinh DHV nữa không nè?"
             if has_history
             else "Dạ vâng! Bạn muốn tra cứu thông tin tuyển sinh nào của DHV ạ?"
         )
-        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS)
+        return SmalltalkReply(intent=intent, answer=answer, suggestions=_DEFAULT_SUGGESTIONS.copy())
 
     else:
         answer = (
@@ -177,19 +177,22 @@ def detect_smalltalk(question: str, has_history: bool = False) -> Optional[Small
     if not tokens:
         return None
 
+    padded_question = f" {raw_folded} "
+
     # If any substantive admission signal is present, it is NOT small talk.
     for sig in _ADMISSION_SIGNALS:
-        if sig in raw_folded:
+        if f" {sig} " in padded_question:
             return None
 
     # Check each intent by priority
     for intent in _PRIORITY:
         for phrase in _INTENT_PHRASES[intent]:
-            if phrase in raw_folded:
+            padded_phrase = f" {phrase} "
+            if padded_phrase in padded_question:
                 # Remove the phrase and check if remaining words are just fillers
-                remainder = raw_folded.replace(phrase, " ")
+                remainder = padded_question.replace(padded_phrase, " ")
                 rem_tokens = [tok for tok in remainder.split() if tok not in _FILLERS]
-                if len(rem_tokens) <= 1:
+                if not rem_tokens:
                     return _build_reply(intent, has_history)
 
     return None

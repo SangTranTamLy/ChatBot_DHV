@@ -21,6 +21,7 @@ from .admission_answers import (
     _evidence_application_registration_answer,
     _evidence_date_comparison_answer,
     _evidence_eligibility_answer,
+    _evidence_english_major_certificate_eligibility_answer,
     _evidence_enrollment_answer,
     _evidence_exam_subject_count_answer,
     _evidence_general_registration_answer,
@@ -53,13 +54,11 @@ from .catalog_formatters import (
     _evidence_program_relation_answer,
     _has_verified_advisory_fit_evidence,
     _major_rows_from_evidence,
-    _method_details_from_evidence,
     _program_detail_missing_evidence,
     _program_rows_from_evidence,
     _source_ordered_documents,
 )
 from .evidence import build_evidence, select_evidence_documents
-from .evidence_utils import _remove_unresolved_url_label
 from .generation_guards import _combination_is_verified, _validated_generation
 from .multi_issue import _ask_multi_issue
 from .official_links import _official_links_answer
@@ -101,7 +100,7 @@ from .query_analysis import (
     update_conversation_state,
 )
 from .query_decomposer import _try_pre_rag_decomposition
-from .query_semantics import correct_domain_typos
+from .query_semantics import analyze_fee_request, correct_domain_typos
 from .scholarship_formatters import (
     _evidence_scholarship_answer,
     _evidence_scholarship_catalog_answer,
@@ -145,13 +144,9 @@ from .scope_guard import (
     is_personal_life_advice,
 )
 from .tuition_formatters import (
-    _evidence_fee_breakdown_answer,
-    _evidence_fee_item_answer,
-    _evidence_optional_english_fee_answer,
     _evidence_semester_system_answer,
     _evidence_tuition_answer,
-    _evidence_tuition_per_credit_answer,
-    _evidence_tuition_total_answer,
+    answer_fee_request,
 )
 
 
@@ -165,6 +160,7 @@ def _major_admission_score_lines(analysis: Any, evidence: Any) -> list[str]:
     student_scores = analysis.entities.get("student_scores") or {}
     if not isinstance(student_scores, Mapping) or not student_scores:
         return []
+    target_year = analysis.entities.get("year") or settings.target_year
     facts = [
         fact for fact in getattr(evidence, "score_facts", ()) or ()
         if isinstance(fact, Mapping)
@@ -198,7 +194,7 @@ def _major_admission_score_lines(analysis: Any, evidence: Any) -> list[str]:
                 continue  # keep the row variant that carries the "(*)" marker
             seen.add((name, method))
             line = (
-                f"Điểm trúng tuyển đợt 1 năm 2026 của ngành {name} theo {_method_label(method)} "
+                f"Điểm trúng tuyển đợt 1 năm {target_year} của ngành {name} theo {_method_label(method)} "
                 f"là {raw_value} điểm"
             )
             try:
@@ -208,7 +204,7 @@ def _major_admission_score_lines(analysis: Any, evidence: Any) -> list[str]:
                     else "thấp hơn"
                 )
                 line += f"; điểm {student_scores[method]} bạn nêu {relation} mức này."
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 line += "."
             lines.append(line)
     return lines
@@ -238,7 +234,17 @@ def ask_chatbot(
 
     query = correct_domain_typos(question.strip()) if isinstance(question, str) else ""
     state = ConversationState.from_value(conversation_state, default_year=settings_obj.target_year)
+    fee_request = analyze_fee_request(query)
     analysis = analyze_question(query, state, default_year=settings_obj.target_year)
+    if fee_request.is_fee_request and analysis.intent in {"HOI_CHUONG_TRINH", "HOI_NGANH"}:
+        # A school-term phrase can otherwise win over the amount the user asks
+        # to pay (for example, "HKI đóng bao nhiêu?"). Route using the shared
+        # fee parser without disturbing explicit multi-issue or scholarship intents.
+        analysis = replace(
+            analysis,
+            intent="HOI_HOC_PHI",
+            entities={**analysis.entities, "requested_information": list(fee_request.topics)},
+        )
     explicit_year = requested_year(query)
     inherit_year = explicit_year is None and should_inherit_context(
         analysis.normalized_question,
@@ -582,6 +588,9 @@ def ask_chatbot(
         retrieval_audit,
         evidence_selection,
     )
+    if fee_request.is_fee_request:
+        trace["fee_request"] = fee_request.to_dict()
+
     def finish(result: dict[str, object], answer_plan: Any) -> dict[str, object]:
         result.update(state=next_state.to_dict(), conversation_state=next_state.to_dict(), trace=trace)
         return _attach_answer_plan(result, answer_plan)
@@ -629,6 +638,7 @@ def ask_chatbot(
     if analysis.intent in {"HOI_DANG_KY_XET_TUYEN", "HOI_NGUONG_DAU_VAO"}:
         admission_rule_answer = (
             _evidence_law_grade_eligibility_answer(analysis, evidence)
+            or _evidence_english_major_certificate_eligibility_answer(analysis, evidence)
             or _evidence_method_application_threshold_answer(analysis, evidence)
             or _evidence_subject_minimum_answer(analysis, evidence)
             or _evidence_eligibility_answer(analysis, evidence)
@@ -642,6 +652,7 @@ def ask_chatbot(
     supplementary_detail_question = str(analysis.entities.get("request_type") or "").startswith("supplementary_")
     supplementary_route_question = (
         not supplementary_detail_question
+        and score_query_type != "supplementary_threshold_lookup"
         and analysis.intent in {"HOI_XET_TUYEN_BO_SUNG", "HOI_DANG_KY_XET_TUYEN"}
         and any(marker in normalized_query for marker in (
             "xet bo sung", "xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung",
@@ -926,17 +937,25 @@ def ask_chatbot(
         enrollment_answer = direct_evidence_answer
         enrollment_answer_checked = True
     elif analysis.intent == "HOI_HOC_PHI" or any(k in normalized_query for k in ("hoc ky", "hoc ki", "1 nam", "mot nam", "thoi gian dao tao", "dao tao may nam")):
-        # Money questions first: "số tiền học kỳ I" must not be answered by
-        # the semester-structure formatter just because it says "học kỳ".
-        direct_evidence_answer = (
-            _evidence_tuition_total_answer(analysis, evidence)
-            or _evidence_fee_breakdown_answer(analysis, evidence)
-            or _evidence_semester_system_answer(analysis, evidence)
-            or _evidence_optional_english_fee_answer(analysis, evidence)
-            or _evidence_fee_item_answer(analysis, evidence)
-            or _evidence_tuition_per_credit_answer(analysis, evidence)
-            or _evidence_tuition_answer(evidence)
-        )
+        # Payment-channel and price-stability questions are supported by
+        # verified policy sentences; all fee-table questions use one handler.
+        direct_evidence_answer = _evidence_semester_system_answer(analysis, evidence)
+        if direct_evidence_answer is None and fee_request.is_fee_request:
+            fee_answer = answer_fee_request(analysis, evidence, fee_request)
+            if fee_answer is not None:
+                trace["fee_coverage"] = {
+                    key: fee_answer[key]
+                    for key in ("requested_topics", "answered_topics", "ambiguous_topics", "missing_topics")
+                }
+                answer = fee_answer.get("answer")
+                direct_evidence_answer = str(answer) if answer else None
+            if direct_evidence_answer is None:
+                trace["evidence_boundary"] = (
+                    "annual_tuition_average_missing_matching_rate"
+                    if fee_request.scope == "annual"
+                    else "requested_fee_facts_missing_verified_table_rows"
+                )
+                return no_data()
     elif analysis.intent == "HOI_HOC_BONG":
         asks_if_scholarships_exist = bool(re.fullmatch(
             r"(?:(?:dhv|truong dhv|truong|nha truong) )?co hoc bong khong\??",
@@ -1209,7 +1228,7 @@ def ask_chatbot(
             and analysis.intent == "HOI_HOC_PHI"
             and isinstance(active_llm, LocalLLM)
         ):
-            tuition_answer = _evidence_tuition_answer(evidence)
+            tuition_answer = _evidence_tuition_answer(evidence, analysis)
             if tuition_answer:
                 fallback_result = validate_model_answer(
                     tuition_answer,

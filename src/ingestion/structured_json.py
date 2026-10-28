@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import unicodedata
 from pathlib import Path
@@ -25,16 +26,6 @@ _URL_RE = re.compile(r"https?://[^\s]+", re.IGNORECASE)
 _MAJOR_CODE_RE = re.compile(r"^\d{7}$")
 _NUMBER_RE = re.compile(r"^-?\d+(?:[.,]\d+)?$")
 _VND_RE = re.compile(r"(?P<number>\d{1,3}(?:\.\d{3})+|\d+)\s*đồng", re.IGNORECASE)
-_DATE_LINE_RE = re.compile(
-    r"^(?:Ngày cập nhật nguồn|Nguồn cập nhật|Ngày thu thập/kiểm tra):\s*(?P<date>.+?)\s*$",
-    re.IGNORECASE,
-)
-_COLLECTED_AT_RE = re.compile(
-    r"(?:Ngày kiểm tra|Ngày thu thập/kiểm tra|Kiểm tra):\s*(?P<date>\d{1,2}/\d{1,2}/\d{4})\b",
-    re.IGNORECASE,
-)
-
-
 class StructuredJSONValidationError(ValueError):
     """Raised when a generated structured document violates its contract."""
 
@@ -49,13 +40,16 @@ def is_official_dhv_url(value: object) -> bool:
 
     if not isinstance(value, str) or not value.strip():
         return False
-    parsed = urlparse(value.strip())
-    host = (parsed.hostname or "").lower().rstrip(".")
+    try:
+        parsed = urlparse(value.strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        has_credentials = parsed.username is not None or parsed.password is not None
+    except ValueError:
+        return False
     return bool(
         parsed.scheme.lower() == "https"
         and host
-        and not parsed.username
-        and not parsed.password
+        and not has_credentials
         and (host == OFFICIAL_DHV_HOST or host.endswith(f".{OFFICIAL_DHV_HOST}"))
     )
 
@@ -122,26 +116,13 @@ def _value_or_raw(value: str) -> int | float | str:
 
 def _source_urls(text: str) -> list[str]:
     urls: list[str] = []
+    seen: set[str] = set()
     for match in _URL_RE.finditer(text):
         value = match.group(0).rstrip(".,);]")
-        if value not in urls:
+        if value not in seen:
+            seen.add(value)
             urls.append(value)
     return urls
-
-
-def _date_metadata(text: str) -> tuple[str, str]:
-    source_date = ""
-    for line in _nonempty_lines(text):
-        match = _DATE_LINE_RE.match(line)
-        if match:
-            source_date = match.group("date").split("|", 1)[0].strip()
-            break
-    collected_at = ""
-    match = _COLLECTED_AT_RE.search(text)
-    if match:
-        day, month, year = match.group("date").split("/")
-        collected_at = f"{year}-{month.zfill(2)}-{day.zfill(2)}"
-    return source_date, collected_at
 
 
 def _title_from_text(text: str) -> str:
@@ -1301,15 +1282,18 @@ def parse_school_information(pages: list[dict[str, Any]]) -> list[dict[str, Any]
     without losing provenance or official website records.
     """
     records: list[dict[str, Any]] = parse_official_websites(pages)
-    combined_text = "\n".join(str(page.get("text", "")) for page in pages)
-
-    p1_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 1), "")
-    p2_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 2), "")
-    p3_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 3), "")
-    p4_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 4), "")
-    p5_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 5), "")
-    p6_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 6), "")
-    p7_text = next((str(p.get("text", "")) for p in pages if int(p.get("page", 0)) == 7), "")
+    page_texts: dict[int, str] = {}
+    all_page_text: list[str] = []
+    for page in pages:
+        page_number = int(page.get("page", 0))
+        page_text = str(page.get("text", ""))
+        page_texts.setdefault(page_number, page_text)
+        all_page_text.append(page_text)
+    combined_text = "\n".join(all_page_text)
+    p1_text, p2_text, p3_text = (page_texts.get(number, "") for number in (1, 2, 3))
+    p4_text, p5_text, p6_text, p7_text = (
+        page_texts.get(number, "") for number in (4, 5, 6, 7)
+    )
 
     # 1.1 Tổng quan về trường
     if "TỔNG QUAN VỀ TRƯỜNG" in p1_text or "TỔNG QUAN VỀ TRƯỜNG" in combined_text:
@@ -2364,7 +2348,11 @@ def validate_structured_document(
             error(f"source.{key}", f"missing source field: {key}")
     if not str(source.get("raw_file", "")).strip():
         error("source.raw_file", "source raw_file is required for traceability")
-    urls = list(source.get("source_urls") or [])
+    source_urls = source.get("source_urls") or []
+    if not isinstance(source_urls, list):
+        error("source.source_urls", "source_urls must be a list")
+        source_urls = []
+    urls = list(source_urls)
     if source.get("source_url") and source.get("source_url") not in urls:
         urls.insert(0, source["source_url"])
     if source.get("source_url") and not is_official_dhv_url(source.get("source_url")):
@@ -2510,7 +2498,9 @@ def validate_structured_document(
             if key.endswith("_vnd") or key in numeric_keys:
                 if value is not None and value != "-" and (isinstance(value, bool) or not isinstance(value, (int, float))):
                     error(f"records[{index}].{key}", "numeric field must be numeric, null, or the explicit '-' marker")
-                if isinstance(value, (int, float)) and value < 0:
+                if isinstance(value, float) and not math.isfinite(value):
+                    error(f"records[{index}].{key}", "numeric field must be finite")
+                elif isinstance(value, (int, float)) and value < 0:
                     error(f"records[{index}].{key}", "numeric field must not be negative")
             if key == "url" and not is_official_dhv_url(value):
                 error(f"records[{index}].url", "record URL must be an official DHV URL")

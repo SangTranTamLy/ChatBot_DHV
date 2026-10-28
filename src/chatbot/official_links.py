@@ -39,6 +39,25 @@ def _requested_website_entry(normalized_question: str) -> tuple[str, str, str] |
     return None
 
 
+def _official_url_parts(value: object) -> tuple[str, str, str] | None:
+    url = str(value or "").strip()
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        _ = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or not (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+    ):
+        return None
+    return url, host, parsed.path
+
+
 def _official_links_answer(
     analysis: QueryAnalysis,
     evidence: Any,
@@ -55,15 +74,11 @@ def _official_links_answer(
     seen_urls: set[str] = set()
 
     def add_source(url: object, title: str) -> None:
-        value = str(url or "").strip()
-        parsed = urlparse(value)
-        host = (parsed.hostname or "").lower().rstrip(".")
-        if (
-            parsed.scheme.lower() != "https"
-            or not host
-            or not (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
-            or value in seen_urls
-        ):
+        parts = _official_url_parts(url)
+        if parts is None:
+            return
+        value, _, _ = parts
+        if value in seen_urls:
             return
         seen_urls.add(value)
         all_sources.append({"title": title, "url": value})
@@ -78,15 +93,25 @@ def _official_links_answer(
                 decoded = ()
             raw_values = decoded
         if isinstance(raw_values, (list, tuple, set)):
-            values.extend(raw_values)
-        return [str(value).strip() for value in values if str(value or "").strip()]
+            values.extend(sorted(raw_values, key=str) if isinstance(raw_values, set) else raw_values)
+        urls: list[str] = []
+        for value in values:
+            url = str(value or "").strip()
+            if url:
+                urls.append(url)
+        return urls
 
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
+        if not isinstance(metadata, Mapping):
+            continue
         for url in metadata_urls(metadata):
-            host = (urlparse(url).hostname or "").lower().rstrip(".")
+            parts = _official_url_parts(url)
+            if parts is None:
+                continue
+            url, host, path = parts
             title = str(metadata.get("title") or "Nguồn chính thức DHV")
-            if host in {"dhv.edu.vn", "www.dhv.edu.vn"} and urlparse(url).path in {"", "/"}:
+            if host in {"dhv.edu.vn", "www.dhv.edu.vn"} and path in {"", "/"}:
                 title = "Website trường"
             elif host == "tuyensinh.dhv.edu.vn":
                 title = f"Cổng tuyển sinh {target_year}"
@@ -96,6 +121,8 @@ def _official_links_answer(
     # selected verified record, including records clipped out of that context.
     for document in verified_documents:
         metadata = getattr(document, "metadata", {}) or {}
+        if not isinstance(metadata, Mapping):
+            continue
         if (
             str(metadata.get("status") or "").casefold() != "verified"
             or str(metadata.get("school_code") or "").upper() != "DHV"
@@ -104,12 +131,15 @@ def _official_links_answer(
         try:
             if int(metadata.get("year")) != target_year:
                 continue
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         title = str(metadata.get("title") or "Nguồn chính thức DHV")
         for url in metadata_urls(metadata):
-            host = (urlparse(url).hostname or "").lower().rstrip(".")
-            if host in {"dhv.edu.vn", "www.dhv.edu.vn"} and urlparse(url).path in {"", "/"}:
+            parts = _official_url_parts(url)
+            if parts is None:
+                continue
+            url, host, path = parts
+            if host in {"dhv.edu.vn", "www.dhv.edu.vn"} and path in {"", "/"}:
                 title = "Website trường"
             elif host == "tuyensinh.dhv.edu.vn":
                 title = f"Cổng tuyển sinh {target_year}"
@@ -118,6 +148,8 @@ def _official_links_answer(
     # Keep compatibility with test/adaptor documents that expose only the
     # already-normalized evidence source contract.
     for source in getattr(evidence, "sources", ()) or ():
+        if not isinstance(source, Mapping):
+            continue
         add_source(
             source.get("url"),
             str(source.get("title") or "Nguồn chính thức DHV"),

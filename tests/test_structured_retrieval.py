@@ -100,6 +100,7 @@ class StructuredLookupTests(unittest.TestCase):
             categories=("diem_trung_tuyen",), entity_filters={"major_name": "Quản trị Dịch vụ Du lịch & Lữ hành"},
         )
         self.assertEqual(ranked, [wanted])
+
     def test_reception_hours_do_not_select_paperwork(self):
         hours = record("hours", "page_text", "DHV tiếp nhận nhập học 06:00 – 18:00", category="ho_so")
         paper = record("paper", "enrollment_document", "Hồ sơ nhập học: Học bạ THPT.", category="ho_so")

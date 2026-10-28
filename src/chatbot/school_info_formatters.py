@@ -16,6 +16,15 @@ from .official_links import _requested_website_entry
 from .query_analysis import QueryAnalysis, normalize_question
 
 
+def _safe_urlparse(value: object) -> Any | None:
+    try:
+        parsed = urlparse(str(value or "").strip())
+        parsed.port  # Validate an explicitly provided port.
+    except ValueError:
+        return None
+    return parsed
+
+
 def _is_generic_school_overview_request(analysis: QueryAnalysis) -> bool:
     normalized = normalize_question(analysis.normalized_question)
     return analysis.intent == "SCHOOL_INFO" and _has_school_overview_request_marker(normalized)
@@ -61,7 +70,7 @@ def _is_verified_school_overview_intro_document(
     try:
         if int(metadata.get("year")) != target_year:
             return False
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return False
     return any(
         _is_school_overview_intro_heading(line)
@@ -107,7 +116,7 @@ def _overview_intro_evidence(
         try:
             if int(metadata.get("year")) != target_year:
                 continue
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
 
         lines = [re.sub(r"\s+", " ", line).strip() for line in str(chunk.text).splitlines()]
@@ -285,9 +294,7 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     elif "ngay truyen thong" in normalized:
         candidates = matching("ngay truyen thong", "ngay 9 thang 3 am lich")
     elif "thanh lap" in normalized or "lich su" in normalized or "qua trinh hinh thanh" in normalized:
-        if "doi ten" in normalized:
-            candidates = matching("doi ten")
-        elif "lich su" in normalized or "qua trinh hinh thanh" in normalized:
+        if "lich su" in normalized or "qua trinh hinh thanh" in normalized:
             milestones = matching("03/11/1993", "14/08/1995", "09/03/1996", "14/05/2008", "cho phep thanh lap", "thanh lap truong", "doi ten thanh")
             if milestones:
                 unique_milestones: list[str] = []
@@ -429,9 +436,9 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         ]
         if not candidates:
             candidates = [
-            item for item in paragraphs
-            if "thuc tap" in normalize_question(item)
-            and any(token in normalize_question(item) for token in ("doanh nghiep", "sinh vien"))
+                item for item in paragraphs
+                if "thuc tap" in normalize_question(item)
+                and any(token in normalize_question(item) for token in ("doanh nghiep", "sinh vien"))
             ]
     elif any(marker in normalized for marker in ("gioi thieu", "tong quan ve truong", "thong tin truong")):
         candidates = matching("su menh dao tao", "triết lý giao dục", "triet ly giao duc")
@@ -477,7 +484,7 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         collective_start = re.search(r"Các khoa của DHV", answer, re.IGNORECASE)
         if collective_start:
             answer = answer[collective_start.start() :]
-    return f"{answer}"
+    return answer
 
 
 def _evidence_directory_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -500,8 +507,9 @@ def _evidence_directory_answer(analysis: QueryAnalysis, evidence: Any) -> str | 
     title_normalized = normalize_question(title)
     if not any(title_normalized in normalize_question(line) for line in _evidence_text_lines(evidence)):
         return None
+    target_year = analysis.entities.get("year") or settings.target_year
     return (
-        f"Có. Dữ liệu DHV 2026 ghi nhận {title} trong hệ sinh thái đơn vị chính thức của trường. "
+        f"Có. Dữ liệu DHV {target_year} ghi nhận {title} trong hệ sinh thái đơn vị chính thức của trường. "
         "Tài liệu này chỉ xác nhận đơn vị và thông tin chung; chưa kết luận về chương trình, "
         "điều kiện hoặc thủ tục cụ thể."
     )
@@ -589,42 +597,47 @@ def _evidence_social_channels_answer(analysis: QueryAnalysis, evidence: Any) -> 
         r"^\s*(TikTok|Zalo|YouTube|Facebook)\s*:\s*(https?://\S+)\s*$",
         re.IGNORECASE,
     )
-    channels: dict[str, str] = {}
-    school_website: str | None = None
+    channels: dict[str, tuple[str, Any]] = {}
+    school_website: tuple[str, Any] | None = None
     for chunk in getattr(evidence, "chunks", ()) or ():
         if chunk.metadata.get("category") != "co_so_lien_he":
             continue
         candidate_url = str(chunk.metadata.get("source_url") or "").strip()
-        parsed_url = urlparse(candidate_url)
-        host = (parsed_url.hostname or "").lower().rstrip(".")
-        if (
+        parsed_url = _safe_urlparse(candidate_url)
+        host = (parsed_url.hostname or "").lower().rstrip(".") if parsed_url else ""
+        if parsed_url and (
             parsed_url.scheme.lower() == "https"
             and host in {"dhv.edu.vn", "www.dhv.edu.vn"}
             and parsed_url.path in {"", "/"}
             and not parsed_url.username
         ):
-            school_website = candidate_url
+            school_website = (candidate_url, parsed_url)
         for line in str(chunk.text or "").splitlines():
             match = channel_line.match(line)
             if match:
+                url = match.group(2).rstrip(".,;")
+                channel_url = _safe_urlparse(url)
+                if not channel_url or channel_url.scheme.lower() != "https" or not channel_url.hostname:
+                    continue
                 label = next(
                     known for known in ("TikTok", "Zalo", "YouTube", "Facebook")
                     if known.casefold() == match.group(1).casefold()
                 )
-                channels.setdefault(label, match.group(2).rstrip(".,;"))
+                channels.setdefault(label, (url, channel_url))
 
     if not channels:
         return None
     ordered_labels = ("Facebook", "TikTok", "YouTube", "Zalo")
     links: list[str] = []
     if school_website:
-        website_host = (urlparse(school_website).hostname or "dhv.edu.vn").removeprefix("www.")
-        links.append(f"- **Website DHV:** [{website_host}]({school_website})")
+        url, parsed_url = school_website
+        website_host = (parsed_url.hostname or "dhv.edu.vn").removeprefix("www.")
+        links.append(f"- **Website DHV:** [{website_host}]({url})")
     for label in ordered_labels:
-        url = channels.get(label)
-        if not url:
+        channel = channels.get(label)
+        if not channel:
             continue
-        parsed_url = urlparse(url)
+        url, parsed_url = channel
         path = parsed_url.path.strip("/")
         if label in {"TikTok", "YouTube"}:
             account_name = path.split("/")[0] or parsed_url.netloc

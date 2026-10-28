@@ -21,12 +21,13 @@ os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 _warmup_lock = threading.Lock()
 _warmup_started = False
 _warmup_done = False
+_warmup_succeeded = False
 _warmup_thread: threading.Thread | None = None
 
 
 def is_warmed_up() -> bool:
-    """Returns True if the background warmup has completed."""
-    return _warmup_done
+    """Returns True only when the background warmup completed successfully."""
+    return _warmup_succeeded
 
 
 def wait_for_warmup(timeout: float = 5.0) -> bool:
@@ -39,7 +40,7 @@ def wait_for_warmup(timeout: float = 5.0) -> bool:
 
 
 def _warmup_worker() -> None:
-    global _warmup_done
+    global _warmup_done, _warmup_succeeded
     t0 = time.perf_counter()
     logger.info("[Warmup] Starting background warmup of DHV RAG engine...")
 
@@ -47,23 +48,29 @@ def _warmup_worker() -> None:
         # Step 1: Pre-load SentenceTransformer embeddings
         from src.ingestion.embeddings import create_embeddings
         emb = create_embeddings()
-        if hasattr(emb, "embed_query"):
-            emb.embed_query("DHV tuyển sinh 2026")
+        embed_query = getattr(emb, "embed_query", None)
+        if not callable(embed_query):
+            raise RuntimeError("Embedding model does not provide embed_query().")
+        embed_query("DHV tuyển sinh 2026")
         logger.info("[Warmup] Embeddings initialized in %.2fs", time.perf_counter() - t0)
 
         # Step 2: Pre-load Chroma retriever
         from src.chatbot.rag_chain import _get_default_retriever
         retriever = _get_default_retriever()
-        if retriever is not None and hasattr(retriever, "retrieve"):
-            retriever.retrieve("ngành đào tạo")
+        retrieve = getattr(retriever, "retrieve", None)
+        if not callable(retrieve):
+            raise RuntimeError("Default retriever does not provide retrieve().")
+        retrieve("ngành đào tạo")
         logger.info("[Warmup] Chroma retriever initialized in %.2fs", time.perf_counter() - t0)
+        _warmup_succeeded = True
 
     except Exception as exc:
         logger.warning("[Warmup] Non-critical background warmup error: %s", exc)
     finally:
         _warmup_done = True
         elapsed = time.perf_counter() - t0
-        logger.info("[Warmup] Completed in %.2fs. Chatbot is hot-ready.", elapsed)
+        status = "ready" if _warmup_succeeded else "not ready"
+        logger.info("[Warmup] Completed in %.2fs. Chatbot is %s.", elapsed, status)
 
 
 def start_background_warmup() -> None:

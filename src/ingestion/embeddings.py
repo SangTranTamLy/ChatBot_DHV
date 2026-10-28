@@ -6,7 +6,6 @@ import os
 import threading
 from typing import Any, Sequence
 
-from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
 from langchain_ollama import OllamaEmbeddings
 
@@ -74,7 +73,6 @@ def create_ollama_embeddings(
 ) -> OllamaEmbeddings:
     """Tạo client embedding Ollama từ các tham số hoặc thiết lập của dự án."""
 
-    load_dotenv()
     model_name = model or settings.embedding_model
     server_url = base_url or settings.ollama_base_url
     return OllamaEmbeddings(model=model_name, base_url=server_url)
@@ -89,7 +87,6 @@ def create_embeddings(
 ) -> Embeddings:
     """Tạo backend Ollama hoặc Sentence Transformers đã được cấu hình."""
 
-    load_dotenv()
     selected_backend = (backend or settings.embedding_backend).strip().lower()
     if selected_backend == "ollama":
         return create_ollama_embeddings(

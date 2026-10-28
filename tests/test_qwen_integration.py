@@ -29,6 +29,7 @@ class StaticRetriever:
         *,
         categories: tuple[str, ...],
         retrieval_query: str,
+        **_: object,
     ) -> dict[str, object]:
         return {"documents": self.documents}
 

@@ -46,7 +46,7 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _NON_CONTENT_TOKENS = frozenset(
     {
         "a", "ban", "biet", "cach", "cac", "cho", "co", "cua", "duoc",
-        "em", "gi", "giup", "hay", "hoi", "khong", "la", "minh", "mot",
+        "em", "gi", "giup", "hay", "hoi", "la", "minh", "mot",
         "muon", "nao", "nhe", "nhieu", "nhung", "oi", "ra", "sao", "thi",
         "toi", "va", "ve", "voi", "vay", "xin",
     }

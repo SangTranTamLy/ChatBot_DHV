@@ -151,6 +151,9 @@ def run_regression_tests(
     collection_name: str,
     top_k: int = 25,
 ) -> list[dict[str, object]]:
+    if top_k <= 0:
+        raise ValueError("top_k must be greater than zero")
+
     embedding_function = create_embeddings(
         backend=backend,
         ollama_model=embedding_model,

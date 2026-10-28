@@ -94,14 +94,19 @@ def validate_manifest_sync(
         year = entry.get("year")
         if isinstance(year, bool) or not isinstance(year, int) or not 2000 <= year <= 2100:
             errors.append(f"{entry_path}: manifest year must be an integer between 2000 and 2100")
-        source_urls = list(entry.get("source_urls") or [])
+        source_urls = entry.get("source_urls") or []
+        if not isinstance(source_urls, list):
+            errors.append(f"{entry_path}: source_urls must be a list")
+            source_urls = []
+        else:
+            source_urls = list(source_urls)
         source_url = entry.get("source_url")
         if source_url and source_url not in source_urls:
             source_urls.insert(0, source_url)
         if not all(is_official_dhv_url(url) for url in source_urls):
             errors.append(f"{entry_path}: source URLs must be official HTTPS DHV URLs")
         status = str(entry.get("status") or entry.get("verification_status") or "").strip().lower()
-        if status == "verified" and (entry.get("verified") is False or not source_url):
+        if status == "verified" and (entry.get("verified") is not True or not source_url):
             errors.append(f"{entry_path}: verified entries require source_url and verified=true")
     return errors
 
@@ -128,7 +133,13 @@ def _raw_entry(
 
     text = _extract_pdf_text(path)
     existing = dict(existing or {})
-    source_urls = list(existing.get("source_urls") or [])
+    existing_urls = existing.get("source_urls")
+    if isinstance(existing_urls, list):
+        source_urls = list(existing_urls)
+    elif isinstance(existing_urls, str) and existing_urls.strip():
+        source_urls = [existing_urls.strip()]
+    else:
+        source_urls = []
     extracted_links = list(_source_urls_from_text(text))
     source_url = existing.get("source_url")
     year = existing.get("year")
@@ -204,7 +215,7 @@ def build_raw_manifest(
     if output_path.exists():
         try:
             existing_manifest = load_raw_manifest(output_path)
-        except (OSError, ValueError, json.JSONDecodeError):
+        except (OSError, ValueError):
             existing_manifest = {}
         existing_by_path = {
             _entry_raw_path(entry): entry

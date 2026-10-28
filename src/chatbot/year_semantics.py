@@ -88,7 +88,7 @@ def current_admission_window_answer(question: str, evidence: object, *, today: d
         r"tiep nhan nhap hoc|thoi gian nhan ho so|thoi gian dang ky xet tuyen|han (?:nhan|nop) ho so"
     )
     windows: set[tuple[date | None, date]] = set()
-    for chunk in getattr(evidence, "chunks", ()):
+    for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
         category = str(metadata.get("category") or "")
         if supplementary and category != "xet_tuyen_bo_sung":
@@ -112,10 +112,15 @@ def current_admission_window_answer(question: str, evidence: object, *, today: d
                 start = dates[0] if len(dates) > 1 and "tu " in segment else None
                 if start is None or start <= dates[-1]:
                     windows.add((start, dates[-1]))
-    sources = [dict(source) for source in getattr(evidence, "sources", ())]
     if len(windows) != 1:
-        return {"answer": "Mình chưa xác nhận được hiện còn nhận hồ sơ hay không. Bạn nên hỏi bộ phận tuyển sinh DHV trước khi đăng ký nhé.",
-                "status": "no_data", "sources": [], "temporal_checked": True}
+        return {
+            "answer": "Mình chưa xác nhận được hiện còn nhận hồ sơ hay không. Bạn nên hỏi bộ phận tuyển sinh DHV trước khi đăng ký nhé.",
+            "status": "no_data",
+            "sources": [],
+            "temporal_checked": True,
+        }
+
+    sources = [dict(source) for source in getattr(evidence, "sources", ()) or ()]
     start, end = next(iter(windows))
     current = today or datetime.now(timezone(timedelta(hours=7))).date()
     label = "Đợt xét tuyển bổ sung này" if supplementary else "Đợt xác nhận nhập học này" if confirmation else "Đợt nhận hồ sơ này"

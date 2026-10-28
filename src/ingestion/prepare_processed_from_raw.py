@@ -16,7 +16,6 @@ from pypdf import PdfReader
 from src.config.settings import PROJECT_ROOT, settings
 
 from .structured_json import (
-    StructuredJSONValidationError,
     build_structured_document,
     write_structured_json,
 )
@@ -219,9 +218,11 @@ def _source_urls_from_text(text: str) -> tuple[str, ...]:
     """Extract links for audit only; these are not provenance metadata."""
 
     urls: list[str] = []
+    seen: set[str] = set()
     for match in URL_RE.finditer(text):
         value = match.group(0).rstrip(".,);]")
-        if value not in urls:
+        if value not in seen:
+            seen.add(value)
             urls.append(value)
     return tuple(urls)
 
@@ -485,7 +486,7 @@ def convert_pdf_to_structured_json(
         output_path=json_path,
         title=str(structured["title"]),
         category=category,
-        source_url=str(structured["source"]["source_url"]),
+        source_url=str(structured["source"].get("source_url") or ""),
         source_date=str(structured["source"].get("source_date", "")),
         text="\n\n".join(str(page["text"]) for page in structured["pages"] if str(page["text"]).strip()),
         source_urls=tuple(str(url) for url in structured["source"].get("source_urls", [])),
@@ -585,7 +586,7 @@ def rebuild_structured_json(
         _safe_reset_generated_directory(output_root, raw_root=raw_root)
     output_root.mkdir(parents=True, exist_ok=True)
 
-    raw_files = sorted(raw_root.rglob("*.pdf"))
+    raw_files = sorted(path for path in raw_root.rglob("*.pdf") if path.is_file())
     if not raw_files:
         raise RuntimeError(f"no RAW PDF files found in {raw_root}")
     documents: list[ProcessedDocument] = []
@@ -609,7 +610,7 @@ def rebuild_structured_json(
                 manifest_path=manifest_path,
                 manifest_entry=find_manifest_entry(manifest, raw_path=path, raw_root=raw_root),
             )
-        except (OSError, ValueError, StructuredJSONValidationError) as exc:
+        except (OSError, ValueError) as exc:
             failures.append(f"{path.relative_to(raw_root).as_posix()}: {exc}")
             LOGGER.error("failed: %s", failures[-1])
             continue

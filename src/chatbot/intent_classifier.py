@@ -28,7 +28,9 @@ DEFAULT_TEST_PATH = PROJECT_ROOT / "data" / "intent" / "test.jsonl"
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "intent_classifier.json"
 MODEL_VERSION = 1
 
-_WORD_RE = re.compile(r"\d+|[a-z]+", re.IGNORECASE)
+_WORD_RE = re.compile(r"\d+|[a-z]+")
+_WHITESPACE_RE = re.compile(r"\s+")
+_NON_FEATURE_CHAR_RE = re.compile(r"[^a-z0-9]")
 
 
 def normalize_training_text(value: str) -> str:
@@ -37,7 +39,7 @@ def normalize_training_text(value: str) -> str:
     folded = unicodedata.normalize("NFKD", value or "")
     folded = "".join(character for character in folded if not unicodedata.combining(character))
     folded = folded.lower().replace("đ", "d")
-    return re.sub(r"\s+", " ", folded).strip()
+    return _WHITESPACE_RE.sub(" ", folded).strip()
 
 
 def _features(value: str) -> tuple[str, ...]:
@@ -49,9 +51,12 @@ def _features(value: str) -> tuple[str, ...]:
     features.extend(
         f"b:{left}_{right}" for left, right in zip(words, words[1:])
     )
-    compact = re.sub(r"[^a-z0-9]", "", normalized)
+    compact = _NON_FEATURE_CHAR_RE.sub("", normalized)
     for size in (3, 4):
-        features.extend(f"c{size}:{compact[index:index + size]}" for index in range(len(compact) - size + 1))
+        features.extend(
+            f"c{size}:{compact[index:index + size]}"
+            for index in range(len(compact) - size + 1)
+        )
     return tuple(features)
 
 
@@ -89,6 +94,9 @@ class IntentClassifier:
         linear_bias: Mapping[str, float] | None = None,
         alpha: float = 1.0,
     ) -> None:
+        alpha = float(alpha)
+        if not math.isfinite(alpha) or alpha <= 0:
+            raise ValueError("alpha must be a finite positive number")
         self.labels = tuple(labels)
         self.vocabulary = frozenset(vocabulary)
         self.class_documents = {str(key): int(value) for key, value in class_documents.items()}
@@ -114,11 +122,13 @@ class IntentClassifier:
         self.linear_bias = {
             str(label): float(value) for label, value in (linear_bias or {}).items()
         }
-        self.alpha = float(alpha)
+        self.alpha = alpha
         self.total_documents = sum(self.class_documents.values())
 
     @classmethod
     def train(cls, records: Iterable[Mapping[str, object]], *, alpha: float = 1.0) -> "IntentClassifier":
+        if not math.isfinite(alpha) or alpha <= 0:
+            raise ValueError("alpha must be a finite positive number")
         materialized = list(records)
         if not materialized:
             raise ValueError("intent training data is empty")
@@ -245,7 +255,13 @@ class IntentClassifier:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, object]) -> "IntentClassifier":
-        if int(payload.get("model_version", -1)) != MODEL_VERSION:
+        if not isinstance(payload, Mapping):
+            raise ValueError("intent model payload must be an object")
+        try:
+            model_version = int(payload.get("model_version", -1))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("invalid intent model version") from exc
+        if model_version != MODEL_VERSION:
             raise ValueError("unsupported intent model version")
         return cls(
             labels=[str(value) for value in payload.get("labels", [])],
@@ -352,7 +368,7 @@ def stratified_split(
         if not normalized["id"] or not normalized["text"] or not normalized["intent"]:
             raise ValueError(f"invalid record: {record!r}")
         groups.setdefault(normalized["intent"], []).append(normalized)
-    if any(len(group) < 2 for group in groups.values()):
+    if not groups or any(len(group) < 2 for group in groups.values()):
         raise ValueError("each intent needs at least two examples for a stratified split")
 
     train: list[dict[str, str]] = []
@@ -362,7 +378,10 @@ def stratified_split(
         # intent contributes the same 20% holdout.
         group = list(groups[label])
         random.Random(f"{seed}:{label}").shuffle(group)
-        test_count = max(1, int(round(len(group) * test_ratio)))
+        test_count = min(
+            len(group) - 1,
+            max(1, int(round(len(group) * test_ratio))),
+        )
         test.extend(group[:test_count])
         train.extend(group[test_count:])
     train.sort(key=lambda record: record["id"])
@@ -400,7 +419,7 @@ def get_intent_classifier(model_path: str = str(DEFAULT_MODEL_PATH)) -> IntentCl
             return load_model(path)
         if DEFAULT_TRAIN_PATH.exists():
             return IntentClassifier.train(load_records(DEFAULT_TRAIN_PATH))
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError, AttributeError, OverflowError):
         return None
     return None
 

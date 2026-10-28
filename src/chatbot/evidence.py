@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -74,6 +75,13 @@ _ADMISSION_TABLE_ROW_RE = re.compile(
     r"(?P<thpt>\d+(?:[.,]\d+)?)\s+"
     r"(?P<hoc_ba>\d+(?:[.,]\d+)?)(?:\(\*\))?\s+"
     r"(?P<dgnl>\d+(?:[.,]\d+)?)$",
+    re.IGNORECASE,
+)
+_ADMISSION_ORDINAL_RE = re.compile(r"^\d{1,3}$")
+_ADMISSION_CODE_CELL_RE = re.compile(r"^\d{7,9}$")
+_ADMISSION_SCORE_CELL_RE = re.compile(r"^(\d+(?:[.,]\d+)?)(?:\(\*\))?$")
+_ADMISSION_DASH_CELL_RE = re.compile(
+    r"^[-–—]+$|^n/?a$|^khong\s+xet$",
     re.IGNORECASE,
 )
 
@@ -330,7 +338,10 @@ def _request_content_filter_reason(document: Document, entities: Mapping[str, ob
     return None
 
 
-def _entity_row_subset(text: str, entity_values: tuple[str, ...]) -> str:
+def _entity_row_subset(
+    text: str,
+    folded_entities: tuple[tuple[str, str], ...],
+) -> str:
     """Lấy nguyên row ngành/chương trình thay vì nguyên bảng rộng vào prompt."""
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -339,10 +350,11 @@ def _entity_row_subset(text: str, entity_values: tuple[str, ...]) -> str:
     ]
     if not code_positions:
         folded = _fold_text(text)
-        return text if any(_fold_text(value) in folded for value in entity_values) else ""
-    folded_values = tuple(
-        _fold_text(value) for value in entity_values if _fold_text(value)
-    )
+        matches_entity = any(
+            value and value in folded for _, value in folded_entities
+        )
+        return text if matches_entity else ""
+    folded_values = tuple(value for _, value in folded_entities if value)
     selected_rows: list[str] = []
     for position, code_position in enumerate(code_positions):
         start = max(0, code_position - 1)
@@ -391,6 +403,9 @@ def select_evidence_documents(
         str(category) for category in categories or () if str(category)
     )
     entity_values = _selection_entity_values(entities, candidates)
+    folded_entity_values = tuple(
+        (value, _fold_text(value)) for value in entity_values
+    )
     selected: list[Document] = []
     candidate_audits: list[dict[str, object]] = []
     filtered_audits: list[dict[str, object]] = []
@@ -427,23 +442,27 @@ def select_evidence_documents(
         category = str(metadata.get("category") or "")
         data_role = str(metadata.get("data_role") or "").strip().casefold()
         selected_document = document
+        folded_content = (
+            _fold_text(document.page_content) if folded_entity_values else ""
+        )
         matched_entities = [
             value
-            for value in entity_values
-            if _fold_text(value) and _fold_text(value) in _fold_text(document.page_content)
+            for value, folded in folded_entity_values
+            if folded and folded in folded_content
         ]
         selection_reason = "metadata_and_category_match"
         if entity_values and category == "nganh_dao_tao" and data_role != "description":
-            subset = _entity_row_subset(document.page_content, entity_values)
+            subset = _entity_row_subset(document.page_content, folded_entity_values)
             if not subset.strip():
                 base["filter_reason"] = "entity_not_in_document"
                 filtered_audits.append(base)
                 continue
             selected_document = Document(page_content=subset, metadata=metadata)
+            folded_subset = _fold_text(subset)
             matched_entities = [
                 value
-                for value in entity_values
-                if _fold_text(value) and _fold_text(value) in _fold_text(subset)
+                for value, folded in folded_entity_values
+                if folded and folded in folded_subset
             ]
             selection_reason = "entity_row_match"
             row_selected_by_category.add(category)
@@ -457,9 +476,8 @@ def select_evidence_documents(
                 )
             )
         elif entity_values and category in {"diem_trung_tuyen", "xet_tuyen_bo_sung"}:
-            folded_text = _fold_text(document.page_content)
             if not matched_entities and not any(
-                marker in folded_text for marker in ("phan lon", "toan bo", "chung")
+                marker in folded_content for marker in ("phan lon", "toan bo", "chung")
             ):
                 base["filter_reason"] = "entity_not_in_document"
                 filtered_audits.append(base)
@@ -468,9 +486,9 @@ def select_evidence_documents(
             # A generic threshold note contains an unrelated Luật caveat. Keep
             # it only when no entity-specific catalogue row is available.
             metadata_major = str(metadata.get("major_name") or "").strip()
+            folded_major = _fold_text(metadata_major)
             if metadata_major and not any(
-                _fold_text(value) == _fold_text(metadata_major)
-                for value in entity_values
+                folded == folded_major for _, folded in folded_entity_values
             ):
                 base["filter_reason"] = "entity_not_in_document"
                 filtered_audits.append(base)
@@ -836,38 +854,49 @@ def _parse_admission_table_facts(
     # Native/OCR extraction can preserve each table cell on its own line:
     # ordinal, code, wrapped major name, then three numeric method cells.
     # Recover only this explicit row shape; do not infer values across rows.
-    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines() if line.strip()]
-    score_cell = re.compile(r"^(\d+(?:[.,]\d+)?)(?:\(\*\))?$")
-    dash_cell = re.compile(r"^[-–—]+$|^n/?a$|^khong\s+xet$", re.IGNORECASE)
+    lines = [
+        re.sub(r"\s+", " ", line).strip()
+        for line in text.splitlines()
+        if line.strip()
+    ]
     for index in range(len(lines) - 1):
-        if not re.fullmatch(r"\d{1,3}", lines[index]):
+        if not _ADMISSION_ORDINAL_RE.fullmatch(lines[index]):
             continue
-        if not re.fullmatch(r"\d{7,9}", lines[index + 1]):
+        if not _ADMISSION_CODE_CELL_RE.fullmatch(lines[index + 1]):
             continue
         name_start = index + 2
         score_start = None
         for position in range(name_start, min(len(lines), name_start + 8)):
-            if score_cell.fullmatch(lines[position]) or dash_cell.fullmatch(lines[position].strip()):
-                score_start = position
-                break
             if (
                 position + 1 < len(lines)
-                and re.fullmatch(r"\d{1,3}", lines[position])
-                and re.fullmatch(r"\d{7,9}", lines[position + 1])
+                and _ADMISSION_ORDINAL_RE.fullmatch(lines[position])
+                and _ADMISSION_CODE_CELL_RE.fullmatch(lines[position + 1])
             ):
+                break
+            if (
+                _ADMISSION_SCORE_CELL_RE.fullmatch(lines[position])
+                or _ADMISSION_DASH_CELL_RE.fullmatch(lines[position])
+            ):
+                score_start = position
                 break
         if score_start is None or score_start == name_start:
             continue
-        parsed_values: list[tuple[str, str]] = []
+        parsed_values: list[str] = []
         position = score_start
         while position < len(lines) and len(parsed_values) < 3:
-            match = score_cell.fullmatch(lines[position])
+            if (
+                position + 1 < len(lines)
+                and _ADMISSION_ORDINAL_RE.fullmatch(lines[position])
+                and _ADMISSION_CODE_CELL_RE.fullmatch(lines[position + 1])
+            ):
+                break
+            match = _ADMISSION_SCORE_CELL_RE.fullmatch(lines[position])
             if match:
-                parsed_values.append((match.group(1), lines[position]))
+                parsed_values.append(match.group(1))
                 position += 1
                 continue
-            if dash_cell.fullmatch(lines[position].strip()):
-                parsed_values.append(("-", lines[position]))
+            if _ADMISSION_DASH_CELL_RE.fullmatch(lines[position]):
+                parsed_values.append("-")
                 position += 1
                 continue
             break
@@ -877,7 +906,7 @@ def _parse_admission_table_facts(
         if not major_name:
             continue
         major_code = lines[index + 1]
-        for method, (numeric_value, _raw_cell) in zip(
+        for method, numeric_value in zip(
             ("thpt", "hoc_ba", "dgnl"), parsed_values
         ):
             facts.append(
@@ -918,6 +947,8 @@ def _numeric_or_none(value: str) -> int | float | None:
         parsed = float(value.replace(",", "."))
     except ValueError:
         return None
+    if not math.isfinite(parsed):
+        return None
     return int(parsed) if parsed.is_integer() else parsed
 
 
@@ -928,8 +959,10 @@ def _structured_numeric(value: object) -> int | float | None:
         return None
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
+    if isinstance(value, int):
         return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     return _numeric_or_none(str(value))
 
 
@@ -1100,8 +1133,12 @@ def _backend_sources(chunks: Iterable[EvidenceChunk]) -> tuple[dict[str, str], .
 
 def _valid_http_url(value: object) -> str:
     url = str(value or "").strip()
-    parsed = urlparse(url)
-    hostname = (parsed.hostname or "").lower().rstrip(".")
+    try:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        _ = parsed.port  # Validate a supplied port even though it is not otherwise used.
+    except ValueError:
+        return ""
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc

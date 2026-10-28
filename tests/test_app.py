@@ -45,7 +45,7 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertNotIn("1. Kỹ thuật máy tính —", rendered)
         self.assertEqual(at.session_state["messages"][0]["content"], answer)
 
-    def test_sidebar_groups_real_history_and_active_chat_hides_welcome(self):
+    def test_sidebar_lists_saved_chats_and_active_chat_hides_welcome(self):
         at = _signed_in_app()
         now = datetime.now()
         at.session_state["chats"] = {
@@ -56,14 +56,14 @@ class StreamlitAppTests(unittest.TestCase):
         }
         at.run(timeout=30)
         self.assertFalse(at.exception)
-        captions = [element.value for element in at.sidebar.caption]
-        self.assertIn("Hôm nay", captions)
-        self.assertIn("Hôm qua", captions)
-        at.button(key="history_2").click().run(timeout=30)
+        labels = [button.label for button in at.button]
+        self.assertIn("Câu hỏi hôm nay", labels)
+        self.assertIn("Câu hỏi hôm qua", labels)
+        at.button(key="sidebar_chat_2").click().run(timeout=30)
         self.assertFalse(at.exception)
         self.assertEqual(at.session_state["messages"][0]["content"], "Câu hỏi hôm qua")
         self.assertEqual(len(at.title), 0)
-        self.assertFalse(any(button.key.startswith("starter_") for button in at.button))
+        self.assertFalse(any(button.key.startswith("chat_suggestion_") for button in at.button))
 
     def test_ui_passes_previous_questions_and_answers_to_backend(self):
         previous = [
@@ -81,13 +81,13 @@ class StreamlitAppTests(unittest.TestCase):
     def test_empty_state_has_welcome_quick_questions_chat_input_and_privacy_notice(self) -> None:
         at = _app()
         self.assertFalse(at.exception)
-        self.assertTrue(any("Chào User," in element.proto.body and "mình có thể giúp gì?" in element.proto.body for element in at.get("html")))
+        self.assertTrue(any("Chọn hướng đi của" in element.proto.body and "DHV." in element.proto.body for element in at.get("html")))
         self.assertEqual(len(at.chat_message), 0)
         self.assertEqual(len(at.chat_input), 1)
         labels = [button.label for button in at.button]
-        for label in ("Cuộc trò chuyện mới", "DHV có những ngành đào tạo nào?", "Học phí và học bổng DHV năm 2026 như thế nào?", "Hồ sơ nhập học DHV cần những giấy tờ gì?"):
+        for label in ("Cuộc trò chuyện mới", "Học phí ngành CNTT năm 2026 là bao nhiêu?", "Điều kiện xét tuyển vào DHV?", "Phương thức xét tuyển năm 2026"):
             self.assertIn(label, labels)
-        self.assertTrue(any("Không nhập CCCD" in element.value for element in at.caption))
+        self.assertTrue(any("Cổng tuyển sinh DHV" in element.value for element in at.caption))
 
     def test_new_chat_clears_context_and_saved_chat_restores_its_own_state(self) -> None:
         at = _signed_in_app()
@@ -101,7 +101,7 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(at.session_state["messages"], [])
         self.assertIsNone(at.session_state["conversation_state"]["previous_intent"])
-        at.button(key="history_0").click().run(timeout=30)
+        at.button(key="sidebar_chat_0").click().run(timeout=30)
         self.assertFalse(at.exception)
         self.assertEqual(at.session_state["messages"], messages)
         self.assertEqual(at.session_state["conversation_state"], state)
@@ -165,13 +165,13 @@ class StreamlitAppTests(unittest.TestCase):
             return_value={"answer": "Học phí theo dữ liệu DHV.", "status": "ok"},
         ) as ask_chatbot:
             at = _app()
-            next(button for button in at.button if button.label == "Học phí và học bổng DHV năm 2026 như thế nào?").click().run(timeout=30)
+            next(button for button in at.button if button.label == "Học phí ngành CNTT năm 2026 là bao nhiêu?").click().run(timeout=30)
 
         self.assertFalse(at.exception)
         self.assertEqual(
             at.session_state["messages"][-2:],
             [
-                {"role": "user", "content": "Học phí và học bổng DHV năm 2026 như thế nào?"},
+                {"role": "user", "content": "Học phí ngành Công nghệ thông tin năm 2026 bao nhiêu?"},
                 {
                     "role": "assistant",
                     "content": "Học phí theo dữ liệu DHV.",
@@ -179,7 +179,7 @@ class StreamlitAppTests(unittest.TestCase):
                 },
             ],
         )
-        self.assertEqual(ask_chatbot.call_args.args[0], "Học phí và học bổng DHV năm 2026 như thế nào?")
+        self.assertEqual(ask_chatbot.call_args.args[0], "Học phí ngành Công nghệ thông tin năm 2026 bao nhiêu?")
         self.assertEqual(len(at.pills), 0)
 
     def test_history_hides_backend_sources_and_renders_all_service_statuses(self) -> None:
@@ -302,14 +302,14 @@ class StreamlitAppTests(unittest.TestCase):
         at = _app()
         self.assertFalse(at.exception)
         keys = {button.key for button in at.button}
-        self.assertTrue({"account_settings", "logout"} <= keys)
-        for key in ("account_avatar_button", "account_profile_button", "popup_avatar", "popup_name"):
+        self.assertTrue({"chat_account_profile", "chat_account_logout"} <= keys)
+        for key in ("account_settings", "logout", "account_avatar_button", "account_profile_button", "popup_avatar", "popup_name"):
             self.assertNotIn(key, keys)
         self.assertNotIn("Test User", [button.label for button in at.button])
 
     def test_settings_opens_profile_and_back_returns_to_chat(self) -> None:
         at = _app()
-        at.button(key="account_settings").click().run(timeout=30)
+        at.button(key="chat_account_profile").click().run(timeout=30)
         self.assertFalse(at.exception)
         self.assertEqual(at.session_state["account_page"], "profile")
         self.assertIn("### Đổi mật khẩu", [element.value for element in at.markdown])
@@ -320,7 +320,7 @@ class StreamlitAppTests(unittest.TestCase):
     def test_logout_from_account_menu_clears_session(self) -> None:
         with patch("src.ui_auth.logout_user") as remote_logout:
             at = _app()
-            at.button(key="logout").click().run(timeout=30)
+            at.button(key="chat_account_logout").click().run(timeout=30)
         self.assertFalse(at.exception)
         self.assertIsNone(at.session_state["auth_user"])
         self.assertIsNone(at.session_state["auth_tokens"])

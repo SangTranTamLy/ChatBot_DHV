@@ -66,7 +66,6 @@ _STEP_INTENTS = frozenset(
 _SIMPLE_INTENTS = frozenset(
     {
         "HOI_HOC_PHI",
-        "HOI_HOC_BONG",
         "HOI_CO_SO_LIEN_HE",
         "HOI_NGUONG_DAU_VAO",
         "HOI_DIEM_TRUNG_TUYEN",
@@ -137,7 +136,10 @@ class AnswerPlan:
     def is_catalog_list(self) -> bool:
         """Whether this plan uses the catalogue-list contract."""
 
-        return self.mode == CATALOG_LIST
+        return self.mode == CATALOG_LIST and self.intent in {
+            "DANH_SACH_NGANH",
+            "DANH_SACH_CHUONG_TRINH",
+        }
 
     @property
     def is_deterministic(self) -> bool:
@@ -203,9 +205,12 @@ def _as_names(value: object) -> list[str]:
 def _candidate_names(analysis: object) -> tuple[str, ...]:
     entities = _entities(analysis)
     names: list[str] = []
+    seen: set[str] = set()
     for key in ("candidate_majors", "candidate_programs"):
         for value in _as_names(entities.get(key)):
-            if value not in names:
+            normalized = normalize_question(value)
+            if normalized and normalized not in seen:
+                seen.add(normalized)
                 names.append(value)
     return tuple(names)
 
@@ -241,7 +246,12 @@ def _has_multiple_choices(analysis: object) -> bool:
     # in candidate_majors. This fallback also supports hand-built analyses in
     # tests and adapters.
     major_names = _as_names(entities.get("major_names"))
-    return len(set((*candidates, *major_names))) > 1
+    distinct = {
+        normalized
+        for name in (*candidates, *major_names)
+        if (normalized := normalize_question(name))
+    }
+    return len(distinct) > 1
 
 
 def _catalog_operation(analysis: object) -> str:
@@ -347,7 +357,7 @@ def _response_format(mode: str) -> str:
     }[mode]
 
 
-def _sections(mode: str, intent: str) -> tuple[str, ...]:
+def _sections(mode: str) -> tuple[str, ...]:
     if mode == "OVERVIEW":
         return ("answer", "key_points", "next_question")
     if mode == "COMPARISON":
@@ -389,6 +399,7 @@ def related_questions_for(analysis: object, *, limit: int = 3) -> tuple[str, ...
     if limit <= 0:
         return ()
     intent = _intent(analysis)
+    year = str(_entities(analysis).get("year") or 2026)
     normalized = _normalized(analysis)
     topic = _major_or_program(analysis)
     candidates = _candidate_names(analysis)
@@ -402,51 +413,51 @@ def related_questions_for(analysis: object, *, limit: int = 3) -> tuple[str, ...
     if intent in {"OUT_OF_SCOPE", "NO_DATA"}:
         return ()
     if intent == "GREETING":
-        add("DHV hiện có những ngành đào tạo nào năm 2026?")
-        add("Các phương thức xét tuyển DHV 2026 gồm những gì?")
+        add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
+        add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
     elif intent == "SYSTEM_IDENTITY":
         add("Bạn hỗ trợ những nội dung tuyển sinh nào của DHV?")
-        add("DHV hiện có những ngành đào tạo nào năm 2026?")
+        add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
     elif intent == "SYSTEM_SCOPE":
-        add("DHV hiện có những ngành đào tạo nào năm 2026?")
-        add("Học phí DHV 2026 được công bố như thế nào?")
+        add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
+        add(f"Học phí DHV {year} được công bố như thế nào?")
     elif intent == "MULTI_ISSUE":
-        add("DHV hiện có những ngành đào tạo nào năm 2026?")
-        add("Các phương thức xét tuyển DHV 2026 gồm những gì?")
+        add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
+        add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
         add("Hồ sơ xét tuyển DHV gồm những gì?")
     elif intent in {"HOI_NGANH", "HOI_CHUONG_TRINH"} and _has_multiple_choices(analysis) and any(
         marker in normalized for marker in _COMPARISON_MARKERS
     ):
         add(f"Mình có thể so sánh {' và '.join(candidates[:2])} theo cùng tiêu chí không?")
         add("Các chương trình đào tạo thuộc từng lựa chọn là gì?")
-        add("Các phương thức xét tuyển DHV 2026 gồm những gì?")
+        add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
     elif intent in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}:
-        add("Phương thức xét tuyển cho các ngành DHV 2026 là gì?")
-        add("Học phí và học bổng DHV 2026 có những thông tin nào?")
+        add(f"Phương thức xét tuyển cho các ngành DHV {year} là gì?")
+        add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
     elif intent == "TU_VAN_CHON_NGANH":
         if candidates:
             add(f"Mình có thể so sánh nội dung học của {' và '.join(candidates[:2])} không?")
         add("Các phương thức xét tuyển của lựa chọn này là gì?")
-        add("Học phí và học bổng DHV 2026 có những gì cần biết?")
+        add(f"Học phí và học bổng DHV {year} có những gì cần biết?")
     elif intent in {"HOI_NGANH", "HOI_CHUONG_TRINH"} and topic:
         add(f"{topic} có những chương trình đào tạo nào?")
-        add(f"{topic} xét tuyển theo phương thức nào năm 2026?")
-        add("Học phí và học bổng DHV 2026 có những thông tin nào?")
+        add(f"{topic} xét tuyển theo phương thức nào năm {year}?")
+        add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
     elif intent == "HOI_HOC_PHI":
-        add("DHV có những học bổng nào cho tân sinh viên 2026?")
+        add(f"DHV có những học bổng nào cho tân sinh viên {year}?")
         add("Hồ sơ xét tuyển DHV gồm những gì?")
     elif intent == "HOI_HOC_BONG":
-        add("Học phí học kỳ I DHV 2026 là bao nhiêu?")
-        add("Điều kiện xét tuyển DHV 2026 gồm những phương thức nào?")
+        add(f"Học phí học kỳ I DHV {year} là bao nhiêu?")
+        add(f"Điều kiện xét tuyển DHV {year} gồm những phương thức nào?")
     elif intent in _STEP_INTENTS:
-        add("Các mốc tuyển sinh DHV 2026 là gì?")
-        add("Học phí và học bổng DHV 2026 có những thông tin nào?")
+        add(f"Các mốc tuyển sinh DHV {year} là gì?")
+        add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
     elif intent in {"HOI_NGUONG_DAU_VAO", "HOI_DIEM_TRUNG_TUYEN", "HOI_XET_TUYEN_BO_SUNG"}:
-        add("DHV có những phương thức xét tuyển nào năm 2026?")
+        add(f"DHV có những phương thức xét tuyển nào năm {year}?")
         add("Cách tính điểm xét tuyển được công bố ra sao?")
     elif "so sanh" in normalized and candidates:
         add(f"Các chương trình thuộc {' và '.join(candidates[:2])} là gì?")
-        add("Học phí và học bổng DHV 2026 có những thông tin nào?")
+        add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
 
     return tuple(suggestions[:limit])
 
@@ -500,7 +511,7 @@ def plan_answer(
             "NO_DATA": "no_data_boundary",
             "OUT_OF_SCOPE": "scope_boundary",
         }[mode],
-        sections=_sections(mode, intent),
+        sections=_sections(mode),
         required_content=_required_content(mode, intent),
         related_questions=related,
         evidence_required=(

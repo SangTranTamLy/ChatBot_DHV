@@ -10,8 +10,10 @@ The split is a deterministic 80/20 split by file membership, with disjoint case
 IDs. Retrieval gold is expressed as official corpus categories plus required
 evidence phrases (or explicit chunk IDs when a future benchmark needs that
 granularity). Answer gold checks only the declared contract: expected status,
-required markers, forbidden claims, and validator faithfulness when evidence is
-available. It does not treat lexical similarity as factual correctness.
+required markers, and forbidden claims. The CLI reports faithfulness as a
+status/forbidden-claim proxy; direct calls to `score_answer_case` can also use
+the output validator when evidence is supplied. It does not treat lexical
+similarity as factual correctness.
 
 Run the offline report from the repository root:
 

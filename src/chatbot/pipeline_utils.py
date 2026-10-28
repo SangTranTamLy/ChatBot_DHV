@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import replace
 from typing import Any, Mapping
 
@@ -60,7 +61,7 @@ _DETERMINISTIC_SYSTEM_ANSWERS = {
     "GREETING": (
         "Chào bạn! Mình là trợ lý AI phục vụ đồ án học tập/nghiên cứu, hỗ trợ tra cứu "
         "tuyển sinh DHV. Bạn có thể hỏi về ngành, chương trình, phương thức "
-        "xét tuyển, học phí, học bổng, hồ sơ hoặc lịch tuyển sinh năm 2026."
+        f"xét tuyển, học phí, học bổng, hồ sơ hoặc lịch tuyển sinh năm {settings.target_year}."
     ),
     "THANKS": "Không có gì! Nếu cần, bạn cứ hỏi thêm về tuyển sinh DHV nhé.",
     "SYSTEM_IDENTITY": (
@@ -70,7 +71,7 @@ _DETERMINISTIC_SYSTEM_ANSWERS = {
         "của nhà trường."
     ),
     "SYSTEM_SCOPE": (
-        "Mình hỗ trợ tra cứu thông tin tuyển sinh DHV năm 2026 và thông tin về trường "
+        f"Mình hỗ trợ tra cứu thông tin tuyển sinh DHV năm {settings.target_year} và thông tin về trường "
         "liên quan trực tiếp đã được kiểm chứng. Đây không phải toàn bộ thông tin của "
         "DHV; mình không tự suy đoán những nội dung chưa có trong dữ liệu. Bạn có thể "
         "hỏi về ngành, chương trình, phương thức xét tuyển, điểm, học phí, học bổng, "
@@ -167,6 +168,13 @@ def _trace(
     )
     trace = {
         "intent": analysis.intent,
+        "primary_intent": analysis.primary_intent,
+        "sub_intents": list(analysis.sub_intents),
+        "requested_scope": analysis.requested_scope,
+        "requested_detail": analysis.requested_detail,
+        "is_follow_up": analysis.is_follow_up,
+        "needs_clarification": analysis.needs_clarification,
+        "clarification_reason": analysis.clarification_reason,
         "intent_classifier": {
             "source": analysis.intent_source,
             "confidence": analysis.intent_confidence,
@@ -275,6 +283,11 @@ def _clarification_result(
     answer = CLARIFICATION_ANSWER
     if plan.clarification_reason == "admission_method_for_personal_score":
         answer = "Bạn cho mình biết điểm này theo phương thức nào: thi tốt nghiệp THPT, học bạ hay ĐGNL?"
+    elif plan.clarification_reason == "commitment_topic":
+        answer = (
+            "Bạn muốn hỏi về cam kết không tăng học phí trong suốt khóa học, "
+            "hay chính sách học bổng cam kết hoàn học phí?"
+        )
     return _attach_answer_plan({
         "answer": answer,
         "sources": [],
@@ -429,8 +442,8 @@ def _retrieve(
             is_intake_start_date
             or is_eligibility
             or (
-            getattr(plan, "intent", "") == "HOI_LICH_TUYEN_SINH"
-            and _is_admission_date_comparison(normalized_query)
+                getattr(plan, "intent", "") == "HOI_LICH_TUYEN_SINH"
+                and _is_admission_date_comparison(normalized_query)
             )
         ):
             expanded_admission_detail_top_k = 64
@@ -450,51 +463,55 @@ def _retrieve(
             and not entity_filters.get("major_name")
         ):
             expanded_enumeration_top_k = max(expanded_enumeration_top_k or 0, 96)
+        kwargs = {
+            "categories": plan.categories,
+            "retrieval_query": plan.retrieval_query,
+            "entity_filters": entity_filters,
+        }
+        data_roles = tuple(getattr(plan, "data_roles", ()) or ())
+        if data_roles:
+            kwargs["data_roles"] = data_roles
+        if any(value is not None for value in (
+            expanded_directory_top_k,
+            expanded_school_code_top_k,
+            expanded_combination_top_k,
+            expanded_score_top_k,
+            expanded_scholarship_top_k,
+            expanded_enrollment_top_k,
+            expanded_supplementary_detail_top_k,
+            expanded_admission_detail_top_k,
+            expanded_enumeration_top_k,
+        )):
+            kwargs["top_k"] = max(
+                value
+                for value in (
+                    expanded_directory_top_k,
+                    expanded_school_code_top_k,
+                    expanded_combination_top_k,
+                    expanded_score_top_k,
+                    expanded_scholarship_top_k,
+                    expanded_enrollment_top_k,
+                    expanded_supplementary_detail_top_k,
+                    expanded_admission_detail_top_k,
+                    expanded_enumeration_top_k,
+                )
+                if value is not None
+            )
         try:
+            parameters = inspect.signature(method).parameters
+        except (TypeError, ValueError):
+            parameters = None
+        if parameters is not None and not any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        ):
             kwargs = {
-                "categories": plan.categories,
-                "retrieval_query": plan.retrieval_query,
-                "entity_filters": entity_filters,
+                key: value
+                for key, value in kwargs.items()
+                if key in parameters
+                and parameters[key].kind is not inspect.Parameter.POSITIONAL_ONLY
             }
-            data_roles = tuple(getattr(plan, "data_roles", ()) or ())
-            if data_roles:
-                kwargs["data_roles"] = data_roles
-            if (
-                expanded_directory_top_k is not None
-                or expanded_school_code_top_k is not None
-                or expanded_combination_top_k is not None
-                or expanded_score_top_k is not None
-                or expanded_scholarship_top_k is not None
-                or expanded_enrollment_top_k is not None
-                or expanded_supplementary_detail_top_k is not None
-                or expanded_admission_detail_top_k is not None
-                or expanded_enumeration_top_k is not None
-            ):
-                kwargs["top_k"] = max(
-                    value
-                    for value in (
-                        expanded_directory_top_k,
-                        expanded_school_code_top_k,
-                        expanded_combination_top_k,
-                        expanded_score_top_k,
-                        expanded_scholarship_top_k,
-                        expanded_enrollment_top_k,
-                        expanded_supplementary_detail_top_k,
-                        expanded_admission_detail_top_k,
-                        expanded_enumeration_top_k,
-                    )
-                    if value is not None
-                )
-            result = method(question, **kwargs)
-        except TypeError:
-            try:
-                result = method(
-                    question,
-                    categories=plan.categories,
-                    retrieval_query=plan.retrieval_query,
-                )
-            except TypeError:
-                result = method(question)
+        result = method(question, **kwargs)
         if isinstance(result, RetrievalResult):
             return list(result.documents), result.audit
         if isinstance(result, Mapping):

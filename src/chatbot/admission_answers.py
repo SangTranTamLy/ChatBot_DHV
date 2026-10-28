@@ -10,7 +10,6 @@ from src.config.settings import settings
 from .query_semantics import enrollment_request
 from .catalog_formatters import _method_details_from_evidence
 from .evidence_utils import (
-    _bullet_content_lines,
     _evidence_sentences,
     _evidence_text_lines,
     _remove_unresolved_url_label,
@@ -22,6 +21,30 @@ from .query_analysis import (
     normalize_question,
     _is_subject_minimum_request,
 )
+
+
+def _analysis_target_year(analysis: QueryAnalysis) -> int:
+    """Return the requested year, falling back safely to the configured year."""
+
+    try:
+        return int(analysis.entities.get("year") or settings.target_year)
+    except (TypeError, ValueError, OverflowError):
+        return int(settings.target_year)
+
+
+def _is_verified_dhv_source_url(source_url: object) -> bool:
+    """Check that a source URL is a well-formed HTTPS URL on a DHV domain."""
+
+    try:
+        parsed = urlparse(str(source_url or "").strip())
+        host = (parsed.hostname or "").lower().rstrip(".")
+        parsed.port  # Accessing it validates that any explicit port is numeric.
+    except ValueError:
+        return False
+    return (
+        parsed.scheme.lower() == "https"
+        and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+    )
 
 
 def _is_result_notification_question(question: str) -> bool:
@@ -111,7 +134,7 @@ def _evidence_date_comparison_answer(analysis: QueryAnalysis, evidence: Any) -> 
     requested_dates = re.findall(r"\b(\d{1,2})/(\d{1,2})\b", normalized)
     if analysis.intent != "HOI_LICH_TUYEN_SINH" or len(requested_dates) < 2:
         return None
-    year = analysis.entities.get("year") or 2026
+    year = _analysis_target_year(analysis)
 
     def contains_date(sentence: str, day: str, month: str) -> bool:
         folded = normalize_question(sentence)
@@ -252,13 +275,11 @@ def _verified_admission_conditions_section(evidence: Any, *, target_year: int) -
     grouped: dict[str, list[tuple[int, int, list[str]]]] = {}
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
-        parsed = urlparse(str(metadata.get("source_url") or "").strip())
-        host = (parsed.hostname or "").lower().rstrip(".")
         try:
             year = int(metadata.get("year"))
             page = int(metadata.get("page") or 0)
             chunk_index = int(metadata.get("chunk_index") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if (
             metadata.get("record_type") != "page_text"
@@ -266,8 +287,7 @@ def _verified_admission_conditions_section(evidence: Any, *, target_year: int) -
             or str(metadata.get("school_code") or "").upper() != "DHV"
             or str(metadata.get("status") or "").casefold() != "verified"
             or year != target_year
-            or parsed.scheme.lower() != "https"
-            or not (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+            or not _is_verified_dhv_source_url(metadata.get("source_url"))
         ):
             continue
         source = str(metadata.get("source_file") or metadata.get("document_id") or "")
@@ -362,7 +382,7 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     ):
         return None
 
-    target_year = int(analysis.entities.get("year") or settings.target_year)
+    target_year = _analysis_target_year(analysis)
     method_details = _method_details_from_evidence(evidence, target_year=target_year)
     labels = {
         1: "Thi tốt nghiệp THPT",
@@ -373,9 +393,9 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     }
     if _asks_for_each_admission_method(normalized):
         if all(number in method_details for number in range(1, 6)):
-            header = "Điều kiện theo từng phương thức xét tuyển DHV 2026:\n"
+            header = f"Điều kiện theo từng phương thức xét tuyển DHV {target_year}:\n"
             if re.search(r"\b(?:bao nhieu|may|so luong)\b.{0,16}\bphuong thuc\b", normalized):
-                header = "DHV 2026 áp dụng 5 phương thức xét tuyển. " + header
+                header = f"DHV {target_year} áp dụng 5 phương thức xét tuyển. " + header
             return header + "\n".join(
                 f"{number}. {labels[number]}: {method_details[number]}"
                 for number in range(1, 6)
@@ -421,6 +441,48 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     return "\n".join(answer_lines)
 
 
+def _evidence_english_major_certificate_eligibility_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+) -> str | None:
+    """Keep the English-certificate rule scoped to the verified vocational route."""
+    normalized = normalize_question(analysis.normalized_question)
+    major = normalize_question(str(analysis.entities.get("major_name") or ""))
+    if major != "ngon ngu anh" or not (
+        "b1" in normalized and any(marker in normalized for marker in ("chung chi", "tieng anh quoc te"))
+    ):
+        return None
+
+    target_year = _analysis_target_year(analysis)
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        verified_source = (
+            str(metadata.get("category") or "") == "phuong_thuc_xet_tuyen"
+            and str(metadata.get("record_type") or "") == "page_text"
+            and str(metadata.get("school_code") or "").upper() == "DHV"
+            and str(metadata.get("status") or metadata.get("verification_status") or "").casefold() == "verified"
+            and str(metadata.get("year") or "") == str(target_year)
+            and _is_verified_dhv_source_url(metadata.get("source_url"))
+        )
+        if not verified_source:
+            continue
+
+        flattened = re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or "")).strip()
+        normalized_text = normalize_question(flattened)
+        if (
+            "xet tuyen doi voi thi sinh tot nghiep trung cap" not in normalized_text
+            or "nganh ngon ngu anh" not in normalized_text
+            or not re.search(r"chung chi tieng anh quoc te\s*>\s*b1", normalized_text)
+        ):
+            continue
+        return (
+            f"Theo phương thức xét tuyển dành cho thí sinh tốt nghiệp trung cấp (phương thức 5) của DHV {target_year}, "
+            "riêng ngành Ngôn ngữ Anh, tài liệu nêu: đã học Tiếng Anh THPT hoặc có chứng chỉ tiếng Anh quốc tế > B1. "
+            "Vì vậy, tài liệu này không xác nhận chứng chỉ đúng mức B1 là đủ và cũng không áp dụng kết luận này cho mọi phương thức xét tuyển."
+        )
+    return None
+
+
 def _evidence_law_grade_eligibility_answer(
     analysis: QueryAnalysis,
     evidence: Any,
@@ -444,7 +506,7 @@ def _evidence_law_grade_eligibility_answer(
         return None
     conditions = _verified_admission_conditions_section(
         evidence,
-        target_year=int(analysis.entities.get("year") or settings.target_year),
+        target_year=_analysis_target_year(analysis),
     )
     law_conditions = [
         re.sub(r"^\d+\.\s*", "", block).strip()
@@ -491,83 +553,75 @@ def _evidence_method_application_threshold_answer(
     ):
         return None
     method = normalize_question(str(analysis.entities.get("admission_method") or "").replace("_", " "))
-    if method not in {"dgnl", "h sca", "thpt", "hoc ba"}:
+    if method != "dgnl":
         return None
-    target_year = int(analysis.entities.get("year") or settings.target_year)
-    method_heading = {
-        "dgnl": "xet ket qua ky thi danh gia nang luc",
-        "h sca": "xet ket qua bai thi danh gia nang luc chuyen biet",
-        "thpt": "xet ket qua ky thi tot nghiep thpt",
-        "hoc ba": "xet tuyen ket qua hoc tap thpt hoc ba",
-    }[method]
-    next_heading = {
-        "dgnl": "xet ket qua bai thi danh gia nang luc chuyen biet",
-        "h sca": "xet tuyen doi voi thi sinh tot nghiep trung cap",
-        "thpt": "xet tuyen ket qua hoc tap thpt hoc ba",
-        "hoc ba": "xet ket qua ky thi danh gia nang luc",
-    }[method]
-    if method == "dgnl":
-        verified_threshold_source = any(
-            str((chunk.metadata or {}).get("category") or "") == "nguong_dau_vao"
-            and str((chunk.metadata or {}).get("status") or "").casefold() == "verified"
-            and str((chunk.metadata or {}).get("school_code") or "").upper() == "DHV"
-            and str((chunk.metadata or {}).get("year") or "") == str(target_year)
-            and urlparse(str((chunk.metadata or {}).get("source_url") or "")).scheme.lower() == "https"
-            and (
-                (urlparse(str((chunk.metadata or {}).get("source_url") or "")).hostname or "").lower().rstrip(".")
-                == "dhv.edu.vn"
-                or (urlparse(str((chunk.metadata or {}).get("source_url") or "")).hostname or "").lower().rstrip(".").endswith(".dhv.edu.vn")
-            )
-            for chunk in getattr(evidence, "chunks", ()) or ()
-        )
-        verified_values = {
-            str(fact.get("raw_value") or fact.get("value") or "").strip()
-            for fact in getattr(evidence, "score_facts", ()) or ()
-            if isinstance(fact, Mapping)
-            and str(fact.get("score_type") or "") == "application_threshold"
-            and normalize_question(str(fact.get("method") or "")) == "dgnl"
-            and str(fact.get("category") or "") == "nguong_dau_vao"
-            and str(fact.get("status") or fact.get("source_status") or "").casefold() == "verified"
-            and str(fact.get("year") or "") == str(target_year)
-        }
-        if verified_threshold_source and len(verified_values) == 1 and re.fullmatch(
-            r"\d+(?:[.,]\d+)?", next(iter(verified_values))
-        ):
-            value = next(iter(verified_values)).replace(".", ",")
-            return (
-                f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {value} điểm trở lên."
-            )
+    target_year = _analysis_target_year(analysis)
+    method_heading = "xet ket qua ky thi danh gia nang luc"
+    next_heading = "xet ket qua bai thi danh gia nang luc chuyen biet"
+    verified_threshold_source = False
+    verified_method_texts: list[str] = []
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
-        parsed = urlparse(str(metadata.get("source_url") or "").strip())
-        host = (parsed.hostname or "").lower().rstrip(".")
-        try:
-            year = int(metadata.get("year"))
-        except (TypeError, ValueError):
+        if not isinstance(metadata, Mapping):
             continue
-        if not (
+        https_dhv_source = _is_verified_dhv_source_url(metadata.get("source_url"))
+        status_verified = str(metadata.get("status") or "").casefold() == "verified"
+        school_verified = str(metadata.get("school_code") or "").upper() == "DHV"
+        source_year_matches = str(metadata.get("year") or "") == str(target_year)
+        if (
+            str(metadata.get("category") or "") == "nguong_dau_vao"
+            and status_verified
+            and school_verified
+            and source_year_matches
+            and https_dhv_source
+        ):
+            verified_threshold_source = True
+        try:
+            chunk_year = int(metadata.get("year"))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        page_text_source = (
             metadata.get("record_type") == "page_text"
             and str(metadata.get("category") or "") == "phuong_thuc_xet_tuyen"
-            and str(metadata.get("school_code") or "").upper() == "DHV"
-            and str(metadata.get("status") or "").casefold() == "verified"
-            and year == target_year
-            and parsed.scheme.lower() == "https"
-            and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
-        ):
+            and school_verified
+            and status_verified
+            and chunk_year == target_year
+            and https_dhv_source
+        )
+        if not page_text_source:
             continue
-        text = str(getattr(chunk, "text", "") or "")
+        verified_method_texts.append(str(getattr(chunk, "text", "") or ""))
+
+    verified_values = {
+        str(fact.get("raw_value") or fact.get("value") or "").strip()
+        for fact in getattr(evidence, "score_facts", ()) or ()
+        if isinstance(fact, Mapping)
+        and str(fact.get("score_type") or "") == "application_threshold"
+        and normalize_question(str(fact.get("method") or "")) == "dgnl"
+        and str(fact.get("category") or "") == "nguong_dau_vao"
+        and str(fact.get("status") or fact.get("source_status") or "").casefold() == "verified"
+        and str(fact.get("year") or "") == str(target_year)
+    }
+    if verified_threshold_source and len(verified_values) == 1 and re.fullmatch(
+        r"\d+(?:[.,]\d+)?", next(iter(verified_values))
+    ):
+        value = next(iter(verified_values)).replace(".", ",")
+        return (
+            f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {value} điểm trở lên."
+        )
+
+    for text in verified_method_texts:
         folded = normalize_question(text)
         start = folded.find(method_heading)
         if start < 0:
             continue
         end = folded.find(next_heading, start + len(method_heading))
         section = folded[start:] if end < 0 else folded[start:end]
-        if method == "dgnl":
-            match = re.search(r"(?:tu|dat|toi thieu)\s+(\d{3,4})\s+diem(?:\s+tro len)?", section)
-            if match:
-                return (
-                    f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {match.group(1)} điểm trở lên."
-                )
+        match = re.search(r"(?:tu|dat|toi thieu)\s+(\d{3,4})\s+diem(?:\s+tro len)?", section)
+        if match:
+            return (
+                f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {match.group(1)} điểm trở lên."
+            )
     return None
 
 
@@ -646,11 +700,25 @@ def _evidence_required_document_answer(analysis: QueryAnalysis, evidence: Any) -
         return None
     alias, label = requested
     supported = False
+    source_line = label
+    source_line_found = False
     for chunk in getattr(evidence, "chunks", ()) or ():
         chunk_text = str(getattr(chunk, "text", "") or "")
         folded = normalize_question(chunk_text)
         if alias not in folded:
             continue
+        if not source_line_found:
+            for raw_line in chunk_text.splitlines():
+                line = re.sub(r"\s+", " ", raw_line).strip()
+                if alias in normalize_question(line):
+                    source_line = re.sub(
+                        r"^Hồ sơ nhập học\s*:\s*",
+                        "",
+                        line.lstrip("• ").strip(),
+                        flags=re.IGNORECASE,
+                    ).rstrip(" .")
+                    source_line_found = True
+                    break
         if not any(marker in folded for marker in ("mang theo", "ho so nhap hoc", "giay to sau")):
             continue
         if any(marker in folded for marker in ("khong can mang", "khong phai mang", "khong yeu cau")):
@@ -658,18 +726,89 @@ def _evidence_required_document_answer(analysis: QueryAnalysis, evidence: Any) -
         supported = True
     if not supported:
         return None
-    source_line = next(
-        (
-            re.sub(r"^Hồ sơ nhập học\s*:\s*", "", line.lstrip("• ").strip(), flags=re.IGNORECASE).rstrip(" .")
-            for line in _evidence_text_lines(evidence)
-            if alias in normalize_question(line)
-        ),
-        label,
-    )
     return f"Có. Hướng dẫn nhập học liệt kê {source_line} trong nhóm giấy tờ cần mang theo."
 
 
-def _evidence_cash_payment_answer(evidence: Any) -> str | None:
+def _unique_enrollment_lines(lines: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        cleaned = re.sub(r"\s+", " ", line).strip(" •")
+        key = normalize_question(cleaned)
+        if cleaned and key and key not in seen:
+            seen.add(key)
+            result.append(cleaned)
+    return result
+
+
+def _document_text_enrollment_checklist(
+    chunks: tuple[Any, ...],
+    target_year: int,
+) -> tuple[list[str], str]:
+    """Read explicit checklist bullets from the verified enrollment guide."""
+
+    checklist_lines: list[str] = []
+    checklist_note = ""
+    for chunk in chunks:
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if not isinstance(metadata, Mapping):
+            continue
+        try:
+            chunk_year = int(metadata.get("year"))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        title = normalize_question(str(metadata.get("title") or ""))
+        if not (
+            metadata.get("status") == "verified"
+            and str(metadata.get("school_code") or "").upper() == "DHV"
+            and chunk_year == target_year
+            and str(metadata.get("category") or "") == "ho_so"
+            and "ho so can chuan bi khi nhap hoc" in title
+        ):
+            continue
+
+        in_checklist = False
+        text = str(getattr(chunk, "text", "") or "").strip()
+        for raw_line in text.splitlines():
+            line = re.sub(r"\s+", " ", raw_line).strip()
+            folded = normalize_question(line)
+            if not line:
+                continue
+            if "vui long mang theo" in folded and "giay to sau" in folded:
+                in_checklist = True
+                continue
+            if folded.startswith("luu y"):
+                if "ban goc" in folded and "khong can cong chung" in folded:
+                    checklist_note = "Lưu ý: mang bản gốc để đối chiếu, không cần công chứng."
+                in_checklist = False
+                continue
+            if in_checklist and re.match(r"^[•*–-]\s*", line):
+                checklist_lines.append(re.sub(r"^[•*–-]\s*", "", line).rstrip(" ."))
+    return _unique_enrollment_lines(checklist_lines), checklist_note
+
+
+def _legacy_enrollment_document_lines(chunks: tuple[Any, ...]) -> list[str]:
+    """Keep support for the older one-record-per-document representation."""
+
+    document_lines: list[str] = []
+    for chunk in chunks:
+        metadata = getattr(chunk, "metadata", {}) or {}
+        if not isinstance(metadata, Mapping) or str(metadata.get("record_type") or "") != "enrollment_document":
+            continue
+        try:
+            page = int(metadata.get("page", 0))
+        except (TypeError, ValueError, OverflowError):
+            page = 0
+        if page != 3:
+            continue
+        text = str(getattr(chunk, "text", "") or "").strip()
+        value = text.split("Hồ sơ nhập học:", 1)[-1].strip()
+        if value and "co so" not in normalize_question(value):
+            document_lines.append(value)
+    return _unique_enrollment_lines(document_lines)
+
+
+def _evidence_cash_payment_answer(evidence: Any, *, target_year: int) -> str | None:
     """Answer in-person payment questions with the documented reception facts.
 
     The guide does not name a cash counter, so the answer says that plainly
@@ -701,7 +840,7 @@ def _evidence_cash_payment_answer(evidence: Any) -> str | None:
         None,
     )
     parts = [
-        "Tài liệu nhập học DHV 2026 chưa nêu riêng quầy thu học phí bằng tiền mặt.",
+        f"Tài liệu nhập học DHV {target_year} chưa nêu riêng quầy thu học phí bằng tiền mặt.",
         "Bạn có thể đến nhập học trực tiếp tại:",
         *(f"- {campus}" for campus in campuses),
         f"Thời gian: {hours.replace('DHV tiếp nhận nhập học', '').strip()}"
@@ -728,8 +867,9 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     normalized = normalize_question(analysis.normalized_question)
     chunks = tuple(getattr(evidence, "chunks", ()) or ())
     request = enrollment_request(normalized)
+    target_year = _analysis_target_year(analysis)
     if request == "cash_payment":
-        return _evidence_cash_payment_answer(evidence)
+        return _evidence_cash_payment_answer(evidence, target_year=target_year)
     if request in {"reception_hours", "reception_dates"}:
         lines = _evidence_text_lines(evidence)
         matches = []
@@ -748,25 +888,14 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
         value = getattr(chunk, "metadata", {}) or {}
         return value if isinstance(value, Mapping) else {}
 
-    def unique(lines: list[str]) -> list[str]:
-        result: list[str] = []
-        seen: set[str] = set()
-        for line in lines:
-            cleaned = re.sub(r"\s+", " ", line).strip(" •")
-            key = normalize_question(cleaned)
-            if cleaned and key and key not in seen:
-                seen.add(key)
-                result.append(cleaned)
-        return result
-
     if request == "enrollment_benefits":
-        requested_year = int(analysis.entities.get("year") or 2026)
+        requested_year = target_year
         rights_chunks = []
         for chunk in chunks:
             metadata = metadata_for(chunk)
             try:
                 chunk_year = int(metadata.get("year"))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 continue
             title = normalize_question(str(metadata.get("title") or ""))
             if (
@@ -813,46 +942,13 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
         )
     ) and any(marker in normalized for marker in ("cong chung", "ban goc", "co can", "can mang", "mang theo"))
 
-    # The approved 2026 corpus stores the checklist as one verified
+    # The current corpus stores the checklist as one verified
     # ``document_text`` record (not legacy ``enrollment_document`` records).
     # Read only the dedicated checklist source and its explicit bullet list;
     # otherwise a generic question such as "Hồ sơ cần gì?" falls through to
     # the language model, which can echo the whole procedure document.
     if request == "documents":
-        checklist_lines: list[str] = []
-        checklist_note = ""
-        for chunk in chunks:
-            metadata = metadata_for(chunk)
-            try:
-                chunk_year = int(metadata.get("year"))
-            except (TypeError, ValueError):
-                continue
-            title = normalize_question(str(metadata.get("title") or ""))
-            if not (
-                metadata.get("status") == "verified"
-                and str(metadata.get("school_code") or "").upper() == "DHV"
-                and chunk_year == int(analysis.entities.get("year") or 2026)
-                and str(metadata.get("category") or "") == "ho_so"
-                and "ho so can chuan bi khi nhap hoc" in title
-            ):
-                continue
-            in_checklist = False
-            for raw_line in text_for(chunk).splitlines():
-                line = re.sub(r"\s+", " ", raw_line).strip()
-                folded = normalize_question(line)
-                if not line:
-                    continue
-                if "vui long mang theo" in folded and "giay to sau" in folded:
-                    in_checklist = True
-                    continue
-                if folded.startswith("luu y"):
-                    if "ban goc" in folded and "khong can cong chung" in folded:
-                        checklist_note = "Lưu ý: mang bản gốc để đối chiếu, không cần công chứng."
-                    in_checklist = False
-                    continue
-                if in_checklist and re.match(r"^[•*–-]\s*", line):
-                    checklist_lines.append(re.sub(r"^[•*–-]\s*", "", line).rstrip(" ."))
-        checklist_lines = unique(checklist_lines)
+        checklist_lines, checklist_note = _document_text_enrollment_checklist(chunks, target_year)
         if named_document_condition and checklist_lines:
             requested_aliases = (
                 ("giay chung nhan ket qua thi",),
@@ -890,15 +986,15 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
         if checklist_lines and not named_document_condition:
             operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
             if operation == "COUNT":
-                answer = f"Hồ sơ nhập học DHV {analysis.entities.get('year') or 2026} cần chuẩn bị {len(checklist_lines)} loại giấy tờ."
+                answer = f"Hồ sơ nhập học DHV {target_year} cần chuẩn bị {len(checklist_lines)} loại giấy tờ."
             elif operation == "LIST_AND_COUNT":
                 answer = (
-                    f"Hồ sơ nhập học DHV {analysis.entities.get('year') or 2026} cần chuẩn bị "
+                    f"Hồ sơ nhập học DHV {target_year} cần chuẩn bị "
                     f"{len(checklist_lines)} loại giấy tờ:\n"
                     + "\n".join(f"- {line}" for line in checklist_lines)
                 )
             else:
-                heading = "Bạn cần bổ sung các giấy tờ sau:" if provided else "Hồ sơ nhập học DHV 2026 cần chuẩn bị:"
+                heading = "Bạn cần bổ sung các giấy tờ sau:" if provided else f"Hồ sơ nhập học DHV {target_year} cần chuẩn bị:"
                 answer = heading + "\n" + "\n".join(
                     f"- {line}" for line in checklist_lines
                 )
@@ -914,13 +1010,17 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     if "uu dai cao nhat" in normalized and any(
         marker in normalized for marker in ("hoan tat xac nhan", "xac nhan truoc moc", "xac nhan truoc ngay")
     ):
-        requested_year = int(analysis.entities.get("year") or 2026)
+        requested_year = target_year
         for chunk in chunks:
             metadata = metadata_for(chunk)
+            try:
+                chunk_year = int(metadata.get("year") or requested_year)
+            except (TypeError, ValueError, OverflowError):
+                continue
             if (
                 str(metadata.get("status") or "") != "verified"
                 or str(metadata.get("school_code") or "").upper() != "DHV"
-                or int(metadata.get("year") or requested_year) != requested_year
+                or chunk_year != requested_year
                 or str(metadata.get("category") or "") not in {"ho_so", "nhap_hoc"}
             ):
                 continue
@@ -942,7 +1042,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     if ("nop ho so" in normalized or request == "enrollment_location") and "dong tien" not in normalized and "xet tuyen" not in normalized and any(
         marker in normalized for marker in ("co so nao", "o dau", "dia chi nao")
     ):
-        locations = unique([
+        locations = _unique_enrollment_lines([
             line
             for line in _evidence_text_lines(evidence)
             if re.search(r"\bCơ sở\s*[12]\s*:", line, re.IGNORECASE)
@@ -971,10 +1071,10 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
 
     if "dong tien mat" in normalized:
         source_lines = _evidence_text_lines(evidence)
-        locations = unique(
+        locations = _unique_enrollment_lines(
             [line for line in source_lines if re.search(r"\bCơ sở\s*[12]\s*:", line, re.IGNORECASE)]
         )
-        schedules = unique(
+        schedules = _unique_enrollment_lines(
             [
                 line for line in source_lines
                 if re.search(r"\b\d{1,2}:\d{2}\b", line)
@@ -992,7 +1092,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
             return "\n".join(parts)
 
     if any(marker in normalized for marker in ("he thong cua bo", "he thong ho tro tuyen sinh chung", "xac nhan tren he thong")):
-        confirmation_lines = unique(
+        confirmation_lines = _unique_enrollment_lines(
             [
                 sentence
                 for sentence in _evidence_sentences(evidence)
@@ -1009,7 +1109,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
             )
 
     if request == "submission_mode" or any(marker in normalized for marker in ("o xa", "nhap hoc truc tuyen", "nhap hoc online", "chua den truong ngay")):
-        online_lines = unique([
+        online_lines = _unique_enrollment_lines([
             sentence
             for sentence in _evidence_sentences(evidence)
             if (
@@ -1071,9 +1171,9 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                     for marker in ("thoi han ap dung chinh sach", "nguyen vong", "hoc bong")
                 ):
                     timing_lines.append(line)
-        timing_lines = unique(timing_lines)
+        timing_lines = _unique_enrollment_lines(timing_lines)
         if timing_lines:
-            return "Các mốc nhập học có trong dữ liệu DHV 2026:\n" + "\n".join(
+            return f"Các mốc nhập học có trong dữ liệu DHV {target_year}:\n" + "\n".join(
                 f"- {line}" for line in timing_lines[:8]
             )
 
@@ -1086,7 +1186,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
                 has_amount = bool(re.search(r"\d[\d.,]*\s*(?:đồng|dong|vnd)\b", line, re.IGNORECASE))
                 if has_amount and ("phi nhap hoc" in folded or "tai khoan hoc lieu dien tu" in folded):
                     fee_lines.append(line)
-        fee_lines = unique(fee_lines)
+        fee_lines = _unique_enrollment_lines(fee_lines)
         if fee_lines:
             return "Các khoản liên quan đến nhập học:\n" + "\n".join(
                 f"- {line}" for line in fee_lines[:6]
@@ -1095,23 +1195,7 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     if "nhap hoc" not in normalized and request != "documents":
         return None
 
-    document_lines: list[str] = []
-    for chunk in chunks:
-        metadata = metadata_for(chunk)
-        if str(metadata.get("record_type") or "") != "enrollment_document":
-            continue
-        try:
-            page = int(metadata.get("page", 0))
-        except (TypeError, ValueError):
-            page = 0
-        if page != 3:
-            continue
-        text = text_for(chunk)
-        value = text.split("Hồ sơ nhập học:", 1)[-1].strip()
-        if not value or "co so" in normalize_question(value):
-            continue
-        document_lines.append(value)
-    document_lines = unique(document_lines)
+    document_lines = _legacy_enrollment_document_lines(chunks)
     if document_lines:
         if any(marker in normalized for marker in ("cong chung", "ban goc", "ban sao")):
             named = [line for line in document_lines if any(
@@ -1134,13 +1218,13 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
         operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
         
         if operation == "COUNT":
-            answer = f"Hồ sơ nhập học DHV 2026 cần chuẩn bị {count} loại giấy tờ/khoản mục chính."
+            answer = f"Hồ sơ nhập học DHV {target_year} cần chuẩn bị {count} loại giấy tờ/khoản mục chính."
         elif operation == "LIST_AND_COUNT":
-            answer = f"Hồ sơ nhập học DHV 2026 cần chuẩn bị {count} loại giấy tờ/khoản mục chính:\n" + "\n".join(
+            answer = f"Hồ sơ nhập học DHV {target_year} cần chuẩn bị {count} loại giấy tờ/khoản mục chính:\n" + "\n".join(
                 f"- {line}" for line in document_lines
             )
         else:
-            heading = "Bạn cần bổ sung các giấy tờ sau:" if provided else "Bạn mang các giấy tờ sau:" if "nhac lai ngan gon" in normalized else "Hồ sơ nhập học DHV 2026 cần chuẩn bị:"
+            heading = "Bạn cần bổ sung các giấy tờ sau:" if provided else "Bạn mang các giấy tờ sau:" if "nhac lai ngan gon" in normalized else f"Hồ sơ nhập học DHV {target_year} cần chuẩn bị:"
             answer = heading + "\n" + "\n".join(
                 f"- {line}" for line in document_lines
             )
@@ -1262,12 +1346,7 @@ def _evidence_admission_combination_answer(analysis: QueryAnalysis, evidence: An
         if len(official_structures) >= 2:
             break
     if official_structures:
-        intro = (
-            "Có. DHV xét tuyển theo hai cấu trúc tổ hợp:\n"
-            if analysis.entities.get("admission_combination_detail")
-            else "DHV xét tuyển theo hai cấu trúc tổ hợp:\n"
-        )
-        return intro + "\n".join(
+        return "Có. DHV xét tuyển theo hai cấu trúc tổ hợp:\n" + "\n".join(
             f"- {structure}" for structure in official_structures[:2]
         )
     sections: list[tuple[str, str]] = []
@@ -1320,7 +1399,7 @@ def _evidence_admission_combination_answer(analysis: QueryAnalysis, evidence: An
             for heading, bullet in sections
         )
     heading, bullet = sections[0]
-    return "" + (f"{heading}: " if heading else "") + bullet
+    return f"{heading}: {bullet}" if heading else bullet
 
 
 def _evidence_admission_method_presence_answer(
@@ -1374,7 +1453,10 @@ def _evidence_admission_method_presence_answer(
                 "hsca": "bài thi Đánh giá năng lực chuyên biệt (H-SCA)",
                 "trung cap": "thí sinh tốt nghiệp trung cấp",
             }
-            return f"Có. DHV có phương thức xét tuyển theo {labels[key]} trong phương án tuyển sinh 2026."
+            return (
+                f"Có. DHV có phương thức xét tuyển theo {labels[key]} "
+                f"trong phương án tuyển sinh {_analysis_target_year(analysis)}."
+            )
     return None
 
 
@@ -1408,7 +1490,7 @@ def _evidence_method_calculation_answer(
         return None
     detail = _method_details_from_evidence(
         evidence,
-        target_year=int(analysis.entities.get("year") or settings.target_year),
+        target_year=_analysis_target_year(analysis),
     ).get(1 if method == "thpt" else 2)
     if not detail:
         if method == "thpt":
@@ -1419,20 +1501,17 @@ def _evidence_method_calculation_answer(
         # not fall back to similarly worded scholarship formulas.
         for chunk in getattr(evidence, "chunks", ()) or ():
             metadata = getattr(chunk, "metadata", {}) or {}
-            parsed = urlparse(str(metadata.get("source_url") or "").strip())
-            host = (parsed.hostname or "").lower().rstrip(".")
             try:
                 year = int(metadata.get("year"))
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 continue
             if not (
                 metadata.get("record_type") == "page_text"
                 and str(metadata.get("category") or "") == "phuong_thuc_xet_tuyen"
                 and str(metadata.get("school_code") or "").upper() == "DHV"
                 and str(metadata.get("status") or "").casefold() == "verified"
-                and year == int(analysis.entities.get("year") or settings.target_year)
-                and parsed.scheme.lower() == "https"
-                and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+                and year == _analysis_target_year(analysis)
+                and _is_verified_dhv_source_url(metadata.get("source_url"))
             ):
                 continue
             source_text = str(getattr(chunk, "text", "") or "")
@@ -1491,7 +1570,7 @@ def _evidence_method_calculation_answer(
             )
     return (
         f"Theo phương thức {method_label} DHV "
-        f"{analysis.entities.get('year') or settings.target_year}: {detail}"
+        f"{_analysis_target_year(analysis)}: {detail}"
     )
 
 
@@ -1518,18 +1597,11 @@ def _evidence_vocational_same_group_eligibility_answer(
         ):
             continue
         try:
-            if int(metadata.get("year", 0)) != settings.target_year:
+            if int(metadata.get("year", 0)) != _analysis_target_year(analysis):
                 continue
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
-        source_url = str(metadata.get("source_url") or "").strip()
-        parsed_source = urlparse(source_url)
-        source_host = (parsed_source.hostname or "").lower().rstrip(".")
-        if (
-            parsed_source.scheme.lower() != "https"
-            or not source_host
-            or not (source_host == "dhv.edu.vn" or source_host.endswith(".dhv.edu.vn"))
-        ):
+        if not _is_verified_dhv_source_url(metadata.get("source_url")):
             continue
         source_text = normalize_question(str(getattr(chunk, "text", "") or ""))
         required_conditions = (
@@ -1653,6 +1725,7 @@ def _evidence_supplementary_majors_answer(analysis: QueryAnalysis, evidence: Any
     if analysis.intent != "HOI_XET_TUYEN_BO_SUNG":
         return None
     normalized = normalize_question(analysis.normalized_question)
+    target_year = _analysis_target_year(analysis)
     if not any(marker in normalized for marker in ("nganh nao", "nhung nganh", "chuong trinh nao", "nhung chuong trinh")):
         return None
     names: list[str] = []
@@ -1700,18 +1773,18 @@ def _evidence_supplementary_majors_answer(analysis: QueryAnalysis, evidence: Any
         return None
     operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
     if operation == "COUNT":
-        return f"Theo dữ liệu xét tuyển bổ sung DHV 2026, có {len(names)} ngành được ghi nhận."
+        return f"Theo dữ liệu xét tuyển bổ sung DHV {target_year}, có {len(names)} ngành được ghi nhận."
     if any(
         "chuong trinh" in normalize_question(str(getattr(chunk, "text", "") or ""))
         and len(names) >= 2
         for chunk in getattr(evidence, "chunks", ()) or ()
     ):
         return (
-            f"Các chương trình có trong đợt xét tuyển bổ sung DHV 2026 ({len(names)} chương trình):\n"
+            f"Các chương trình có trong đợt xét tuyển bổ sung DHV {target_year} ({len(names)} chương trình):\n"
             + "\n".join(f"{index}. {name}" for index, name in enumerate(names, start=1))
         )
     return (
-        f"Các ngành có dữ liệu xét tuyển bổ sung DHV 2026 ({len(names)} ngành):\n"
+        f"Các ngành có dữ liệu xét tuyển bổ sung DHV {target_year} ({len(names)} ngành):\n"
         + "\n".join(f"{index}. {name}" for index, name in enumerate(names, start=1))
     )
 
@@ -1805,7 +1878,7 @@ def _evidence_score_list_answer(analysis: QueryAnalysis, evidence: Any) -> str |
             else "theo mã xét tuyển"
         )
         return (
-            f"Điểm trúng tuyển đợt 1 năm 2026 {scope}:\n"
+            f"Điểm trúng tuyển đợt 1 năm {_analysis_target_year(analysis)} {scope}:\n"
             + "\n".join(rows)
             + "\n\nLưu ý: đây là điểm trúng tuyển theo từng phương thức, không phải ngưỡng chung để nộp hồ sơ."
         )
@@ -1852,7 +1925,7 @@ def _admission_score_overview_answer(analysis: QueryAnalysis, evidence: Any) -> 
             continue
         try:
             value = float(fact.get("value"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         rows = by_method.setdefault(method, [])
         existing = next((index for index, row in enumerate(rows) if row[0] == major), None)
@@ -1892,7 +1965,11 @@ def _admission_score_overview_answer(analysis: QueryAnalysis, evidence: Any) -> 
         if any("(*)" in raw for rows in by_method.values() for _, raw, _ in rows)
         else ""
     )
-    return "Điểm trúng tuyển đợt 1 năm 2026 của DHV theo từng phương thức:\n" + "\n".join(lines) + note
+    return (
+        f"Điểm trúng tuyển đợt 1 năm {_analysis_target_year(analysis)} của DHV theo từng phương thức:\n"
+        + "\n".join(lines)
+        + note
+    )
 
 
 def _structured_score_answer(
@@ -1919,6 +1996,10 @@ def _structured_score_answer(
     for fact in rows:
         label = _method_label(fact.get("method"))
         raw_value = str(fact.get("raw_value"))
+        # Structured imports often encode whole-number thresholds as floats
+        # (for example 18.0). Keep the answer natural without rounding real
+        # fractional thresholds such as 18.5.
+        raw_value = re.sub(r"^(\d+)[.,]0+$", r"\1", raw_value)
         if raw_value == "-":
             value = "chưa công bố"
         else:
@@ -2012,7 +2093,7 @@ def _evidence_score_comparison_reason_answer(
         leading_value = leading_score.group(1).replace(".", ",")
         remaining_value = remaining_score.group(1).replace(".", ",")
         return (
-            "Theo tài liệu tuyển sinh DHV 2026, điểm trúng tuyển THPT của các ngành "
+            f"Theo tài liệu tuyển sinh DHV {_analysis_target_year(analysis)}, điểm trúng tuyển THPT của các ngành "
             f"{leading_majors} là {leading_value} điểm; "
             f"các ngành/chương trình còn lại là {remaining_value} điểm. "
             "Tài liệu không nêu nguyên nhân cụ thể của mức chênh lệch."
@@ -2119,13 +2200,13 @@ _SUPPLEMENTARY_REQUESTS = frozenset({
 
 def _supplementary_notice(analysis: QueryAnalysis, evidence: Any) -> tuple[int, str] | None:
     """Flattened text of the verified supplementary notice for the requested year."""
-    target_year = int(analysis.entities.get("year") or settings.target_year)
+    target_year = _analysis_target_year(analysis)
     parts: list[str] = []
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
         try:
             year = int(metadata.get("year"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if (
             str(metadata.get("category") or "") == "xet_tuyen_bo_sung"
@@ -2294,7 +2375,7 @@ def _evidence_general_registration_answer(analysis: QueryAnalysis, evidence: Any
         )
     if not answer_parts:
         return None
-    return "Năm 2026, " + ". ".join(answer_parts).rstrip(".") + "."
+    return f"Năm {_analysis_target_year(analysis)}, " + ". ".join(answer_parts).rstrip(".") + "."
 
 
 def _evidence_result_notification_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:

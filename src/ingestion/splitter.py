@@ -99,8 +99,6 @@ def split_documents(
     if chunk_overlap < 0 or chunk_overlap >= chunk_size:
         raise ValueError("chunk_overlap must be between zero and chunk_size - 1")
 
-    tokenizer = _load_tokenizer(tokenizer_model)
-
     heading_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=[
             ("#", "heading_1"),
@@ -109,15 +107,21 @@ def split_documents(
         ],
         strip_headers=False,
     )
-    text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
-        tokenizer,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        separators=["\n\n", "\n", ". ", " ", ""],
-    )
-
+    tokenizer = None
+    text_splitter = None
     chunks: list[Document] = []
     for document in documents:
+        if not document.page_content:
+            continue
+        if tokenizer is None:
+            tokenizer = _load_tokenizer(tokenizer_model)
+            text_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
+                tokenizer,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                separators=["\n\n", "\n", ". ", " ", ""],
+            )
+
         sections = heading_splitter.split_text(document.page_content)
         if not sections:
             sections = [Document(page_content=document.page_content, metadata={})]
@@ -132,13 +136,10 @@ def split_documents(
                 if section_metadata.get(key)
             ]
             heading_path = " > ".join(str(value) for value in heading_values)
-            section_chunks = text_splitter.split_documents(
-                [Document(page_content=section.page_content, metadata={})]
-            )
-
-            for section_chunk_index, section_chunk in enumerate(section_chunks):
+            section_chunk_texts = text_splitter.split_text(section.page_content)
+            for section_chunk_index, chunk_text in enumerate(section_chunk_texts):
                 content_hash = hashlib.sha1(
-                    section_chunk.page_content.encode("utf-8")
+                    chunk_text.encode("utf-8")
                 ).hexdigest()[:8]
                 metadata = dict(document.metadata)
                 metadata.update(section_metadata)
@@ -153,14 +154,14 @@ def split_documents(
                             f"{document_id}-{section_index:03d}-"
                             f"{section_chunk_index:03d}-{content_hash}"
                         ),
-                        "chunk_char_count": len(section_chunk.page_content),
+                        "chunk_char_count": len(chunk_text),
                         "chunk_token_count": _token_count(
-                            tokenizer, section_chunk.page_content
+                            tokenizer, chunk_text
                         ),
                     }
                 )
                 chunks.append(
-                    Document(page_content=section_chunk.page_content, metadata=metadata)
+                    Document(page_content=chunk_text, metadata=metadata)
                 )
                 document_chunk_index += 1
 

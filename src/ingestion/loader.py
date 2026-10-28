@@ -92,50 +92,52 @@ def load_verified_documents(
         for path in root.rglob("*.json")
         if path.is_file() and path.name.lower() != "manifest.json"
     )
-    if json_files:
-        for path in json_files:
-            result.stats.files_seen += 1
-            relative_path = path.relative_to(root).as_posix()
-            try:
-                # Read the envelope first so an explicitly draft/unverified
-                # document is classified as skipped data, not as a malformed
-                # verified document. Full schema/domain validation happens
-                # only for candidates that can enter the KB.
-                structured = json.loads(path.read_text(encoding="utf-8"))
-                if not isinstance(structured, dict):
-                    raise MetadataError("structured JSON root must be an object")
-                source = structured.get("source", {})
-                status = str(source.get("status", "")).strip().lower()
-                if _is_internal(dict(source)):
-                    result.stats.skipped_internal += 1
-                    continue
-                if status != "verified" or source.get("verified") is not True:
-                    result.stats.skipped_unverified += 1
-                    continue
-                if target_year is not None and structured.get("year") != target_year:
-                    result.stats.skipped_other_year += 1
-                    continue
-                documents = load_structured_json_file(path)
-                if not documents:
-                    raise MetadataError("structured JSON produced zero record documents")
-                result.documents.extend(documents)
-                result.stats.verified_documents += 1
-            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
-                result.stats.metadata_errors += 1
-                error = {"file": relative_path, "error": str(exc)}
-                result.errors.append(error)
-                LOGGER.error("structured JSON error in %s: %s", relative_path, exc)
-        LOGGER.info(
-            "loaded structured JSON files=%d verified_documents=%d skipped_unverified=%d "
-            "skipped_internal=%d skipped_other_year=%d metadata_errors=%d",
-            result.stats.files_seen,
-            result.stats.verified_documents,
-            result.stats.skipped_unverified,
-            result.stats.skipped_internal,
-            result.stats.skipped_other_year,
-            result.stats.metadata_errors,
-        )
-        return result
+    for path in json_files:
+        result.stats.files_seen += 1
+        relative_path = path.relative_to(root).as_posix()
+        try:
+            # Read the envelope first so an explicitly draft/unverified
+            # document is classified as skipped data, not as a malformed
+            # verified document. Full schema/domain validation happens
+            # only for candidates that can enter the KB.
+            structured = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(structured, dict):
+                raise MetadataError("structured JSON root must be an object")
+            source = structured.get("source", {})
+            if source is None:
+                source = {}
+            if not isinstance(source, dict):
+                raise MetadataError("structured JSON source must be an object")
+            status = str(source.get("status", "")).strip().lower()
+            if _is_internal(source):
+                result.stats.skipped_internal += 1
+                continue
+            if status != "verified" or source.get("verified") is not True:
+                result.stats.skipped_unverified += 1
+                continue
+            if target_year is not None and structured.get("year") != target_year:
+                result.stats.skipped_other_year += 1
+                continue
+            documents = load_structured_json_file(path)
+            if not documents:
+                raise MetadataError("structured JSON produced zero record documents")
+            result.documents.extend(documents)
+            result.stats.verified_documents += 1
+        except (OSError, OverflowError, TypeError, ValueError) as exc:
+            result.stats.metadata_errors += 1
+            error = {"file": relative_path, "error": str(exc)}
+            result.errors.append(error)
+            LOGGER.error("structured JSON error in %s: %s", relative_path, exc)
+    LOGGER.info(
+        "loaded structured JSON files=%d verified_documents=%d skipped_unverified=%d "
+        "skipped_internal=%d skipped_other_year=%d metadata_errors=%d",
+        result.stats.files_seen,
+        result.stats.verified_documents,
+        result.stats.skipped_unverified,
+        result.stats.skipped_internal,
+        result.stats.skipped_other_year,
+        result.stats.metadata_errors,
+    )
     return result
 
 

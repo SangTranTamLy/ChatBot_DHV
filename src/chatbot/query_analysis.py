@@ -14,6 +14,7 @@ from typing import Any, Mapping, Sequence
 
 from .intent_classifier import IntentPrediction, predict_intent
 from .query_semantics import (
+    analyze_fee_request,
     correct_domain_typos,
     enrollment_request,
     is_cash_payment_request,
@@ -436,12 +437,47 @@ class QueryAnalysis:
     intent_confidence: float | None = None
     intent_source: str = "trained_intent_model"
 
+    @property
+    def primary_intent(self) -> str:
+        return self.intent
+
+    @property
+    def sub_intents(self) -> tuple[str, ...]:
+        values = self.entities.get("issue_intents", ())
+        if not isinstance(values, Sequence) or isinstance(values, str):
+            return ()
+        return tuple(str(value) for value in values if value)
+
+    @property
+    def requested_scope(self) -> str | None:
+        value = self.entities.get("requested_scope")
+        return str(value) if value else None
+
+    @property
+    def requested_detail(self) -> dict[str, object]:
+        value = self.entities.get("requested_detail")
+        if isinstance(value, Mapping):
+            return dict(value)
+        requested_information = self.entities.get("requested_information", ())
+        if isinstance(requested_information, Sequence) and not isinstance(requested_information, str):
+            return {"information": list(requested_information)}
+        return {}
+
+    @property
+    def is_follow_up(self) -> bool:
+        return bool(self.entities.get("is_follow_up"))
+
     def to_dict(self) -> dict[str, object]:
         return {
             "question": self.question,
             "normalized_question": self.normalized_question,
             "intent": self.intent,
+            "primary_intent": self.primary_intent,
+            "sub_intents": list(self.sub_intents),
             "entities": dict(self.entities),
+            "requested_scope": self.requested_scope,
+            "requested_detail": self.requested_detail,
+            "is_follow_up": self.is_follow_up,
             "needs_clarification": self.needs_clarification,
             "clarification_reason": self.clarification_reason,
             "intent_confidence": self.intent_confidence,
@@ -490,7 +526,7 @@ class QueryPlan:
 def _safe_int(value: object, default: int) -> int:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -1010,6 +1046,11 @@ def _has_supplementary_marker(normalized: str) -> bool:
     return any(marker in normalized for marker in _SUPPLEMENTARY_MARKERS)
 
 
+def _has_minimum_score_phrase(normalized: str) -> bool:
+    """Recognize score-minimum wording even when a short descriptor intervenes."""
+    return bool(re.search(r"\bdiem(?:\s+\w+){0,4}\s+toi thieu\b", normalized))
+
+
 def _without_threshold_intake(normalized: str) -> str:
     """``điểm/ngưỡng nhận hồ sơ`` names the score threshold; its ``hồ sơ`` is not a paperwork request."""
     if _has_supplementary_marker(normalized):
@@ -1129,6 +1170,7 @@ def _is_admission_eligibility_question(normalized: str) -> bool:
             "du dieu kien xet tuyen",
             "duoc dang ky xet tuyen",
             "co duoc xet tuyen",
+            "co nhan xet tuyen",
             "dieu kien",
             "yeu cau xet tuyen",
             "tieu chi xet tuyen",
@@ -1581,6 +1623,20 @@ def _has_other_topic_clause(normalized: str) -> bool:
     )
 
 
+def _has_standalone_tuition_clause(normalized: str) -> bool:
+    """A separate clause must ask about tuition, not just mention its base for a scholarship."""
+    clauses = re.split(r"[,;?]|\b(?:va|ngoai ra|dong thoi)\b", normalized)
+    return any(
+        "hoc phi" in clause
+        and "hoc bong" not in clause
+        and any(
+            marker in clause
+            for marker in ("bao nhieu", "don gia", "tin chi", "hoc ky", "tien hoc", "phai dong", "can dong")
+        )
+        for clause in clauses
+    )
+
+
 def _is_result_notification_request(normalized: str) -> bool:
     """Questions asking where/how admission results are announced."""
     return "trung tuyen" in normalized and any(
@@ -1698,21 +1754,21 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
     if (
         not admission_condition_request
         and (
-        "phuong thuc" in normalized
-        or any(
-            marker in normalized
-            for marker in (
-                "hinh thuc tuyen sinh",
-                "hinh thuc xet tuyen",
-                "phuong an tuyen sinh",
-                "cac cach tuyen sinh",
-                "nhung cach tuyen sinh",
-                "tuyen sinh nhu the nao",
-                "tuyen sinh bang cach nao",
-                "tuyen sinh theo cach nao",
+            "phuong thuc" in normalized
+            or any(
+                marker in normalized
+                for marker in (
+                    "hinh thuc tuyen sinh",
+                    "hinh thuc xet tuyen",
+                    "phuong an tuyen sinh",
+                    "cac cach tuyen sinh",
+                    "nhung cach tuyen sinh",
+                    "tuyen sinh nhu the nao",
+                    "tuyen sinh bang cach nao",
+                    "tuyen sinh theo cach nao",
+                )
             )
-        )
-        or ("to hop" in normalized and not scholarship_context)
+            or ("to hop" in normalized and not scholarship_context)
         )
     ):
         add("HOI_PHUONG_THUC_XET_TUYEN")
@@ -1745,7 +1801,7 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
             add("HOI_NHAP_HOC")
         if "xet tuyen" not in normalized and re.search(r"(?:,|;|\bva\b|\bcon\b)\s*nop\s+(?:o dau|tai dau|o co so nao)", normalized):
             add("HOI_NHAP_HOC")
-    if "lich tuyen sinh" in normalized or ("han xet tuyen" in normalized and not supplementary):
+    if "lich tuyen sinh" in normalized or (re.search(r"\bhan xet tuyen\b", normalized) and not supplementary):
         add("HOI_LICH_TUYEN_SINH")
     if ("nhap hoc" in normalized or "xac nhan nhap hoc" in normalized) and not has_documents:
         add("HOI_NHAP_HOC")
@@ -1947,6 +2003,8 @@ def _decomposed_subquery(
                 if text and text not in anchors:
                     anchors.append(text)
     label = _DECOMPOSED_QUERY_LABELS.get(intent, intent)
+    if intent == "HOI_HOC_BONG" and entities.get("scholarship_request_type") == "conditions":
+        label = "điều kiện các học bổng"
     if intent == "SCHOOL_INFO" and entities.get("faculty_request"):
         label = "các khoa đào tạo"
     return " ".join((*anchors[:8], label, str(entities.get("year") or target_year)))
@@ -1975,12 +2033,29 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         for alias, canonical in _PROGRAM_ALIASES
         if re.search(rf"\b{re.escape(alias)}\b", normalized)
     ]
+    major_alias_matches: list[tuple[int, int, str, str]] = []
+    for alias, canonical in _MAJOR_ALIASES:
+        major_alias_matches.extend(
+            (match.start(), match.end(), alias, canonical)
+            for match in re.finditer(rf"\b{re.escape(alias)}\b", normalized)
+        )
+    # Prefer a longer alias over a shorter alias nested inside it ("Luật" in
+    # "Luật Kinh tế"). Separately written names have non-overlapping spans and
+    # remain distinct candidate entities.
+    specific_major_matches = [
+        (start, end, canonical)
+        for start, end, alias, canonical in major_alias_matches
+        if not any(
+            other_start <= start
+            and end <= other_end
+            and (other_end - other_start) > (end - start)
+            for other_start, other_end, _other_alias, _other_canonical in major_alias_matches
+        )
+    ]
     major_names = _safe_str_tuple(
-        [
-            canonical
-            for alias, canonical in _MAJOR_ALIASES
-            if re.search(rf"\b{re.escape(alias)}\b", normalized)
-        ]
+        # Keep the historical alias declaration order for candidate lists;
+        # only discard nested short aliases such as "Luật" in "Luật Kinh tế".
+        [canonical for _start, _end, canonical in specific_major_matches]
     )
     # A verified program may share its display name with its parent major. In
     # ordinary major/catalog questions the major interpretation wins; only an
@@ -2040,7 +2115,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         and not any(term in normalized for term in ("diem san", "nguong", "nhan ho so"))
     ):
         score_type = ADMISSION_SCORE
-    elif any(term in normalized for term in ("diem san", "nguong dau vao", "diem dau vao", "diem nhan ho so", "nguong nhan ho so", "nguong dam bao chat luong", "diem toi thieu", "duoc dang ky")) or (
+    elif any(term in normalized for term in ("diem san", "nguong dau vao", "diem dau vao", "diem nhan ho so", "nguong nhan ho so", "nguong dam bao chat luong", "duoc dang ky")) or _has_minimum_score_phrase(normalized) or (
         admission_method is not None and _is_score_amount_request(normalized)
     ) or _is_subject_minimum_request(normalized):
         score_type = APPLICATION_THRESHOLD
@@ -2648,7 +2723,7 @@ def _is_hard_out_of_scope(
             and not _is_verified_school_info_request(normalized, entities)
         )
         or any(
-        marker in normalized for marker in _HARD_OUT_OF_SCOPE_MARKERS
+            marker in normalized for marker in _HARD_OUT_OF_SCOPE_MARKERS
         )
     )
 
@@ -2703,6 +2778,23 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         return "THANKS"
     if _is_greeting(normalized):
         return "GREETING"
+    if (
+        "chinh sach cam ket" in normalized
+        and not any(
+            marker in normalized
+            for marker in (
+                "khong tang hoc phi",
+                "tang hoc phi",
+                "hoc phi",
+                "hoc bong",
+                "hoan hoc phi",
+            )
+        )
+    ):
+        # This can refer to either tuition stability or a scholarship promise.
+        # Keep it in DHV scope and ask which policy the user means.
+        entities["requested_information"] = ["commitment_policy"]
+        return "HOI_HOC_PHI"
     if _is_admission_subject_count_question(normalized):
         # The presence of "điểm thi tốt nghiệp" can set score_type to an
         # application threshold during extraction. The user is asking how the
@@ -2725,6 +2817,12 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         entities["score_query_type"] = None
         entities["admission_combination_detail"] = False
         entities["requested_information"] = ["scholarship"]
+        if any(marker in normalized for marker in _SCHOLARSHIP_CRITERIA_WORDS):
+            entities["scholarship_request_type"] = "conditions"
+        issue_intents = _multi_issue_intents(normalized, entities)
+        if len(issue_intents) >= 2 and _has_standalone_tuition_clause(normalized):
+            entities["issue_intents"] = list(issue_intents)
+            return "MULTI_ISSUE"
         return "HOI_HOC_BONG"
     if entities.get("admission_combination_detail"):
         # A natural-language description of the published subject structure
@@ -2796,7 +2894,11 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         # published threshold, not application instructions. Keep the method
         # entity so the router searches its verified method/conditions page.
         return "HOI_NGUONG_DAU_VAO"
-    if "diem toi thieu" in normalized and not entities.get("student_scores"):
+    if (
+        _has_minimum_score_phrase(normalized)
+        and not entities.get("student_scores")
+        and entities.get("score_query_type") != ADMISSION_SCORE_LOOKUP
+    ):
         return "HOI_NGUONG_DAU_VAO"
     if _is_admission_eligibility_question(normalized):
         entities["admission_condition_request"] = True
@@ -3338,6 +3440,28 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
     if intent == "HOI_NHAP_HOC" and entities.get("request_type") == "enrollment_benefits":
         requested = ["enrollment_benefits"]
     entities["requested_information"] = requested
+    fee_request = analyze_fee_request(normalized)
+    if fee_request.is_fee_request:
+        entities["fee_request"] = fee_request.to_dict()
+        entities["requested_scope"] = fee_request.scope
+        entities["requested_detail"] = {
+            "topics": list(fee_request.topics),
+            "semester": fee_request.semester,
+            "credits": fee_request.credits,
+            "optional_english": fee_request.optional_english,
+            "relationship": fee_request.relationship,
+            "fee_items": list(fee_request.fee_items),
+            "ambiguous_topics": list(fee_request.ambiguous_topics),
+        }
+    entities["is_follow_up"] = bool(
+        entities.get("contextual_question")
+        or should_inherit_context(
+            normalized,
+            intent,
+            active_state.previous_intent,
+            active_state,
+        )
+    )
     return QueryAnalysis(
         question=original,
         normalized_question=normalized,
@@ -3409,6 +3533,20 @@ def _explicit_issue_analyses(analysis: QueryAnalysis, target_year: int) -> tuple
 def _clarification_needed(analysis: QueryAnalysis, state: ConversationState) -> tuple[bool, str]:
     normalized = analysis.normalized_question
     score_type = analysis.entities.get("score_type") or state.current_score_type
+    if (
+        "chinh sach cam ket" in normalized
+        and not any(
+            marker in normalized
+            for marker in (
+                "khong tang hoc phi",
+                "tang hoc phi",
+                "hoc phi",
+                "hoc bong",
+                "hoan hoc phi",
+            )
+        )
+    ):
+        return True, "commitment_topic"
     if analysis.entities.get("coreference_ambiguous"):
         return True, str(analysis.entities.get("coreference_reason") or "ambiguous_coreference")
     contrastive_major_comparison = (
@@ -3675,6 +3813,15 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
             and "lop 12" in resolved.normalized_question
         ):
             categories = ("phuong_thuc_xet_tuyen",)
+        elif (
+            major in {"luật", "luật kinh tế"}
+            and entities.get("score_query_type") == APPLICATION_THRESHOLD_LOOKUP
+            and not entities.get("admission_method")
+        ):
+            # Only retrieve typed Law threshold records when no method-specific
+            # threshold was requested. The catalogue marks some Law methods as
+            # unavailable, so a generic threshold must not fill that gap.
+            categories = ("nganh_dao_tao", "nguong_dau_vao")
         elif entities.get("score_query_type") == ADMISSION_SCORE_LOOKUP:
             categories = ("diem_trung_tuyen",)
         else:

@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 from src.config.settings import settings
 from src.ingestion.structured_json import is_official_dhv_url, load_structured_json
 from .evidence import select_program_relations
-from .evidence_utils import _evidence_sentences
 from .query_analysis import ConversationState, QueryAnalysis, normalize_question
 
 
@@ -39,7 +38,6 @@ def _advisory_answer_has_guidance(analysis: QueryAnalysis, answer: object) -> bo
 
     if analysis.intent != "TU_VAN_CHON_NGANH":
         return True
-    candidates = _candidate_values(analysis)
     if not analysis.entities.get("interest"):
         return True
     normalized = normalize_question(str(answer or ""))
@@ -55,25 +53,7 @@ def _advisory_answer_has_guidance(analysis: QueryAnalysis, answer: object) -> bo
             "voi so thich",
         )
     )
-    # A recommendation with no explicit candidate list still needs a
-    # recommendation-shaped answer. The realization layer can choose only a
-    # program/parent relation already present in evidence.
-    return has_guidance if candidates or analysis.entities.get("interest") else True
-
-
-def _advisory_preferred_program(
-    candidate_programs: list[str],
-    interest: str,
-    relations: list[dict[str, str]],
-) -> str | None:
-    """Không suy ra độ phù hợp từ quan hệ chương trình–ngành.
-
-    Evidence hiện chỉ ghi nhận tên chương trình và ngành cha, không ghi nhận
-    quan hệ giữa sở thích/năng lực cá nhân với chương trình. Chỉ bổ sung cơ chế
-    chọn khi corpus có loại evidence phù hợp riêng.
-    """
-
-    return None
+    return has_guidance
 
 
 def _has_verified_advisory_fit_evidence(
@@ -192,23 +172,7 @@ def _advisory_evidence_clarification(
         "chinh sua video": "chỉnh sửa video",
         "edit video": "edit video",
     }.get(normalize_question(interest), interest)
-    preferred_program = _advisory_preferred_program(candidate_programs, interest, relations)
     lines: list[str] = []
-    if preferred_program:
-        parent = next(
-            (
-                str(relation.get("parent_major") or "").strip()
-                for relation in relations
-                if str(relation.get("program_name") or "").strip() == preferred_program
-                and str(relation.get("parent_major") or "").strip()
-            ),
-        )
-        parent_code = codes_by_major.get(normalize_question(parent))
-        code_text = f" (mã ngành {parent_code})" if parent_code else ""
-        lines.append(
-            f"Với sở thích {interest_display}, mình nghiêng về {preferred_program} hơn. "
-            f"Đây là chương trình thuộc ngành {parent}{code_text}."
-        )
     if candidate_majors or candidate_programs:
         lines.append("Bạn có thể cân nhắc các lựa chọn sau:")
     for major in candidate_majors:
@@ -275,44 +239,9 @@ def _deterministic_recommendation_answer(
     evidence: Any,
     score_comparisons: Any,
 ) -> str | None:
-    interest = str(analysis.entities.get("interest") or "").strip()
-    if not interest:
-        return None
-    candidates = list(_candidate_values(analysis))
-    relations = list(getattr(evidence, "entity_relations", ()) or ())
-    preferred = _advisory_preferred_program(candidates, interest, relations)
-    if not preferred:
-        return None
-    parent = next(
-        (
-            str(relation.get("parent_major") or "").strip()
-            for relation in relations
-            if str(relation.get("program_name") or "").strip() == preferred
-            and str(relation.get("parent_major") or "").strip()
-        ),
-        "",
-    )
-    if not parent:
-        return None
-    interest_display = {
-        "dung video": "dựng video",
-        "chinh sua video": "chỉnh sửa video",
-        "edit video": "edit video",
-    }.get(normalize_question(interest), interest)
-    lines = [
-        f"Với sở thích {interest_display}, mình nghiêng về {preferred} hơn. "
-        f"{preferred} là chương trình thuộc ngành {parent}.",
-    ]
-    for comparison in score_comparisons or ():
-        method = str(comparison.get("method") or "").strip()
-        label = {"dgnl": "ĐGNL", "thpt": "thi tốt nghiệp THPT", "hoc_ba": "học bạ"}.get(method, method)
-        relation_word = "cao hơn hoặc bằng" if comparison.get("meets_threshold") else "thấp hơn"
-        lines.append(
-            f"Điểm {label} bạn nêu là {comparison.get('student_value')}, "
-            f"{relation_word} ngưỡng nhận hồ sơ {comparison.get('threshold_value')}."
-        )
-    lines.append("Đây chỉ là so sánh với ngưỡng nhận hồ sơ, không phải kết luận trúng tuyển.")
-    return "\n".join(lines)
+    """Preserve the guard hook; catalogue relations do not encode personal fit."""
+
+    return None
 
 
 def _program_detail_missing_evidence(analysis: QueryAnalysis, evidence: Any) -> bool:
@@ -349,7 +278,10 @@ def _major_rows_from_evidence(evidence: Any) -> list[tuple[str, str]]:
     seen_codes: set[str] = set()
     seen_names: set[str] = set()
     for fact in getattr(evidence, "score_facts", ()) or ():
-        if str(fact.get("category") or "") != "nganh_dao_tao":
+        if (
+            str(fact.get("category") or "") != "nganh_dao_tao"
+            or str(fact.get("status") or fact.get("source_status") or "").casefold() != "verified"
+        ):
             continue
         major = str(fact.get("major_name") or "").strip()
         code = str(fact.get("major_code") or "").strip()
@@ -459,6 +391,41 @@ def _major_in_group(major_code: str, major_group: str) -> bool:
     return False
 
 
+def _major_program_count_from_evidence(
+    evidence: Any,
+    *,
+    target_year: int,
+    expected_major_count: int,
+) -> int | None:
+    """Read the program count only from a matching verified DHV source."""
+
+    pattern = re.compile(
+        r"\b(\d+)\s+nganh(?: hoc)?\b.{0,100}?\bhon\s+(\d+)\s+chuong trinh\b"
+    )
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = getattr(chunk, "metadata", {}) or {}
+        try:
+            year = int(metadata.get("year"))
+        except (TypeError, ValueError):
+            continue
+        if (
+            str(metadata.get("category") or "") not in {"phuong_thuc_xet_tuyen", "thong_tin_truong"}
+            or str(metadata.get("record_type") or "") != "page_text"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").upper() != "DHV"
+            or year != target_year
+            or not is_official_dhv_url(metadata.get("source_url"))
+        ):
+            continue
+        flattened = normalize_question(
+            " ".join(str(getattr(chunk, "text", "") or "").splitlines())
+        )
+        match = pattern.search(flattened)
+        if match and int(match.group(1)) == expected_major_count:
+            return int(match.group(2))
+    return None
+
+
 def _program_rows_from_evidence(
     evidence: Any,
     major_rows: list[tuple[str, str]],
@@ -527,7 +494,11 @@ def _method_details_from_evidence(
             if (
                 not line
                 or re.fullmatch(r"\d+", folded)
-                or folded.startswith(("dhv 2026 -", "phuong thuc xet tuyen dhv 2026", "tong quan tuyen sinh dhv 2026"))
+                or folded.startswith((
+                    f"dhv {target_year} -",
+                    f"phuong thuc xet tuyen dhv {target_year}",
+                    f"tong quan tuyen sinh dhv {target_year}",
+                ))
             ):
                 continue
             lines.append(line)
@@ -596,7 +567,7 @@ def _method_details_from_evidence(
             (
                 index
                 for index, line in enumerate(lines)
-                if "cac phuong thuc xet tuyen nam 2026" in normalize_question(line)
+                if f"cac phuong thuc xet tuyen nam {target_year}" in normalize_question(line)
                 or "cac phuong thuc xet tuyen gom" in normalize_question(line)
             ),
             None,
@@ -672,15 +643,19 @@ def _evidence_catalog_answer(
 ) -> dict[str, object] | None:
     """Định dạng các câu trả lời danh mục từ bằng chứng có cấu trúc, không phải từ văn xuôi của model."""
 
-    major_rows = _major_rows_from_evidence(evidence)
     if analysis.intent == "DANH_SACH_NGANH":
+        try:
+            target_year = int(analysis.entities.get("year") or settings.target_year)
+        except (TypeError, ValueError):
+            target_year = int(settings.target_year)
         verified_catalog = _verified_major_catalog(
-            analysis.entities.get("year") or settings.target_year
+            target_year
         )
         if verified_catalog is not None:
             major_rows, catalog_source = verified_catalog
             catalog_sources = [catalog_source]
         else:
+            major_rows = _major_rows_from_evidence(evidence)
             catalog_sources = [dict(source) for source in evidence.sources]
         major_group = str(analysis.entities.get("major_group") or "")
         if major_group:
@@ -692,12 +667,7 @@ def _evidence_catalog_answer(
         if not major_rows:
             return None
         group_label = _MAJOR_GROUP_LABELS.get(major_group)
-        year_values = [
-            str(chunk.metadata.get("year"))
-            for chunk in getattr(evidence, "chunks", ())
-            if chunk.metadata.get("year")
-        ]
-        year_text = f" năm {year_values[0]}" if year_values else ""
+        year_text = f" năm {target_year}" if verified_catalog is not None else ""
         count_only = (
             any(
                 marker in analysis.normalized_question
@@ -740,57 +710,22 @@ def _evidence_catalog_answer(
                     "sources": catalog_sources,
                     "status": "ok",
                 }
-            for sentence in _evidence_sentences(evidence):
-                summary = re.search(
-                    r"\b(\d+)\s+nganh\b.{0,100}?\bhon\s+(\d+)\s+chuong\s+trinh\b",
-                    normalize_question(sentence),
+            program_count = _major_program_count_from_evidence(
+                evidence,
+                target_year=target_year,
+                expected_major_count=len(major_rows),
+            )
+            if program_count is not None:
+                answer_text = (
+                    f"Chào bạn! DHV có {len(major_rows)} ngành chính năm {target_year} và hơn "
+                    f"{program_count} chương trình đào tạo.\n\n"
+                    f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
                 )
-                if summary and int(summary.group(1)) == len(major_rows):
-                    source_year = analysis.entities.get("year") or (year_values[0] if year_values else None)
-                    year_text = f" năm {source_year}" if source_year else ""
-                    answer_text = (
-                        f"Chào bạn! DHV có {len(major_rows)} ngành chính{year_text} và hơn "
-                        f"{int(summary.group(2))} chương trình đào tạo.\n\n"
-                        f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
-                    )
-                    return {
-                        "answer": answer_text,
-                        "sources": catalog_sources,
-                        "status": "ok",
-                    }
-            # PDF line wrapping can split the overview statistic across
-            # separate extracted lines, so inspect the flattened selected
-            # source text as well. The major count must agree with the
-            # structured catalogue before including the program-count fact.
-            for chunk in getattr(evidence, "chunks", ()) or ():
-                metadata = getattr(chunk, "metadata", {}) or {}
-                if (
-                    str(metadata.get("category") or "") not in {"phuong_thuc_xet_tuyen", "thong_tin_truong"}
-                    or str(metadata.get("record_type") or "") != "page_text"
-                    or str(metadata.get("status") or "") != "verified"
-                    or str(metadata.get("school_code") or "").upper() != "DHV"
-                ):
-                    continue
-                flattened = normalize_question(
-                    " ".join(str(getattr(chunk, "text", "") or "").splitlines())
-                )
-                summary = re.search(
-                    r"\b(\d+)\s+nganh(?: hoc)?\s+voi\s+hon\s+(\d+)\s+chuong\s+trinh\b",
-                    flattened,
-                )
-                if summary and int(summary.group(1)) == len(major_rows):
-                    year = metadata.get("year") or (year_values[0] if year_values else None)
-                    year_text = f" năm {year}" if year else ""
-                    answer_text = (
-                        f"Chào bạn! DHV có {len(major_rows)} ngành chính{year_text} và hơn "
-                        f"{int(summary.group(2))} chương trình đào tạo.\n\n"
-                        f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
-                    )
-                    return {
-                        "answer": answer_text,
-                        "sources": catalog_sources,
-                        "status": "ok",
-                    }
+                return {
+                    "answer": answer_text,
+                    "sources": catalog_sources,
+                    "status": "ok",
+                }
             answer_text = (
                 f"Chào bạn! DHV hiện có {len(major_rows)} ngành chính{year_text} theo định hướng ứng dụng thực tiễn.\n\n"
                 f"Nếu bạn cần xem danh sách chi tiết các ngành hoặc tìm hiểu phương thức xét tuyển, bạn cứ nhắn mình nhé!"
@@ -821,9 +756,22 @@ def _evidence_catalog_answer(
                 "trộn chương trình đào tạo với ngành chính hoặc bỏ sót một số ngành.\n"
             )
         else:
+            program_count = _major_program_count_from_evidence(
+                evidence,
+                target_year=target_year,
+                expected_major_count=len(major_rows),
+            )
+            if program_count is not None:
+                year_text = f" năm {target_year}"
+            program_summary = (
+                f" và hơn {program_count} chương trình đào tạo đa dạng"
+                if program_count is not None
+                else ""
+            )
             correction = (
-                f"Chào bạn! Năm 2026, Trường Đại học Hùng Vương TP.HCM (DHV) đào tạo {len(major_rows)} ngành chính{year_text} "
-                "với hơn 50 chương trình đào tạo đa dạng. Dưới đây là danh sách các ngành cùng mã ngành để bạn tham khảo nhé:\n"
+                f"Chào bạn! Trường Đại học Hùng Vương TP.HCM (DHV) đào tạo "
+                f"{len(major_rows)} ngành chính{year_text}{program_summary}. "
+                "Dưới đây là danh sách các ngành cùng mã ngành để bạn tham khảo nhé:\n"
             )
         lines = [
             f"{index}. {major} — mã ngành {code}"
@@ -836,6 +784,7 @@ def _evidence_catalog_answer(
         }
 
     if analysis.intent == "DANH_SACH_CHUONG_TRINH":
+        major_rows = _major_rows_from_evidence(evidence)
         entities = analysis.entities
         requested_major = str(entities.get("major_name") or "").strip() or None
         operation = str(entities.get("catalog_operation") or "LIST")
@@ -893,27 +842,34 @@ def _evidence_catalog_answer(
         operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
         if operation not in {"COUNT", "LIST", "LIST_AND_COUNT"}:
             return None
-        methods = []
+        methods: list[tuple[int, str]] = []
         for fact in getattr(evidence, "score_facts", ()):
             if fact.get("score_type") == "admission_method" and fact.get("method_text"):
-                methods.append((fact.get("method_number", 0), fact.get("method_text")))
+                try:
+                    number = int(fact.get("method_number") or 0)
+                except (TypeError, ValueError):
+                    number = 0
+                methods.append((number, str(fact.get("method_text"))))
         if not methods:
             return None
         # Sort by method number and deduplicate
         methods.sort(key=lambda x: (x[0] or 99, x[1]))
-        unique_methods = []
+        unique_methods: list[tuple[int, str]] = []
         seen = set()
         for number, text in methods:
             key = number if number else text
             if key not in seen:
                 seen.add(key)
-                unique_methods.append(text)
+                unique_methods.append((number, text))
         count = len(unique_methods)
         cleaned_methods = [
-            re.sub(r"^\s*(?:\d+\.)+\d*\.?\s*", "", str(text)).strip()
-            for text in unique_methods
+            (number, re.sub(r"^\s*(?:\d+\.)+\d*\.?\s*", "", text).strip())
+            for number, text in unique_methods
         ]
-        lines = [f"{index}. {text}" for index, text in enumerate(cleaned_methods, start=1)]
+        lines = [
+            f"{index}. {text}"
+            for index, (_, text) in enumerate(cleaned_methods, start=1)
+        ]
 
         detail_requested = any(
             marker in normalize_question(analysis.normalized_question)
@@ -927,10 +883,10 @@ def _evidence_catalog_answer(
             if detail_requested
             else {}
         )
-        if method_details:
+        if method_details and all(number in method_details for number, _ in unique_methods):
             detailed_lines = [
-                f"{index}. {text}\n{method_details[index]}"
-                for index, text in enumerate(cleaned_methods, start=1)
+                f"{number}. {text}\n{method_details[number]}"
+                for number, text in cleaned_methods
             ]
             answer = (
                 f"Hiện tại DHV có {count} phương thức xét tuyển chính:\n"

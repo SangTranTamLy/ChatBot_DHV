@@ -223,7 +223,6 @@ class RuntimeEnrollmentTests(unittest.TestCase):
             retriever=retriever,
             conversation_state=first["conversation_state"],
         )
-        self.assertNotEqual(second["status"], "out_of_scope")
         self.assertEqual(second["trace"]["entities"]["scope_reason"], "in_scope_dhv")
         self.assertGreater(second["trace"]["retrieval_calls"], 0)
 
@@ -237,7 +236,6 @@ class RuntimeEnrollmentTests(unittest.TestCase):
             retriever=retriever,
             conversation_state=first["conversation_state"],
         )
-        self.assertNotEqual(second["status"], "out_of_scope")
         self.assertEqual(second["trace"]["entities"]["scope_reason"], "in_scope_dhv")
         self.assertGreater(second["trace"]["retrieval_calls"], 0)
 

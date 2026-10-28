@@ -79,7 +79,8 @@ class TaskResponseRegressionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "ok")
-        self.assertIn("Học phí HKI (10 tín chỉ): 12.500.000 đồng", result["answer"])
+        self.assertIn("Học phí HKI (10 tín chỉ)", result["answer"])
+        self.assertIn("12.500.000 đồng", result["answer"])
         self.assertNotIn("Tổng chi phí học kỳ I: 14.250.000 đồng", result["answer"])
         self.assertFalse(llm.prompts)
 

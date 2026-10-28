@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -82,11 +83,12 @@ class OCRRuntimeIntegrationTests(unittest.TestCase):
         self.assertIn("vie", languages)
 
     def test_scan_reaches_ocr_and_processed_json_uses_ocr_text(self) -> None:
-        raw_root = PROJECT_ROOT / "tests" / "fixtures"
-        raw_path = raw_root / ".ocr_runtime_fixture.pdf"
-        output_root = PROJECT_ROOT / "tests"
-        output_path = output_root / "fixtures" / ".ocr_runtime_fixture.json"
-        try:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            fixture_root = Path(temp_dir)
+            raw_root = fixture_root / "raw"
+            raw_root.mkdir()
+            raw_path = raw_root / "ocr_runtime_fixture.pdf"
+            output_root = fixture_root / "processed"
             _write_scanned_fixture(raw_path)
 
             pages = _extract_pdf_pages(raw_path)
@@ -106,7 +108,7 @@ class OCRRuntimeIntegrationTests(unittest.TestCase):
                     "document_id": "ocr-runtime-fixture",
                     "title": "OCR runtime fixture",
                     "category": "fixtures",
-                    "raw_file": "tests/fixtures/ocr_runtime_fixture.pdf",
+                    "raw_file": "ocr_runtime_fixture.pdf",
                     "file_name": "ocr_runtime_fixture.pdf",
                     "year": 2026,
                     "source_url": "https://dhv.edu.vn/ocr-runtime-fixture",
@@ -124,9 +126,6 @@ class OCRRuntimeIntegrationTests(unittest.TestCase):
             self.assertEqual(structured["pages"][0]["text"], ocr_text)
             self.assertEqual(structured["extraction"]["ocr_pages"], 1)
             self.assertNotIn("OCR_FAILED", json.dumps(structured, ensure_ascii=False))
-        finally:
-            raw_path.unlink(missing_ok=True)
-            output_path.unlink(missing_ok=True)
 
     def test_previous_production_page_is_blank_not_an_ocr_runtime_failure(self) -> None:
         self.assertTrue(PRODUCTION_PDF.exists())

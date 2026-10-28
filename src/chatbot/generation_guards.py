@@ -61,24 +61,27 @@ def _retry_prompt(
 ) -> str:
     checklist = "; ".join(
         f"{fact.get('method')} → {fact.get('raw_value')}"
-        for fact in facts
+        for fact in facts or ()
         if fact.get("method") != "deadline"
     )
     labeled_amounts: list[str] = []
-    for chunk in getattr(evidence, "chunks", ()):
-        for line in chunk.text.splitlines():
-            normalized = line.casefold()
-            if "học phí" in normalized or "hoc phi" in normalized or "tổng chi phí" in normalized or "tong chi phi" in normalized:
-                line = line.strip()
-                if line and line not in labeled_amounts:
-                    labeled_amounts.append(line)
+    seen_amounts: set[str] = set()
+    for line in _evidence_text_lines(evidence):
+        normalized = normalize_question(line)
+        if not any(label in normalized for label in ("hoc phi", "tong chi phi")):
+            continue
+        if line not in seen_amounts:
+            seen_amounts.add(line)
+            labeled_amounts.append(line)
+            if len(labeled_amounts) == 4:
+                break
     amount_instruction = ""
     if labeled_amounts:
         amount_instruction = (
             " Đây là câu hỏi về học phí: bắt buộc chép dòng bắt đầu bằng "
             "nhãn Học phí với đúng giá trị; không dùng dòng Tổng chi phí để "
             "thay thế. Các dòng khoản tiền cần giữ đúng nhãn và giá trị: "
-            + " | ".join(labeled_amounts[:4])
+            + " | ".join(labeled_amounts)
             + "."
         )
     relation_instruction = ""
@@ -90,7 +93,11 @@ def _retry_prompt(
             for relation in getattr(evidence, "entity_relations", ())
             if str(relation.get("program_name") or "") == program
         ]
-        parents = [str(relation.get("parent_major")) for relation in relations if relation.get("parent_major")]
+        parents = [
+            str(relation.get("parent_major"))
+            for relation in relations
+            if relation.get("parent_major")
+        ]
         allowed_codes = [
             str(fact.get("major_code"))
             for fact in getattr(evidence, "score_facts", ())
@@ -102,7 +109,11 @@ def _retry_prompt(
                 f"{parents[0]}; không gọi chương trình là ngành độc lập."
             )
             if allowed_codes:
-                relation_instruction += " Mã ngành hợp lệ của ngành cha: " + ", ".join(sorted(set(allowed_codes))) + "."
+                relation_instruction += (
+                    " Mã ngành hợp lệ của ngành cha: "
+                    + ", ".join(sorted(set(allowed_codes)))
+                    + "."
+                )
     return (
         f"{prompt}\n\nBẢN NHÁP CẦN KIỂM TRA:\n{draft[:2000]}\n\n"
         "Hãy tạo lại câu trả lời chỉ từ CONTEXT và không nhắc tới từ CONTEXT hay "
@@ -130,9 +141,12 @@ def _is_generation_artifact(answer: object) -> bool:
 def _combination_is_verified(evidence: Any, combination: object) -> bool:
     """Chỉ coi A00/A01... là có dữ liệu khi evidence có dòng khẳng định tích cực."""
 
-    token = normalize_question(str(combination or "")).upper()
+    token = normalize_question(str(combination or ""))
     if not token:
         return True
+    token_pattern = re.compile(
+        rf"(?<![a-z0-9]){re.escape(token)}(?![a-z0-9])"
+    )
     negative_markers = (
         "khong dua",
         "chua co",
@@ -143,12 +157,11 @@ def _combination_is_verified(evidence: Any, combination: object) -> bool:
     )
     for line in _evidence_text_lines(evidence):
         folded = normalize_question(line)
-        if token.casefold() not in folded.upper():
+        if not token_pattern.search(folded):
             continue
         if any(marker in folded for marker in negative_markers):
             continue
-        if "to hop" in folded or token.casefold() in folded:
-            return True
+        return True
     return False
 
 
@@ -187,8 +200,11 @@ def _realize_generation_artifact(
         if semester_ans:
             return semester_ans
         lines = [
-            line for line in _evidence_text_lines(evidence)
-            if normalize_question(line).startswith(("hoc phi hki", "hoc phi:", "• hoc phi hki"))
+            line
+            for line in _evidence_text_lines(evidence)
+            if normalize_question(line).startswith(
+                ("hoc phi hki", "hoc phi:", "• hoc phi hki")
+            )
         ]
         if lines:
             return lines[0].lstrip("• ").strip()
@@ -265,7 +281,9 @@ def _validated_generation(
         target_year=target_year,
     )
     reason = validated.get("_validation_reason")
-    retry_advisory_fallback = reason == "model_fallback" and analysis.intent == "TU_VAN_CHON_NGANH"
+    retry_advisory_fallback = (
+        reason == "model_fallback" and analysis.intent == "TU_VAN_CHON_NGANH"
+    )
     if validated.get("status") == "no_data" and (
         reason in _RETRYABLE_VALIDATION_REASONS or retry_advisory_fallback
     ):

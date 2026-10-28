@@ -4,17 +4,32 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from .query_analysis import normalize_question
+
+
+_WHITESPACE_RE = re.compile(r"\s+")
+_URL_IN_TEXT_RE = re.compile(r"(?:https?://|www\.)", re.IGNORECASE)
+_UNRESOLVED_ADDRESS_WITH_VA_RE = re.compile(
+    r"\s+(?:tại\s+)?địa\s+chỉ:\s*và\s*",
+    re.IGNORECASE,
+)
+_UNRESOLVED_ADDRESS_RE = re.compile(
+    r"\s+(?:tại\s+)?địa\s+chỉ:\s*",
+    re.IGNORECASE,
+)
 
 
 def _evidence_text_lines(evidence: Any) -> list[str]:
     """Lấy các dòng nội dung đã qua Evidence Selection, không lấy metadata prompt."""
     lines: list[str] = []
+    seen: set[str] = set()
     for chunk in getattr(evidence, "chunks", ()) or ():
         for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
-            line = re.sub(r"\s+", " ", raw_line).strip()
-            if line and line not in lines:
+            line = _WHITESPACE_RE.sub(" ", raw_line).strip()
+            if line and line not in seen:
+                seen.add(line)
                 lines.append(line)
     return lines
 
@@ -22,7 +37,7 @@ def _evidence_text_lines(evidence: Any) -> list[str]:
 def _split_source_sentences(raw_text: str) -> list[str]:
     """Join layout-wrapped lines, then split source text into usable sentences."""
     sentences: list[str] = []
-    text = re.sub(r"\s+", " ", str(raw_text or "")).strip()
+    text = _WHITESPACE_RE.sub(" ", str(raw_text or "")).strip()
     if not text:
         return sentences
     # Protect common Vietnamese name/title abbreviations from being
@@ -32,38 +47,32 @@ def _split_source_sentences(raw_text: str) -> list[str]:
         lambda match: match.group(1) + "<abbr>",
         text,
     )
+    seen: set[str] = set()
     for sentence in re.split(r"(?<=[.!?])\s+(?=[A-ZÀ-Ỹ0-9“])", protected):
         candidate = sentence.replace("<abbr>", ".").strip(" •")
-        if candidate and candidate not in sentences:
+        if candidate and candidate not in seen:
+            seen.add(candidate)
             sentences.append(candidate)
     return sentences
 
 
 def _evidence_sentences(evidence: Any) -> list[str]:
     sentences: list[str] = []
+    seen: set[str] = set()
     for chunk in getattr(evidence, "chunks", ()) or ():
         for sentence in _split_source_sentences(str(getattr(chunk, "text", "") or "")):
-            if sentence not in sentences:
+            if sentence not in seen:
+                seen.add(sentence)
                 sentences.append(sentence)
     return sentences
 
 
 def _remove_unresolved_url_label(sentence: str) -> str:
     """Avoid emitting a dangling 'at address:' when extraction lost its URL."""
-    if re.search(r"(?:https?://|www\.)", sentence, re.IGNORECASE):
+    if _URL_IN_TEXT_RE.search(sentence):
         return sentence.strip()
-    cleaned = re.sub(
-        r"\s+(?:tại\s+)?địa\s+chỉ:\s*và\s*",
-        "; sau đó ",
-        sentence,
-        flags=re.IGNORECASE,
-    )
-    cleaned = re.sub(
-        r"\s+(?:tại\s+)?địa\s+chỉ:\s*",
-        " ",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
+    cleaned = _UNRESOLVED_ADDRESS_WITH_VA_RE.sub("; sau đó ", sentence)
+    cleaned = _UNRESOLVED_ADDRESS_RE.sub(" ", cleaned)
     return cleaned.strip(" ,;\t")
 
 
@@ -92,22 +101,28 @@ def _bullet_content_lines(evidence: Any) -> list[str]:
 def _metadata_page(metadata: Any) -> int:
     try:
         return int(metadata.get("page") or 0)
-    except (TypeError, ValueError, AttributeError):
+    except (TypeError, ValueError, OverflowError, AttributeError):
         return 0
 
 
 def _metadata_chunk_index(metadata: Any, fallback: int) -> int:
     try:
         return int(metadata.get("chunk_index"))
-    except (TypeError, ValueError, AttributeError):
+    except (TypeError, ValueError, OverflowError, AttributeError):
         return fallback
 
 
 def _is_official_dhv_source(value: object) -> bool:
-    from urllib.parse import urlparse
-    parsed = urlparse(str(value or "").strip())
-    hostname = (parsed.hostname or "").lower().rstrip(".")
+    try:
+        parsed = urlparse(str(value or "").strip())
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        _ = parsed.port
+    except ValueError:
+        return False
     return bool(
         parsed.scheme.lower() == "https"
+        and parsed.netloc
+        and parsed.username is None
+        and parsed.password is None
         and (hostname == "dhv.edu.vn" or hostname.endswith(".dhv.edu.vn"))
     )

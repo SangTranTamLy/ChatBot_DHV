@@ -418,9 +418,6 @@ def init_auth() -> None:
 
     try:
         user, updated_tokens = restore_auth_session(tokens)
-    except AuthServiceError:
-        _clear_auth_state()
-        st.session_state.auth_session_expired_notice = True
     except Exception:
         _clear_auth_state()
         st.session_state.auth_session_expired_notice = True
@@ -524,7 +521,6 @@ def _clear_password_recovery_state(*, keep_status: bool = False) -> None:
         "password_recovery_tokens",
         "password_recovery_verified_user_id",
         "password_recovery_expires_at",
-        "password_recovery_started_at",
         "password_recovery_form_error",
         _RECOVERY_BRIDGE_KEY,
     ):
@@ -607,11 +603,6 @@ def render_password_recovery_page() -> None:
     if not st.session_state.get("password_recovery_verified_user_id"):
         try:
             verified = verify_password_recovery(tokens)
-        except AuthServiceError:
-            _clear_password_recovery_state()
-            st.session_state.password_recovery_link_checked = True
-            st.session_state.password_recovery_link_error = True
-            st.rerun()
         except Exception:
             _clear_password_recovery_state()
             st.session_state.password_recovery_link_checked = True
@@ -623,7 +614,6 @@ def render_password_recovery_page() -> None:
                 int(verified["expires_at"]),
                 int(time.time()) + PASSWORD_RECOVERY_SESSION_TTL_SECONDS,
             )
-            st.session_state.password_recovery_started_at = int(time.time())
 
     expires_at = int(st.session_state.get("password_recovery_expires_at") or 0)
     if expires_at <= int(time.time()):

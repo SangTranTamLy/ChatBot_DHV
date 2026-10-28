@@ -20,7 +20,6 @@ from src.chatbot.output_validator import validate_model_answer
 
 
 DATASET_DIR = Path(__file__).resolve().parent
-_YEAR_RE = re.compile(r"\b20\d{2}\b")
 _TOKEN_RE = re.compile(r"\d[\d.,]*|[A-Za-zÀ-ỹĐđ]+", re.UNICODE)
 _STOPWORDS = frozenset(
     {
@@ -242,14 +241,21 @@ def _content(document: object) -> str:
     return str(value or "")
 
 
+def _document_matches_category(document: object, case: EvaluationCase) -> bool:
+    if not case.expected_categories:
+        return True
+    category = str(_metadata(document).get("category") or "")
+    return category in case.expected_categories
+
+
 def _document_is_relevant(document: object, case: EvaluationCase) -> bool:
     metadata = _metadata(document)
     if case.relevant_chunk_ids:
         chunk_id = str(metadata.get("chunk_id") or "")
         return chunk_id in case.relevant_chunk_ids
-    category = str(metadata.get("category") or "")
-    if case.expected_categories and category not in case.expected_categories:
+    if not _document_matches_category(document, case):
         return False
+    category = str(metadata.get("category") or "")
     if not case.evidence_contains:
         return bool(category)
     text = _fold(_content(document))
@@ -286,7 +292,11 @@ def calculate_retrieval_metrics(
         matched_units = {
             unit
             for unit in gold_units
-            if any(_fold(unit) in _fold(_content(document)) for document in hits)
+            if any(
+                _document_matches_category(document, case)
+                and _fold(unit) in _fold(_content(document))
+                for document in hits
+            )
         }
     relevant_count = len(relevant_ranks)
     first_rank = min(relevant_ranks) if relevant_ranks else None

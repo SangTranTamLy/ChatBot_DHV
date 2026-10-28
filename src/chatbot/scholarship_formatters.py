@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from typing import Any, Mapping
-from urllib.parse import urlparse
 
 from src.config.settings import settings
 from .evidence_utils import (
@@ -46,7 +45,8 @@ def _is_scholarship_heading(line: str) -> bool:
         ):
             return True
     return bool(
-        folded in {"hoc bong dhv 2026", "hoc bong hoc phi"}
+        bool(re.fullmatch(r"hoc bong dhv 20\d{2}", folded))
+        or folded == "hoc bong hoc phi"
         or re.match(r"^dhv\s+20\d{2}\s*[-–]", text, re.IGNORECASE)
         or (
             text.isupper()
@@ -180,12 +180,12 @@ def _scholarship_policy_source_rank(metadata: Mapping[str, object], text: str) -
     source_file = str(metadata.get("source_file") or "").upper().replace("\\", "/")
     title = normalize_question(str(metadata.get("title") or ""))
     folded = normalize_question(text)
-    if "09_CHINH_SACH_HOC_BONG_DHV_2026" in source_file or (
+    if re.search(r"09_CHINH_SACH_HOC_BONG_DHV_20\d{2}", source_file) or (
         "chinh sach hoc bong" in title and "unibridge" not in title
     ):
         return 0
     if (
-        "10_HO_TRO_TAI_CHINH_UNIBRIDGE_DHV_2026" in source_file
+        re.search(r"10_HO_TRO_TAI_CHINH_UNIBRIDGE_DHV_20\d{2}", source_file)
         or "unibridge" in title
     ) and "3.1 hoc bong cam ket hoan hoc phi" in folded:
         return 1
@@ -228,7 +228,7 @@ def _prioritize_scholarship_catalog_documents(documents: list[Any]) -> list[Any]
             continue
         try:
             page = int(metadata.get("page") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             page = 99
         eligible.append((rank, page, position, document))
 
@@ -278,7 +278,7 @@ def _prioritize_admission_scholarship_conditions_documents(
     )
     try:
         anchor_page = int(anchor_metadata.get("page"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return documents, False
     if not structured_id:
         return documents, False
@@ -341,11 +341,9 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
     target_year = int(analysis.entities.get("year") or settings.target_year)
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}
-        parsed = urlparse(str(metadata.get("source_url") or "").strip())
-        host = (parsed.hostname or "").lower().rstrip(".")
         try:
             year = int(metadata.get("year"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if not (
             metadata.get("record_type") == "page_text"
@@ -353,8 +351,7 @@ def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any)
             and str(metadata.get("school_code") or "").upper() == "DHV"
             and str(metadata.get("status") or "").casefold() == "verified"
             and year == target_year
-            and parsed.scheme.lower() == "https"
-            and (host == "dhv.edu.vn" or host.endswith(".dhv.edu.vn"))
+            and _is_official_dhv_source(metadata.get("source_url"))
         ):
             continue
         for raw_line in str(getattr(chunk, "text", "") or "").splitlines():
@@ -390,7 +387,7 @@ def _scholarship_policy_sections(evidence: Any, target_year: int) -> dict[str, t
         text = str(getattr(chunk, "text", "") or "")
         try:
             year = int(metadata.get("year"))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         if not (
             metadata.get("record_type") == "page_text"
@@ -406,11 +403,11 @@ def _scholarship_policy_sections(evidence: Any, target_year: int) -> dict[str, t
             continue
         try:
             page = int(metadata.get("page") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             page = 99
         try:
             chunk_index = int(metadata.get("chunk_index") or position)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             chunk_index = position
         eligible.append((rank, page, chunk_index, chunk))
 
@@ -423,6 +420,7 @@ def _scholarship_policy_sections(evidence: Any, target_year: int) -> dict[str, t
             metadata.get("source_file")
             or metadata.get("structured_document_id")
             or metadata.get("document_id")
+            or metadata.get("source_url")
             or ""
         )
         if source_key != active_source:
@@ -433,8 +431,8 @@ def _scholarship_policy_sections(evidence: Any, target_year: int) -> dict[str, t
             if not line:
                 continue
             folded_line = normalize_question(line)
-            if folded_line == "hoc bong dhv 2026" or (
-                "dhv 2026" in folded_line
+            if re.fullmatch(r"hoc bong dhv 20\d{2}", folded_line) or (
+                re.search(r"dhv 20\d{2}", folded_line)
                 and any(marker in folded_line for marker in (
                     "chinh sach hoc bong",
                     "ho tro tai chinh unibridge",
@@ -570,7 +568,7 @@ def _scholarship_policy_details(
         if line.casefold() != "điều kiện:"
         and not line.casefold().startswith("bảng 3.4")
         and not (
-            "dhv 2026" in normalize_question(line)
+            re.search(r"dhv 20\d{2}", normalize_question(line))
             and any(marker in normalize_question(line) for marker in (
                 "chinh sach hoc bong",
                 "ho tro tai chinh unibridge",
@@ -727,6 +725,7 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     if not lines:
         return None
     normalized_question = normalize_question(analysis.normalized_question)
+    target_year = int(analysis.entities.get("year") or settings.target_year)
     if _is_admission_scholarship_conditions_question(analysis):
         conditions_answer = _evidence_admission_scholarship_conditions_answer(
             analysis,
@@ -767,7 +766,11 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
             return "Theo điều kiện học bổng DHV xét theo tổng điểm 3 môn:\n" + "\n".join(
                 f"- {line.lstrip('• ').strip()}" for line in score_rule_lines
             )
-    tier_answer = _scholarship_named_tier_answer(normalized_question, lines)
+    tier_answer = _scholarship_named_tier_answer(
+        normalized_question,
+        lines,
+        target_year=target_year,
+    )
     if tier_answer:
         return tier_answer
     if any(marker in normalized_question for marker in ("toi da", "cao nhat", "muc cao nhat")):
@@ -832,7 +835,7 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         return f"Theo dữ liệu tuyển sinh DHV, hiện có {count} loại/chính sách học bổng:\n" + "\n".join(
             f"- {line}" for line in selected_lines
         )
-    return "Các chính sách và điều kiện học bổng DHV 2026 gồm:\n" + "\n".join(
+    return f"Các chính sách và điều kiện học bổng DHV {target_year} gồm:\n" + "\n".join(
         f"- {line}" for line in selected_lines
     )
 
@@ -845,10 +848,16 @@ def _evidence_scholarship_tier_answer(analysis: QueryAnalysis, evidence: Any) ->
     return _scholarship_named_tier_answer(
         normalize_question(analysis.normalized_question),
         _evidence_text_lines(evidence),
+        target_year=int(analysis.entities.get("year") or settings.target_year),
     )
 
 
-def _scholarship_named_tier_answer(normalized_question: str, lines: list[str]) -> str | None:
+def _scholarship_named_tier_answer(
+    normalized_question: str,
+    lines: list[str],
+    *,
+    target_year: int,
+) -> str | None:
     """Trả lời các câu hỏi mức học bổng gắn với danh hiệu (Thủ khoa/Á khoa) hoặc mức 100%."""
 
     asks_thu_khoa = bool(re.search(r"\bthu khoa\b", normalized_question))
@@ -889,7 +898,9 @@ def _scholarship_named_tier_answer(normalized_question: str, lines: list[str]) -
             parts.append(f"Học bổng Tài năng: {talent[0].lower() + talent[1:]}")
     if not parts:
         return None
-    return "Theo chính sách học bổng DHV 2026:\n" + "\n".join(f"- {part}" for part in parts)
+    return f"Theo chính sách học bổng DHV {target_year}:\n" + "\n".join(
+        f"- {part}" for part in parts
+    )
 
 
 def _evidence_admission_scholarship_conditions_answer(
@@ -913,7 +924,7 @@ def _evidence_admission_scholarship_conditions_answer(
         try:
             if int(metadata.get("year")) != target_year:
                 continue
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         eligible_chunks.append(chunk)
 
@@ -939,7 +950,7 @@ def _evidence_admission_scholarship_conditions_answer(
         return None
     try:
         anchor_page = int(anchor_metadata.get("page"))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
     related = [

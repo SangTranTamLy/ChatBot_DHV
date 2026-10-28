@@ -52,11 +52,11 @@ CLARIFICATION_ANSWER = (
 OLLAMA_OFFLINE_ANSWER = (
     "Hiện mình chưa thể trả lời được. Bạn thử lại sau một chút nhé."
 )
-OLLAMA_TIMEOUT_ANSWER = "Mình chưa trả lời kịp phần này. Bạn thử lại sau một chút nhé."
+OLLAMA_TIMEOUT_ANSWER = "Mình chưa trả lời kịp phần này. Bạn thử lại sau nhé."
 VECTOR_DB_ERROR_ANSWER = (
     "Hiện mình chưa tra cứu được thông tin tuyển sinh. Bạn thử lại sau một chút nhé."
 )
-ERROR_ANSWER = "Mình gặp trục trặc khi trả lời câu này. Bạn thử lại sau một chút nhé."
+ERROR_ANSWER = "Mình gặp trục trặc khi trả lời câu này. Bạn thử lại sau nhé."
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)>]+", re.IGNORECASE)
 
@@ -110,11 +110,6 @@ _LABELED_AMOUNT_RE = re.compile(
     r"(?:học phí|hoc phi)[^\n]{0,100}?(?:[:=]|\blà\b|\bla\b)\s*(\d[\d.,]*)",
     re.IGNORECASE,
 )
-_METHOD_PATTERNS = {
-    "thpt": re.compile(r"(?:tốt nghiệp|tot nghiep|thi thpt|thi tn thpt)(?:[^0-9\n]*20\d{2})?[^0-9\n]*(\d[\d.,]*|-)", re.IGNORECASE),
-    "hoc_ba": re.compile(r"(?:học bạ|hoc ba|học tập thpt)(?:[^0-9\n]*20\d{2})?[^0-9\n]*(\d[\d.,]*|-)", re.IGNORECASE),
-    "dgnl": re.compile(r"(?:đánh giá năng lực|danh gia nang luc|đgnl|dgnl)(?:[^0-9\n]*20\d{2})?[^0-9\n]*(\d[\d.,]*|-)", re.IGNORECASE),
-}
 _METHOD_LABELS = {
     "thpt": r"(?:tốt nghiệp|tot nghiep|thi thpt|thi tn thpt)",
     "hoc_ba": r"(?:học bạ|hoc ba|học tập thpt)",
@@ -327,13 +322,16 @@ def _verified_contact_channel_urls(evidence: EvidenceBundle) -> tuple[str, ...]:
         if chunk.metadata.get("category") != "co_so_lien_he":
             continue
         source_url = str(chunk.metadata.get("source_url") or "").strip()
+        if not _official_dhv_url(source_url):
+            continue
         parsed_source = urlparse(source_url)
         source_host = (parsed_source.hostname or "").lower().rstrip(".")
         if (
             parsed_source.scheme.lower() == "https"
             and source_host in {"dhv.edu.vn", "www.dhv.edu.vn"}
             and parsed_source.path in {"", "/"}
-            and not parsed_source.username
+            and parsed_source.username is None
+            and parsed_source.password is None
             and source_url not in urls
         ):
             urls.append(source_url)
@@ -347,11 +345,17 @@ def _verified_contact_channel_urls(evidence: EvidenceBundle) -> tuple[str, ...]:
 
 
 def _official_dhv_url(value: object) -> bool:
-    parsed = urlparse(str(value or "").strip())
-    hostname = (parsed.hostname or "").lower().rstrip(".")
+    try:
+        parsed = urlparse(str(value or "").strip())
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        _ = parsed.port
+    except ValueError:
+        return False
     return bool(
         parsed.scheme in {"http", "https"}
-        and not parsed.username
+        and parsed.netloc
+        and parsed.username is None
+        and parsed.password is None
         and (
             hostname in {"dhv.edu.vn", "www.dhv.edu.vn"}
             or hostname.endswith(".dhv.edu.vn")
@@ -373,7 +377,7 @@ def _evidence_contract_failure(
         try:
             if int(metadata.get("year")) != target_year:
                 return "evidence_year_mismatch"
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return "evidence_year_mismatch"
         if str(metadata.get("school_code") or "").upper() != "DHV":
             return "evidence_institution_mismatch"
@@ -528,7 +532,7 @@ def _requested_year(question: str, entities: Mapping[str, object]) -> int | None
     try:
         if value is not None:
             return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     return extract_requested_year(question)
 
@@ -565,7 +569,7 @@ def _supports_optional_fee_sum(
     if not any(marker in folded_answer for marker in ("tong chi phi", "tong cong", "tong cac khoan")):
         return False
     formatted = f"{expected_total:,}".replace(",", ".")
-    return formatted in answer
+    return _contains_numeric_literal(answer, formatted)
 
 
 def _optional_fee_total_from_evidence(
@@ -584,9 +588,11 @@ def _optional_fee_total_from_evidence(
         try:
             if int(metadata.get("year", 0)) != expected_year:
                 continue
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             continue
         source_url = str(metadata.get("source_url") or "").strip()
+        if not _official_dhv_url(source_url):
+            continue
         parsed_source = urlparse(source_url)
         source_host = (parsed_source.hostname or "").lower().rstrip(".")
         if (
@@ -636,7 +642,7 @@ def _optional_fee_total_failure(
     if not any(marker in folded_answer for marker in ("tong chi phi", "tong cong", "tong cac khoan")):
         return "optional_fee_total_missing"
     formatted = f"{expected_total:,}".replace(",", ".")
-    return "" if formatted in answer else "optional_fee_total_mismatch"
+    return "" if _contains_numeric_literal(answer, formatted) else "optional_fee_total_mismatch"
 
 
 def _has_unsupported_named_entity(
@@ -1079,7 +1085,9 @@ def _has_required_labeled_amount(answer: str, evidence: EvidenceBundle, question
     answer_has_tuition_label = bool(
         re.search(r"(?:học phí|hoc phi)[^\n]{0,100}(?:[:=]|\blà\b|\bla\b)", answer, re.IGNORECASE)
     )
-    return answer_has_tuition_label and any(amount in answer for amount in evidence_amounts)
+    return answer_has_tuition_label and any(
+        _contains_numeric_literal(answer, amount) for amount in evidence_amounts
+    )
 
 
 def _score_mapping_failure(
@@ -1173,7 +1181,7 @@ def _score_mapping_failure(
     # the generic ĐGNL threshold). Keep the requested-method evidence mapping
     # strict, and do not silently fall back to a different method.
     requested_method = str(entities.get("admission_method") or "").strip()
-    if score_type == "application_threshold" and requested_method in {"thpt", "hoc_ba", "dgnl"}:
+    if score_type in {"application_threshold", "supplementary_threshold"} and requested_method in {"thpt", "hoc_ba", "dgnl"}:
         requested_facts = [
             fact for fact in typed_facts if str(fact.get("method") or "") == requested_method
         ]
@@ -1202,7 +1210,7 @@ def _score_mapping_failure(
         return ""
     if score_type == "admission_score":
         values = {str(fact.get("raw_value")) for fact in typed_facts}
-        if not any(value in answer for value in values):
+        if not any(_contains_numeric_literal(answer, value) for value in values):
             return "missing_admission_score"
     if score_type == "supplementary_threshold":
         for method, expected in expected_by_method.items():
@@ -1293,9 +1301,12 @@ def _has_required_supplementary_date(answer: str, evidence: EvidenceBundle, ques
     # A deadline is mandatory only when the user asks about timing. Requiring
     # the date on every supplementary-admission answer wrongly rejects a
     # verified catalogue/list of majors that was never asked to include dates.
-    if not any(
-        marker in normalized_question
-        for marker in ("han", "deadline", "khi nao", "thoi gian", "den ngay", "ket thuc", "cuoi cung")
+    # Match complete words/phrases. A substring check for "han" also matches
+    # "nhan" in the phrase "diem nhan ho so", which is a score-threshold
+    # question rather than a deadline question.
+    if not re.search(
+        r"\b(?:han|deadline|khi nao|thoi gian|den ngay|ket thuc|cuoi cung)\b",
+        normalized_question,
     ):
         return True
     required_dates = {
@@ -1379,6 +1390,18 @@ def _number_token(value: str) -> float | None:
         return float(value.replace(",", "."))
     except (AttributeError, ValueError):
         return None
+
+
+def _contains_numeric_literal(text: str, value: str) -> bool:
+    """Match a complete number, not a shorter value inside a larger one."""
+
+    return bool(
+        value
+        and re.search(
+            rf"(?<![\d.,]){re.escape(value)}(?![\d.,])",
+            text,
+        )
+    )
 
 
 def _extract_method_value(answer: str, method: str) -> str | None:

@@ -80,15 +80,6 @@ class RetrievalResult:
     audit: RetrievalAudit
 
 
-def _normalise_tokens(value: str) -> set[str]:
-    folded = _normalize(value)
-    return {
-        token
-        for token in _TOKEN_RE.findall(folded)
-        if token not in _RETRIEVAL_STOPWORDS and (len(token) >= 3 or token.isdigit())
-    }
-
-
 def _normalise_token_list(value: str) -> list[str]:
     folded = _normalize(value)
     return [
@@ -96,6 +87,10 @@ def _normalise_token_list(value: str) -> list[str]:
         for token in _TOKEN_RE.findall(folded)
         if token not in _RETRIEVAL_STOPWORDS and (len(token) >= 3 or token.isdigit())
     ]
+
+
+def _normalise_tokens(value: str) -> set[str]:
+    return set(_normalise_token_list(value))
 
 
 def _document_identity(document: Document) -> str:
@@ -347,11 +342,15 @@ def _metadata_filter(
 
 def _official_dhv_url(value: object) -> bool:
     url = str(value or "").strip()
-    parsed = urlparse(url)
-    hostname = (parsed.hostname or "").lower().rstrip(".")
+    try:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        has_credentials = parsed.username is not None or parsed.password is not None
+    except ValueError:
+        return False
     return bool(
-        parsed.scheme in {"http", "https"}
-        and not parsed.username
+        parsed.scheme.lower() == "https"
+        and not has_credentials
         and (
             hostname in {"dhv.edu.vn", "www.dhv.edu.vn"}
             or hostname.endswith(".dhv.edu.vn")
@@ -368,11 +367,8 @@ def _filter_reason(
     metadata = document.metadata or {}
     if metadata.get("status") != "verified":
         return "status_not_verified"
-    try:
-        year_matches = int(metadata.get("year")) == target_year
-    except (TypeError, ValueError):
-        year_matches = False
-    if not year_matches:
+    year = metadata.get("year")
+    if isinstance(year, bool) or not isinstance(year, int) or year != target_year:
         return "year_mismatch"
     if str(metadata.get("school_code") or "").upper() != "DHV":
         return "target_institution_mismatch"
@@ -576,31 +572,6 @@ def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters:
     return False
 
 
-def _rank_hybrid_candidates(
-    query: str,
-    candidates: Iterable[Document],
-    vector_documents: list[Document],
-    vector_scores: dict[str, float],
-    target_year: int,
-    top_k: int,
-    categories: Iterable[str] = (),
-    entity_filters: Mapping[str, object] | None = None,
-    data_roles: Iterable[str] = (),
-) -> list[Document]:
-    ranked, _ = _rank_hybrid_candidates_with_audit(
-        query,
-        candidates,
-        vector_documents,
-        vector_scores,
-        target_year,
-        top_k,
-        categories=categories,
-        entity_filters=entity_filters,
-        data_roles=data_roles,
-    )
-    return ranked
-
-
 def _rank_hybrid_candidates_with_audit(
     query: str,
     candidates: Iterable[Document],
@@ -700,6 +671,7 @@ def _audit_hit(
     fusion: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     metadata = document.metadata or {}
+    keyword_score = _keyword_score(query, document)
     vector_rank = next(
         (
             position
@@ -710,8 +682,8 @@ def _audit_hit(
     )
     return {
         "rank": rank,
-        "score": _keyword_score(query, document),
-        "keyword_score": _keyword_score(query, document),
+        "score": keyword_score,
+        "keyword_score": keyword_score,
         "vector_rank": vector_rank,
         **dict(fusion or {}),
         "category": metadata.get("category"),
@@ -768,8 +740,8 @@ class DHVRetriever:
     ) -> RetrievalResult:
         """Truy xuất top-k chunk đã xác thực và trả về bản kiểm toán không kèm phần sinh văn bản."""
 
-        query = (retrieval_query or question or "").strip()
         original_query = (question or "").strip()
+        query = (retrieval_query or "").strip() or original_query
         effective_top_k = max(1, int(top_k or self.settings.retriever_top_k))
         effective_entity_filters = (
             dict(entity_filters)
@@ -985,17 +957,20 @@ class DHVRetriever:
             )
         except Exception:
             return []
+        if not isinstance(payload, Mapping):
+            return []
         documents = payload.get("documents") or []
         metadatas = payload.get("metadatas") or []
+        if not isinstance(documents, (list, tuple)) or not isinstance(metadatas, (list, tuple)):
+            return []
         return [
-            Document(page_content=str(content or ""), metadata=dict(metadata or {}))
+            Document(
+                page_content=str(content or ""),
+                metadata=dict(metadata) if isinstance(metadata, Mapping) else {},
+            )
             for content, metadata in zip(documents, metadatas)
             if content
         ]
-
-
-def _is_verified_dhv_document(document: Document, target_year: int) -> bool:
-    return _filter_reason(document, target_year, ()) is None
 
 
 def retrieve_documents(question: str) -> list[Document]:

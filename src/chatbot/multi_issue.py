@@ -21,7 +21,7 @@ from .evidence import (
 from .generation_guards import _validated_generation
 from .official_links import _official_links_answer
 from .output_validator import FALLBACK_ANSWER, OLLAMA_OFFLINE_ANSWER, OLLAMA_TIMEOUT_ANSWER, VECTOR_DB_ERROR_ANSWER, validate_model_answer
-from .query_semantics import enrollment_request
+from .query_semantics import analyze_fee_request, enrollment_request
 from .year_semantics import current_admission_window_answer
 from .pipeline_utils import _attach_answer_plan, _retrieve, _trace
 from .query_analysis import (
@@ -56,12 +56,7 @@ from .school_info_formatters import (
     _overview_sources,
     _prioritize_school_overview_documents,
 )
-from .tuition_formatters import (
-    _evidence_fee_breakdown_answer, _evidence_fee_item_answer,
-    _evidence_semester_system_answer, _evidence_tuition_answer,
-    _evidence_tuition_per_credit_answer, _evidence_tuition_total_answer,
-    _evidence_optional_english_fee_answer,
-)
+from .tuition_formatters import _evidence_semester_system_answer, answer_fee_request
 
 
 def _issue_failure(exc: Exception) -> dict[str, object]:
@@ -74,19 +69,6 @@ def _issue_failure(exc: Exception) -> dict[str, object]:
     else:
         answer, status = FALLBACK_ANSWER, "no_data"
     return {"answer": answer, "status": status, "sources": [], "error_type": type(exc).__name__}
-
-
-def _filter_documents_for_plan(documents: list[Any], plan: Any) -> list[Any]:
-    """Giữ evidence đúng category của từng subplan khi adapter trả về rộng hơn filter."""
-
-    categories = set(getattr(plan, "categories", ()) or ())
-    if not categories:
-        return list(documents)
-    return [
-        document
-        for document in documents
-        if str((getattr(document, "metadata", {}) or {}).get("category") or "") in categories
-    ]
 
 
 def _dedupe_sources(results: list[dict[str, object]]) -> list[dict[str, str]]:
@@ -156,6 +138,7 @@ def _ask_multi_issue(
     effective_subplans: list[Any] = []
     for subplan in plan.subplans:
         subquery = subplan.issue_question or subplan.retrieval_query
+        normalized_subquery = normalize_question(subquery)
         retrieval_subplan = subplan
         if (
             subplan.intent == "HOI_HOC_BONG"
@@ -178,7 +161,7 @@ def _ask_multi_issue(
         sub_analysis = replace(
             analysis,
             question=subquery,
-            normalized_question=normalize_question(subquery),
+            normalized_question=normalized_subquery,
             intent=subplan.intent,
             entities={
                 **(subplan.issue_entities or analysis.entities),
@@ -244,11 +227,14 @@ def _ask_multi_issue(
         overview_analysis = replace(
             sub_analysis,
             question=subquery,
-            normalized_question=normalize_question(subquery),
+            normalized_question=normalized_subquery,
         )
         overview_issue = (
             subplan.intent == "SCHOOL_INFO"
-            and not any(m in normalize_question(subquery) for m in ("khoa", "cac khoa", "bao nhieu khoa", "may khoa"))
+            and not any(
+                marker in normalized_subquery
+                for marker in ("khoa", "cac khoa", "bao nhieu khoa", "may khoa")
+            )
             and (
                 _is_generic_school_overview_request(overview_analysis)
                 or _has_school_overview_request_marker(analysis.normalized_question)
@@ -323,6 +309,8 @@ def _ask_multi_issue(
             )
         direct_result = current_admission_window_answer(sub_analysis.normalized_question, evidence)
         info_answer = None
+        fee_coverage: dict[str, object] | None = None
+        fee_result: dict[str, object] | None = None
         if subplan.intent == "SCHOOL_INFO" and not overview_issue:
             info_answer = _evidence_school_info_answer(sub_analysis, evidence) or _evidence_semester_system_answer(sub_analysis, evidence)
         elif subplan.intent == "HOI_CO_SO_LIEN_HE":
@@ -336,15 +324,17 @@ def _ask_multi_issue(
         elif sub_analysis.entities.get("request_type") in {"reception_hours", "reception_dates"}:
             info_answer = _evidence_enrollment_answer(sub_analysis, evidence)
         elif subplan.intent == "HOI_HOC_PHI":
-            info_answer = (
-                _evidence_tuition_total_answer(sub_analysis, evidence)
-                or _evidence_fee_breakdown_answer(sub_analysis, evidence)
-                or _evidence_semester_system_answer(sub_analysis, evidence)
-                or _evidence_optional_english_fee_answer(sub_analysis, evidence)
-                or _evidence_fee_item_answer(sub_analysis, evidence)
-                or _evidence_tuition_per_credit_answer(sub_analysis, evidence)
-                or _evidence_tuition_answer(evidence)
-            )
+            info_answer = _evidence_semester_system_answer(sub_analysis, evidence)
+            fee_request = analyze_fee_request(sub_analysis.normalized_question)
+            if info_answer is None and fee_request.is_fee_request:
+                fee_result = answer_fee_request(sub_analysis, evidence, fee_request)
+                if fee_result is not None:
+                    answer = fee_result.get("answer")
+                    info_answer = str(answer) if answer else None
+                    fee_coverage = {
+                        key: fee_result[key]
+                        for key in ("requested_topics", "answered_topics", "ambiguous_topics", "missing_topics")
+                    }
         if info_answer and direct_result is None:
             validated_info = validate_model_answer(
                 info_answer,
@@ -379,10 +369,13 @@ def _ask_multi_issue(
                     analysis=sub_analysis,
                     target_year=settings_obj.target_year,
                 )
+        registration_answer = None
         if website_result is not None:
             sub_status = str(website_result.get("status") or "no_data")
         elif direct_result is not None:
             sub_status = str(direct_result.get("status") or "no_data")
+        elif issue_failure is not None:
+            sub_status = str(issue_failure.get("status") or "no_data")
         else:
             registration_answer = (
                 _evidence_general_registration_answer(sub_analysis, evidence)
@@ -403,6 +396,7 @@ def _ask_multi_issue(
                 or (
                     not overview_issue
                     and not strict_scholarship_question
+                    and not (issue_failure is None and fee_result is not None and not fee_result.get("answer"))
                     and evidence.is_usable
                     and score_evaluation.get("status") != "insufficient-data"
                 )
@@ -427,6 +421,15 @@ def _ask_multi_issue(
             sub_result = dict(website_result)
         elif direct_result is not None:
             sub_result = dict(direct_result)
+        elif issue_failure is not None:
+            sub_result = dict(issue_failure)
+        elif fee_result is not None and not fee_result.get("answer"):
+            sub_result = {
+                "answer": FALLBACK_ANSWER,
+                "sources": [],
+                "status": "no_data",
+                "evidence_boundary": "requested_fee_facts_missing_verified_table_rows",
+            }
         elif overview_issue:
             if validated_overview and validated_overview.get("status") == "ok":
                 sub_result = dict(validated_overview)
@@ -467,7 +470,13 @@ def _ask_multi_issue(
             else:
                 try:
                     if active_llm is None:
-                        active_llm = llm or LocalLLM(settings_obj=settings_obj)
+                        active_llm = (
+                            llm if llm is not None else LocalLLM(settings_obj=settings_obj)
+                        )
+                    relevant_score_facts = select_relevant_score_facts(
+                        sub_analysis,
+                        evidence.score_facts,
+                    )
                     prompt = build_rag_prompt(
                         subquery,
                         evidence.context,
@@ -475,10 +484,7 @@ def _ask_multi_issue(
                         entities=sub_analysis.entities,
                         conversation_state=state.to_dict(),
                         answer_plan=sub_answer_plan,
-                        score_facts=select_relevant_score_facts(
-                            sub_analysis,
-                            evidence.score_facts,
-                        ),
+                        score_facts=relevant_score_facts,
                         score_comparisons=score_comparisons,
                         entity_relations=evidence.entity_relations,
                     )
@@ -488,10 +494,7 @@ def _ask_multi_issue(
                         evidence=evidence,
                         question=subquery,
                         analysis=sub_analysis,
-                        score_facts=select_relevant_score_facts(
-                            sub_analysis,
-                            evidence.score_facts,
-                        ),
+                        score_facts=relevant_score_facts,
                         answer_plan=sub_answer_plan,
                         score_comparisons=score_comparisons,
                         target_year=settings_obj.target_year,
@@ -502,6 +505,9 @@ def _ask_multi_issue(
         sub_result["answer_plan"] = sub_answer_plan.to_dict()
         sub_result["intent"] = subplan.intent
         sub_result["request_type"] = sub_analysis.entities.get("request_type")
+        if fee_coverage is not None:
+            sub_result["fee_coverage"] = fee_coverage
+            sub_result["partial"] = bool(fee_coverage.get("missing_topics"))
         sub_evidence_boundaries.append(
             str(sub_result.get("evidence_boundary"))
             if sub_result.get("evidence_boundary")
@@ -537,12 +543,13 @@ def _ask_multi_issue(
     subplan_statuses = [str(result.get("status") or "error") for result in sub_results]
     statuses = set(subplan_statuses)
     status = "ok" if answer_sections and ("ok" in statuses or "clarification" in statuses) else "no_data"
-    partial_response = bool(answer_sections) and any(
-        subplan_status != "ok" for subplan_status in subplan_statuses
-    )
+    partial_response = (
+        bool(answer_sections)
+        and any(subplan_status != "ok" for subplan_status in subplan_statuses)
+    ) or any(bool(result.get("partial")) for result in sub_results)
     complete_response = bool(subplan_statuses) and all(
         subplan_status == "ok" for subplan_status in subplan_statuses
-    )
+    ) and not partial_response
     merged_evidence = merge_evidence_bundles(
         evidence_bundles,
         settings_obj=settings_obj,
@@ -568,6 +575,8 @@ def _ask_multi_issue(
                 "can_answer": result.get("status") == "ok",
                 "chunk_ids": [str(chunk.metadata.get("chunk_id") or "") for chunk in bundle.chunks],
                 "sources": result.get("sources", []),
+                "fee_coverage": result.get("fee_coverage"),
+                "partial": bool(result.get("partial")),
             }
             for index, (subplan, result, bundle) in enumerate(
                 zip(effective_subplans, sub_results, evidence_bundles), start=1

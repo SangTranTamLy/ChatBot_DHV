@@ -218,7 +218,6 @@ def _init_session_state() -> None:
     sessions = st.session_state.setdefault("account_chat_sessions", {})
     chat_keys = (
         "messages", "chats", "active_chat", "next_chat", "conversation_state", "state",
-        "message_branches", "message_branch_view",
     )
     previous_owner = st.session_state.get("chat_owner")
     if "chat_owner" in st.session_state and previous_owner != owner:
@@ -226,8 +225,7 @@ def _init_session_state() -> None:
             sessions[previous_owner] = {key: deepcopy(st.session_state[key])
                                         for key in chat_keys if key in st.session_state}
         for key in (*chat_keys, "chat_input", "pending_question", "chat_request_in_progress",
-                    "saved_items", "admission_checklist", "editing_message_index",
-                    "message_edit_error"):
+                    "saved_items", "admission_checklist"):
             st.session_state.pop(key, None)
         if st.session_state.get("account_page") != "chat":
             st.session_state.account_page = "chat"
@@ -241,10 +239,14 @@ def _init_session_state() -> None:
     st.session_state.setdefault("admission_checklist", {})
     st.session_state.setdefault("saved_items", [])
     st.session_state.setdefault("messages", [])
-    st.session_state.setdefault("message_branches", {})
-    st.session_state.setdefault("message_branch_view", {})
-    st.session_state.setdefault("editing_message_index", None)
-    st.session_state.setdefault("message_edit_error", None)
+    # Clean legacy editing widget state from sessions created before editing was removed.
+    legacy_edit_state = {
+        "editing_message_index", "message_edit_error", "message_branches",
+        "message_branch_view",
+    }
+    for key in list(st.session_state):
+        if key in legacy_edit_state or key.startswith("message_edit_input_"):
+            st.session_state.pop(key, None)
     st.session_state.setdefault("chat_request_in_progress", False)
     st.session_state.setdefault("chats", {})
     if not owner:
@@ -412,137 +414,21 @@ def _render_assistant_content(message: Mapping[str, Any]) -> None:
     _render_answer_markdown(answer)
 
 
-def _begin_message_edit(index: int) -> None:
-    st.session_state.editing_message_index = index
-    st.session_state.message_edit_error = None
-    st.session_state.pop(f"message_edit_input_{index}", None)
+def _current_chat_user_avatar() -> str:
+    """Return a Streamlit-supported private avatar for the current chat user."""
+    # Streamlit treats arbitrary strings as image paths; initials such as "T"
+    # therefore raise an image-loading exception. A material icon is valid for
+    # both guest and signed-in conversations and does not expose profile data.
+    return ":material/person:"
 
 
-def _cancel_message_edit(index: int) -> None:
-    st.session_state.editing_message_index = None
-    st.session_state.message_edit_error = None
-    st.session_state.pop(f"message_edit_input_{index}", None)
-
-
-def _switch_message_branch(index: int, direction: int) -> None:
-    key = str(index)
-    branches = st.session_state.get("message_branches", {}).get(key, [])
-    total = len(branches) + 1
-    current = int(st.session_state.get("message_branch_view", {}).get(key, len(branches)))
-    next_index = max(0, min(total - 1, current + direction))
-    st.session_state.message_branch_view[key] = next_index
-
-
-def _apply_message_edit(index: int) -> None:
-    messages = st.session_state.get("messages", [])
-    if not (0 <= index < len(messages)):
-        st.session_state.editing_message_index = None
-        return
-    edited = str(st.session_state.get(f"message_edit_input_{index}") or "").strip()
-    if not edited:
-        st.session_state.message_edit_error = {
-            "index": index, "message": "Nhập nội dung mới trước khi lưu."
-        }
-        return
-
-    old_suffix = deepcopy(messages[index:])
-    branch_key = str(index)
-    branches = st.session_state.setdefault("message_branches", {})
-    branches.setdefault(branch_key, []).append({
-        "messages": old_suffix,
-        "created_at": datetime.now().isoformat(timespec="seconds"),
-    })
-    st.session_state.messages = deepcopy(messages[:index]) + [
-        {"role": "user", "content": edited}
-    ]
-    st.session_state.message_branch_view[branch_key] = len(branches[branch_key])
-    st.session_state.editing_message_index = None
-    st.session_state.message_edit_error = None
-    st.session_state.pop(f"message_edit_input_{index}", None)
-    st.session_state.pending_question = edited
-    st.session_state.chat_request_in_progress = True
-    st.session_state.account_page = "chat"
-    # Rebuild follow-up context from the messages that remain before the edit.
-    state = ConversationState().to_dict()
-    st.session_state.conversation_state = state
-    st.session_state.state = dict(state)
-
-
-def _render_message_branch_switcher(index: int) -> None:
-    branches = st.session_state.get("message_branches", {}).get(str(index), [])
-    if not isinstance(branches, list) or not branches:
-        return
-    total = len(branches) + 1
-    key = str(index)
-    current = int(st.session_state.get("message_branch_view", {}).get(key, len(branches)))
-    current = max(0, min(total - 1, current))
-    with st.container(key=f"message_branch_nav_{index}", horizontal=True, gap="small"):
-        st.button(
-            "Phiên trước", icon=":material/chevron_left:",
-            key=f"message_branch_prev_{index}", type="tertiary", width="content",
-            disabled=current <= 0, on_click=_switch_message_branch,
-            args=(index, -1),
-        )
-        st.caption(f"{current + 1} / {total}")
-        st.button(
-            "Phiên sau", icon=":material/chevron_right:",
-            key=f"message_branch_next_{index}", type="tertiary", width="content",
-            disabled=current >= total - 1, on_click=_switch_message_branch,
-            args=(index, 1),
-        )
-    if current < len(branches):
-        previous_messages = branches[current].get("messages", [])
-        previous_answer = next(
-            (row for row in previous_messages
-             if isinstance(row, Mapping) and row.get("role") == "assistant"),
-            None,
-        )
-        if previous_answer:
-            with st.container(key=f"message_branch_preview_{index}"):
-                st.caption("Câu trả lời của phiên trước")
-                _render_assistant_content(previous_answer)
-
-
-def _render_user_message(message: Mapping[str, Any], index: int) -> None:
-    with st.chat_message("user"):
-        if st.session_state.get("editing_message_index") == index:
-            st.text_area(
-                "Chỉnh sửa tin nhắn",
-                value=str(message.get("content") or ""),
-                key=f"message_edit_input_{index}", height=96,
-                label_visibility="collapsed",
-            )
-            error = st.session_state.get("message_edit_error")
-            if isinstance(error, Mapping) and error.get("index") == index:
-                st.error(str(error.get("message") or "Không lưu được tin nhắn."))
-            save_col, cancel_col = st.columns(2, gap="small")
-            with save_col:
-                st.button(
-                    "Lưu & cập nhật", icon=":material/check:", type="primary",
-                    key=f"message_edit_save_{index}", width="stretch",
-                    on_click=_apply_message_edit, args=(index,),
-                )
-            with cancel_col:
-                st.button(
-                    "Hủy", icon=":material/close:", key=f"message_edit_cancel_{index}",
-                    width="stretch", on_click=_cancel_message_edit, args=(index,),
-                )
-        else:
-            st.markdown(str(message.get("content") or ""), unsafe_allow_html=False)
-            with st.container(
-                key=f"message_actions_{index}", horizontal=True,
-                vertical_alignment="center", gap="small",
-            ):
-                st.button(
-                    "Sửa", icon=":material/edit:", type="tertiary",
-                    key=f"message_edit_{index}", help="Sửa câu hỏi này",
-                    on_click=_begin_message_edit, args=(index,),
-                )
-    _render_message_branch_switcher(index)
+def _render_user_message(message: Mapping[str, Any]) -> None:
+    with st.chat_message("user", avatar=_current_chat_user_avatar()):
+        st.markdown(str(message.get("content") or ""), unsafe_allow_html=False)
 
 
 def _render_chat_history() -> None:
-    """Hiển thị tin nhắn và cho phép sửa câu hỏi của người dùng."""
+    """Display the current conversation history."""
 
     for index, message in enumerate(st.session_state.messages):
         if not isinstance(message, Mapping):
@@ -552,7 +438,7 @@ def _render_chat_history() -> None:
             continue
 
         if role == "user":
-            _render_user_message(message, index)
+            _render_user_message(message)
         else:
             with st.chat_message("assistant", avatar=":material/school:"):
                 _render_assistant_content(message)
@@ -791,7 +677,6 @@ def _save_current_chat() -> None:
             "updated_at": existing.get("updated_at"),
             "title": existing.get("title"),
             "deleted_at": existing.get("deleted_at"),
-            "message_branches": deepcopy(st.session_state.get("message_branches", {})),
         }
 
 
@@ -829,9 +714,6 @@ def _new_chat() -> None:
     st.session_state.next_chat += 1
     st.session_state.active_chat = st.session_state.next_chat
     st.session_state.messages = []
-    st.session_state.message_branches = {}
-    st.session_state.message_branch_view = {}
-    st.session_state.editing_message_index = None
     state = ConversationState().to_dict()
     st.session_state.conversation_state = state
     st.session_state.state = dict(state)
@@ -849,9 +731,6 @@ def _open_chat(chat_id: int) -> None:
     st.session_state.messages = deepcopy(saved["messages"])
     st.session_state.conversation_state = deepcopy(saved["conversation_state"])
     st.session_state.state = deepcopy(saved["conversation_state"])
-    st.session_state.message_branches = deepcopy(saved.get("message_branches", {}))
-    st.session_state.message_branch_view = {}
-    st.session_state.editing_message_index = None
 
 
 def _open_profile() -> None:
@@ -1260,15 +1139,15 @@ def _render_conversation() -> None:
 
 
 def _render_simple_chat_history() -> None:
-    """Render the conversation with user-message editing controls."""
-    for index, message in enumerate(st.session_state.messages):
+    """Render the conversation without per-message editing controls."""
+    for message in st.session_state.messages:
         if not isinstance(message, Mapping):
             continue
         role = message.get("role")
         if role not in {"user", "assistant"}:
             continue
         if role == "user":
-            _render_user_message(message, index)
+            _render_user_message(message)
         else:
             with st.chat_message("assistant", avatar=":material/school:"):
                 _render_assistant_content(message)
@@ -1329,7 +1208,7 @@ def _render_clean_conversation() -> None:
                         with st.container(key="landing_suggestions_reference",
                                           horizontal=True, gap="small", wrap=True):
                             suggestions = (
-                                ("Học phí ngành CNTT năm 2026 là bao nhiêu?", "Học phí ngành Công nghệ thông tin bao nhiêu?"),
+                                ("Học phí ngành CNTT năm 2026 là bao nhiêu?", "Học phí ngành Công nghệ thông tin năm 2026 bao nhiêu?"),
                                 ("Điều kiện xét tuyển vào DHV?", "Điều kiện xét tuyển vào DHV là gì?"),
                                 ("Phương thức xét tuyển năm 2026", "Năm 2026 DHV xét tuyển theo phương thức nào?"),
                                 ("Ngành nào phù hợp với năng lực của tôi?", "DHV có những ngành đào tạo nào phù hợp với tôi?"),

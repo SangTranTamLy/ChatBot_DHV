@@ -17,10 +17,10 @@ from .embeddings import DEFAULT_SENTENCE_TRANSFORMER_MODEL, create_embeddings
 
 LOGGER = logging.getLogger(__name__)
 SMOKE_QUERIES: tuple[tuple[str, str], ...] = (
-    ("Học phí DHV 2026", "hoc_phi"),
-    ("Học bổng DHV 2026", "hoc_bong"),
-    ("Nhập học DHV 2026", "ho_so"),
-    ("Thông tin trường DHV 2026", "thong_tin_truong"),
+    (f"Học phí DHV {settings.target_year}", "hoc_phi"),
+    (f"Học bổng DHV {settings.target_year}", "hoc_bong"),
+    (f"Nhập học DHV {settings.target_year}", "ho_so"),
+    (f"Thông tin trường DHV {settings.target_year}", "thong_tin_truong"),
 )
 
 
@@ -47,6 +47,9 @@ def run_smoke_tests(
     top_k: int,
 ) -> list[dict[str, Any]]:
     """Query Chroma with the same embedding backend/model used for indexing."""
+
+    if top_k <= 0:
+        raise ValueError("top_k must be greater than zero")
 
     embedding_function = create_embeddings(
         backend=backend,

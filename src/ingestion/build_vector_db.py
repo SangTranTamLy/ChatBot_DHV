@@ -71,10 +71,6 @@ def _reset_persist_directory(persist_directory: Path) -> None:
         shutil.rmtree(resolved)
 
 
-def _load_stats(load_result: LoadResult) -> dict[str, int]:
-    return load_result.stats.as_dict()
-
-
 def build_vector_db(
     *,
     data_directory: str | Path = settings.processed_data_dir,
@@ -95,7 +91,7 @@ def build_vector_db(
 
     load_result = load_verified_documents(data_directory, target_year=target_year)
     if not load_result.documents:
-        stats = _load_stats(load_result)
+        stats = load_result.stats.as_dict()
         raise RuntimeError(
             "no verified structured documents found in "
             f"{data_directory}; load stats: {stats}"
@@ -109,11 +105,6 @@ def build_vector_db(
     )
     if not chunks:
         raise RuntimeError("verified documents produced zero chunks")
-
-    persist_path = Path(persist_directory)
-    if reset:
-        _reset_persist_directory(persist_path)
-    persist_path.mkdir(parents=True, exist_ok=True)
 
     if embeddings is not None:
         embedding_function = embeddings
@@ -136,6 +127,12 @@ def build_vector_db(
             ollama_base_url=ollama_base_url,
             sentence_transformer_model=sentence_transformer_model,
         )
+
+    persist_path = Path(persist_directory)
+    if reset:
+        _reset_persist_directory(persist_path)
+    persist_path.mkdir(parents=True, exist_ok=True)
+
     vector_store = Chroma(
         collection_name=collection_name,
         persist_directory=str(persist_path),
@@ -156,7 +153,7 @@ def build_vector_db(
         close_chroma_store(vector_store)
 
     result = BuildStats(
-        **_load_stats(load_result),
+        **load_result.stats.as_dict(),
         chunks_indexed=len(chunks),
         collection_name=collection_name,
         persist_directory=str(persist_path),
@@ -272,9 +269,6 @@ def main() -> int:
             tokenizer_model=args.tokenizer_model,
             reset=args.reset,
         )
-    except (FileNotFoundError, NotADirectoryError, RuntimeError, ValueError, OSError) as exc:
-        LOGGER.error("vector database build failed: %s", exc)
-        return 1
     except Exception as exc:  # external embedding/vector-store services
         LOGGER.error("vector database build failed: %s", exc)
         return 1

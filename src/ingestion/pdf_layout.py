@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from difflib import SequenceMatcher
+import math
 import os
 import re
 import unicodedata
@@ -41,10 +42,18 @@ def _clean_text(value: object) -> str:
 def _bbox(value: object) -> list[float] | None:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         return None
-    try:
-        return [round(float(part), 3) for part in value]
-    except (TypeError, ValueError):
+    coordinates = [_finite_float(part) for part in value]
+    if any(coordinate is None for coordinate in coordinates):
         return None
+    return [round(coordinate, 3) for coordinate in coordinates if coordinate is not None]
+
+
+def _finite_float(value: object) -> float | None:
+    try:
+        result = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
 
 
 def _row_data(headers: list[str], values: list[str]) -> dict[str, str]:
@@ -68,10 +77,10 @@ def _bbox_from_points(value: object) -> list[float] | None:
     for point in value:
         if not isinstance(point, (list, tuple)) or len(point) < 2:
             continue
-        try:
-            points.append((float(point[0]), float(point[1])))
-        except (TypeError, ValueError):
-            continue
+        x = _finite_float(point[0])
+        y = _finite_float(point[1])
+        if x is not None and y is not None:
+            points.append((x, y))
     if not points:
         return None
     xs = [point[0] for point in points]
@@ -236,7 +245,11 @@ def _group_ocr_tokens(tokens: Iterable[dict[str, object]]) -> list[dict[str, obj
                 round(max(float(item[2]) for item in boxes), 3),
                 round(max(float(item[3]) for item in boxes), 3),
             ]
-            confidences = [item.get("confidence") for item in target["tokens"] if item.get("confidence") is not None]
+            confidences = [
+                confidence
+                for item in target["tokens"]
+                if (confidence := _finite_float(item.get("confidence"))) is not None
+            ]
             target["confidence"] = min(confidences) if confidences else None
     return lines
 
@@ -255,13 +268,14 @@ def _rapidocr_tokens(image: Any, scale: float) -> list[dict[str, object]]:
             continue
         box = _bbox_from_points(item[0])
         text = _clean_text(item[1])
-        if not box or not text:
+        confidence = _finite_float(item[2])
+        if not box or not text or confidence is None:
             continue
         tokens.append(
             {
                 "text": text,
                 "bbox": [round(value / scale, 3) for value in box],
-                "confidence": round(float(item[2]), 4),
+                "confidence": round(confidence, 4),
                 "source": "rapidocr",
             }
         )
@@ -304,10 +318,8 @@ def _pytesseract_tokens(image: Any, scale: float) -> list[dict[str, object]]:
         value = _clean_text(text)
         if not value:
             continue
-        try:
-            confidence = float(data.get("conf", ["-1"])[index]) / 100.0
-        except (TypeError, ValueError, IndexError):
-            confidence = None
+        confidence_value = _finite_float(data.get("conf", ["-1"])[index])
+        confidence = confidence_value / 100.0 if confidence_value is not None else None
         if confidence is not None and confidence < 0:
             confidence = None
         left = float(data.get("left", [0])[index]) / scale
@@ -957,15 +969,15 @@ def _native_tables(page: Any, page_number: int) -> tuple[list[dict[str, object]]
         cell_boxes = list(getattr(table, "cells", ()) or ())
         col_count = int(getattr(table, "col_count", 0) or len(headers))
         rows: list[dict[str, object]] = []
+        row_count = int(getattr(table, "row_count", 0) or len(extracted))
         for data_index, values in enumerate(data_rows):
             row_index = data_index + (1 if header_row else 0)
+            raw_row_index = row_index
             cells: list[dict[str, object]] = []
             for column_index in range(max(col_count, len(values))):
                 # PyMuPDF's ``cells`` follows the extracted matrix and does
                 # not include an external header row.  Keep the source cell
                 # bbox aligned even when the first row is promoted to headers.
-                row_count = int(getattr(table, "row_count", 0) or len(extracted))
-                raw_row_index = data_index + (1 if header_row else 0)
                 # PyMuPDF exposes cells column-major: all row boxes for
                 # column 0, then all row boxes for column 1, and so on.
                 cell_index = column_index * row_count + raw_row_index
@@ -1121,11 +1133,8 @@ def _filter_ocr_table_tokens(
             continue
         confidences: list[float] = []
         for token in line_tokens:
-            try:
-                confidence = float(token.get("confidence"))
-            except (TypeError, ValueError):
-                confidence = -1.0
-            confidences.append(confidence)
+            confidence = _finite_float(token.get("confidence"))
+            confidences.append(confidence if confidence is not None else -1.0)
         if any(confidence < minimum_confidence for confidence in confidences):
             low_confidence_lines += 1
             continue
@@ -1152,8 +1161,8 @@ def _supplemental_ocr_lines(
     additions: list[dict[str, object]] = []
     conflicts = False
     for line in ocr_lines:
-        confidence = line.get("confidence")
-        if confidence is None or float(confidence) < minimum_confidence:
+        confidence = _finite_float(line.get("confidence"))
+        if confidence is None or confidence < minimum_confidence:
             continue
         ocr_text = str(line.get("text") or "").strip()
         ocr_key = _matching_text(ocr_text)

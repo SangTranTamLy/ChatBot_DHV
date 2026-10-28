@@ -7,9 +7,8 @@ Matches the architectural pattern of VietLabor AI (app/chat_service.py).
 """
 from __future__ import annotations
 
-import threading
-
 import logging
+import threading
 import time
 import unicodedata
 from collections.abc import Mapping
@@ -82,14 +81,8 @@ class ChatService:
         norm_q = unicodedata.normalize("NFC", question or "").strip()
         state = ConversationState.from_value(conversation_state, default_year=self.settings.target_year)
         history = bounded_history(conversation_history, norm_q)
-        has_history = bool(
-            history
-            or
-            state.current_major
-            or state.current_program
-            or state.previous_intent
-            or state.candidate_majors
-        )
+        initial_state = ConversationState.from_value(None, default_year=self.settings.target_year)
+        has_history = bool(history or state != initial_state)
 
         # Stage 0: Conversational fast-track (greetings, identity, capabilities, thanks, goodbye)
         # Bypasses retriever and LLM entirely for instant UI response (<1ms)
@@ -110,7 +103,7 @@ class ChatService:
             and self.llm is None
             and not bypass_cache
         )
-        cache_key = cache_make_key(norm_q) if use_cache else ""
+        cache_key = cache_make_key(norm_q, settings_obj=self.settings) if use_cache else ""
         if use_cache:
             cached = cache_get(cache_key)
             if cached is not None:
@@ -121,10 +114,23 @@ class ChatService:
         # Stage 1: Fallback to full grounded RAG pipeline
         resolution = resolve_history_question(norm_q, history, settings_obj=self.settings, llm=self.llm)
         if resolution.clarification:
-            return {"answer": resolution.clarification, "status": "clarification", "sources": [],
-                    "state": state.to_dict(), "conversation_state": state.to_dict(), "cache_hit": False,
-                    "trace": {"history_resolution": {"method": resolution.method, "messages_used": len(history)}},
-                    "latency_ms": (time.perf_counter() - t0) * 1000}
+            state_dict = state.to_dict()
+            return {
+                "answer": resolution.clarification,
+                "status": "clarification",
+                "sources": [],
+                "state": state_dict,
+                "conversation_state": state_dict,
+                "cache_hit": False,
+                "trace": {
+                    "history_resolution": {
+                        "method": resolution.method,
+                        "messages_used": len(history),
+                    },
+                    "is_follow_up": resolution.method != "independent_question",
+                },
+                "latency_ms": (time.perf_counter() - t0) * 1000,
+            }
         payload = _ask_chatbot(
             resolution.question,
             retriever=self.retriever,
@@ -133,10 +139,15 @@ class ChatService:
             conversation_state=state,
         )
         if history:
-            payload.setdefault("trace", {})["history_resolution"] = {
+            trace = payload.get("trace")
+            if not isinstance(trace, dict):
+                trace = {}
+                payload["trace"] = trace
+            trace["history_resolution"] = {
                 "method": resolution.method, "messages_used": len(history),
                 "original_question": norm_q, "resolved_question": resolution.question,
             }
+            trace["is_follow_up"] = resolution.method != "independent_question"
         payload.setdefault("cache_hit", False)
         payload.setdefault("latency_ms", (time.perf_counter() - t0) * 1000)
 
@@ -173,7 +184,7 @@ def get_chat_service() -> ChatService:
                     from .warmup import start_background_warmup
                     start_background_warmup()
                 except Exception:
-                    pass
+                    logger.warning("Could not start background warmup", exc_info=True)
                 _default_service = service
     return _default_service
 

@@ -24,6 +24,14 @@ class _NeverCalledLLM:
         raise AssertionError("tuition answer must come from verified evidence, not generation")
 
 
+class _FixedRetriever:
+    def __init__(self, documents: list[Document]) -> None:
+        self.documents = documents
+
+    def retrieve_with_audit(self, question: str, **_: object) -> dict[str, object]:
+        return {"documents": list(self.documents)}
+
+
 class TuitionEntityFilterTests(unittest.TestCase):
     def test_general_tuition_record_passes_a_major_filter(self) -> None:
         general = _tuition("Học phí HKI (10 tín chỉ): 12.500.000 đồng")
@@ -54,9 +62,37 @@ class TuitionAnswerTests(unittest.TestCase):
             with self.subTest(question=question):
                 result = self._ask(question)
                 self.assertEqual(result["status"], "ok")
-                self.assertIn("12.500.000", str(result["answer"]))
+                self.assertIn("1.250.000 đồng/tín chỉ", str(result["answer"]))
+                self.assertNotIn("12.500.000", str(result["answer"]))
                 audit = result["trace"]["retrieval"]
                 self.assertTrue(any(hit.get("category") == "hoc_phi" for hit in audit["hits"]))
+
+    def test_annual_average_question_does_not_invent_a_yearly_total(self) -> None:
+        result = self._ask("Học phí trung bình theo năm")
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("chưa có số liệu học phí trung bình theo năm", str(result["answer"]))
+        self.assertIn("1.250.000 đồng/tín chỉ", str(result["answer"]))
+        self.assertNotIn("12.500.000", str(result["answer"]))
+
+    def test_semester_total_cannot_stand_in_for_annual_average(self) -> None:
+        semester_total = _tuition(
+            "Học phí HKI (10 tín chỉ): 12.500.000 đồng",
+            year=2026,
+            school_code="DHV",
+            status="verified",
+            source_url="https://dhv.edu.vn/tuyen-sinh/",
+        )
+        result = ask_chatbot(
+            "Học phí trung bình theo năm",
+            retriever=_FixedRetriever([semester_total]),
+            llm=_NeverCalledLLM(),
+        )
+        self.assertEqual(result["status"], "no_data")
+        self.assertNotIn("12.500.000", str(result["answer"]))
+        self.assertEqual(
+            result["trace"]["evidence_boundary"],
+            "annual_tuition_average_missing_matching_rate",
+        )
 
 
 if __name__ == "__main__":

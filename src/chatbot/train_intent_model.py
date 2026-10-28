@@ -35,6 +35,8 @@ def train_and_save(
     model_path: Path = DEFAULT_MODEL_PATH,
 ) -> dict[str, object]:
     records = load_records(dataset_path)
+    if not records:
+        raise ValueError(f"Intent dataset is empty: {dataset_path}")
     train_records, test_records = stratified_split(records, test_ratio=0.2)
     model = IntentClassifier.train(train_records)
     save_records(train_records, train_path)

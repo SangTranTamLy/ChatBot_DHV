@@ -15,6 +15,10 @@ QUOTA = "Chỉ tiêu xét tuyển bổ sung năm 2026 của DHV là bao nhiêu?"
 DEADLINE = "Hạn nộp hồ sơ xét tuyển bổ sung là khi nào?"
 FEE = "Xét tuyển bổ sung có mất lệ phí không?"
 SCORE = "Luật xét bổ sung bằng thi tốt nghiệp THPT bao nhiêu điểm?"
+CNTT_HOC_BA_THRESHOLD = (
+    "Ngưỡng điểm nhận hồ sơ xét tuyển bổ sung bằng học bạ đối với ngành "
+    "Công nghệ thông tin năm 2026 là bao nhiêu?"
+)
 
 
 class _NeverCalledLLM:
@@ -77,6 +81,14 @@ class SupplementaryDetailAnswerTests(unittest.TestCase):
         result = self._ask(SCORE)
         self.assertEqual(result["trace"]["deterministic_branch"], "supplementary_threshold_lookup")
         self.assertIn("20 điểm", str(result["answer"]))
+
+    def test_threshold_question_with_intake_wording_uses_its_method_specific_fact(self) -> None:
+        result = self._ask(CNTT_HOC_BA_THRESHOLD)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["trace"]["deterministic_branch"], "supplementary_threshold_lookup")
+        self.assertIn("18 điểm", str(result["answer"]))
+        self.assertNotIn("15 điểm", str(result["answer"]))
+        self.assertNotIn("21/8/2026", str(result["answer"]))
 
     def test_missing_detail_evidence_returns_no_data_instead_of_guessing(self) -> None:
         unrelated = Document(

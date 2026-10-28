@@ -45,7 +45,9 @@ def _where_matches(metadata: Mapping[str, object], where: Mapping[str, object]) 
         return any(_where_matches(metadata, item) for item in where["$or"] if isinstance(item, Mapping))
     if "category" in where:
         return metadata.get("category") == where["category"]
-    return True
+    if "data_role" in where:
+        return metadata.get("data_role") == where["data_role"]
+    return not where
 
 
 class OfflineCorpusStore:
@@ -93,31 +95,24 @@ class OfflineCorpusStore:
 class EvidenceEchoLLM:
     """Offline generation double that returns prompt evidence, never new facts."""
 
-    def __init__(self) -> None:
-        self.prompts: list[str] = []
-
     def generate(self, prompt: str) -> str:
-        self.prompts.append(prompt)
         context_match = re.search(r"<CONTEXT>\n(.*?)\n</CONTEXT>", prompt, re.DOTALL)
         context = context_match.group(1) if context_match else ""
         entities_match = re.search(r"<ENTITIES>\n(.*?)\n</ENTITIES>", prompt, re.DOTALL)
+        entities: object = {}
         if entities_match:
             try:
                 entities = json.loads(entities_match.group(1))
             except json.JSONDecodeError:
                 entities = {}
-            if isinstance(entities, Mapping):
-                program = str(entities.get("program_name") or "")
-                parent = str(entities.get("parent_major") or "")
-                if program and parent:
-                    return f"{program} là chương trình thuộc ngành {parent}."
+        if isinstance(entities, Mapping):
+            program = str(entities.get("program_name") or "")
+            parent = str(entities.get("parent_major") or "")
+            if program and parent:
+                return f"{program} là chương trình thuộc ngành {parent}."
         intent_match = re.search(r"<INTENT>\n(.*?)\n</INTENT>", prompt, re.DOTALL)
         intent = intent_match.group(1).strip() if intent_match else ""
         if intent == "TU_VAN_CHON_NGANH":
-            try:
-                entities = json.loads(entities_match.group(1)) if entities_match else {}
-            except json.JSONDecodeError:
-                entities = {}
             interest = str(entities.get("interest") or "").strip() if isinstance(entities, Mapping) else ""
             title_candidates = []
             for title in re.findall(r"Tiêu đề:\s*([^\n]+)", context):
@@ -186,12 +181,14 @@ def _retrieve_for_case(retriever: DHVRetriever, case: EvaluationCase) -> object:
         categories=plan.categories,
         retrieval_query=plan.retrieval_query,
         entity_filters=plan.entity_filters,
+        data_roles=plan.data_roles,
     )
 
 
 def run_evaluation(split: str = "all", *, top_k: int = 5) -> dict[str, object]:
     """Run intent, retrieval and answer contract metrics for one fixed split."""
 
+    dataset_report = validate_dataset()
     cases = load_cases(split)
     retriever = _retriever()
     intent_report = evaluate_intents(
@@ -220,7 +217,7 @@ def run_evaluation(split: str = "all", *, top_k: int = 5) -> dict[str, object]:
 
     answer_report = evaluate_answers(cases, answer_case)
     return {
-        "dataset": validate_dataset(),
+        "dataset": dataset_report,
         "split": split,
         "intent": intent_report,
         "retrieval": retrieval_report,

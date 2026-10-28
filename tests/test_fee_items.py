@@ -33,7 +33,7 @@ class FeeItemAnswerTests(unittest.TestCase):
 
     def test_other_fee_questions_keep_their_own_item(self) -> None:
         for question, expected, foreign in (
-            ("Học phí bao nhiêu?", "12.500.000", "học liệu"),
+            ("Học phí bao nhiêu?", "1.250.000 đồng/tín chỉ", "học liệu"),
             ("Phí nhập học bao nhiêu?", "1.500.000", "12.500.000"),
             ("Phí kiểm tra năng lực tiếng Anh là bao nhiêu?", "250.000", "12.500.000"),
         ):

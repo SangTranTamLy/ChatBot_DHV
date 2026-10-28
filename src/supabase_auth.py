@@ -147,9 +147,9 @@ def _token_state(session: Any) -> dict[str, Any]:
     if not access_token or not refresh_token:
         raise AuthServiceError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.")
     expires_at = _value(session, "expires_at")
-    if not expires_at:
+    if expires_at is None:
         expires_in = _value(session, "expires_in")
-        expires_at = int(time.time()) + int(expires_in or 3600)
+        expires_at = int(time.time()) + int(3600 if expires_in is None else expires_in)
     return {
         "access_token": str(access_token),
         "refresh_token": str(refresh_token),
@@ -175,9 +175,9 @@ def _profile_name(client: Any, user_id: str) -> str:
     )
     data = _value(result, "data")
     name = _value(data, "display_name")
-    if not isinstance(name, str) or not name:
+    if not isinstance(name, str) or not name.strip():
         raise AuthServiceError("Không tải được hồ sơ tài khoản. Vui lòng thử đăng nhập lại.")
-    return name
+    return name.strip()
 
 
 def _authenticated_user(client: Any, user: Any) -> dict[str, str]:
@@ -406,7 +406,7 @@ def reset_password_with_recovery(
         response = client.auth.update_user({"password": new_password})
         updated_user = _value(response, "user") or response
         updated_id = _value(updated_user, "id")
-        if updated_id and str(updated_id) != user_id:
+        if not updated_id or str(updated_id) != user_id:
             raise ValueError("Updated user did not match recovery subject")
     except Exception as exc:
         raise AuthServiceError(

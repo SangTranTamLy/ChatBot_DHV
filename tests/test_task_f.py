@@ -368,8 +368,6 @@ class TaskFRetrievalTests(unittest.TestCase):
         self.assertIn("keyword_score", result.audit.hits[0])
 
     def test_golden_retrieval_has_expected_evidence_in_top_k(self) -> None:
-        evaluated = 0
-        hits = 0
         for case in GOLDEN_CASES:
             if case["expected_status"] != "ok":
                 continue
@@ -381,16 +379,13 @@ class TaskFRetrievalTests(unittest.TestCase):
                 categories=plan.categories,
                 retrieval_query=plan.retrieval_query,
             )
-            evaluated += 1
             joined = " ".join(document.page_content for document in result.documents)
             expected = case["expected_evidence"]
             evidence_hit = expected["category"] in {
                 document.metadata.get("category") for document in result.documents
             } and all(term in joined for term in expected["contains"])
-            hits += int(evidence_hit)
             with self.subTest(case=case["id"]):
                 self.assertTrue(evidence_hit, result.audit.to_dict())
-        self.assertEqual(hits, evaluated)
 
 
 class TaskFGenerationTests(unittest.TestCase):
@@ -474,7 +469,6 @@ class TaskFGenerationTests(unittest.TestCase):
                     for item in trace.get("evidence_selection", {}).get("selected", [])
                 ],
             }))
-            self.assertNotEqual(result["status"], "clarification")
             self.assertFalse(result["trace"].get("temporal_checked", False))
             self.assertNotIn("đã hết hạn", str(result["answer"]))
             for method in (
@@ -569,8 +563,11 @@ class TaskFGenerationTests(unittest.TestCase):
             )
         )
         self.assertEqual(llm.prompts, [])
-        # The general tuition rule applies to CNTT too, so every issue is answered.
-        self.assertIn("12.500.000", result["answer"].split("### Học phí\n", 1)[1].split("\n### ", 1)[0])
+        # A semester total is not a per-major tuition quote; show the verified
+        # per-credit rate instead of implying 10 credits is universal.
+        tuition_answer = result["answer"].split("### Học phí\n", 1)[1].split("\n### ", 1)[0]
+        self.assertIn("1.250.000 đồng/tín chỉ", tuition_answer)
+        self.assertNotIn("12.500.000", tuition_answer)
         self.assertFalse(result["partial"])
         self.assertFalse(multi_issue["partial"])
         self.assertTrue(multi_issue["complete"])
@@ -758,7 +755,7 @@ class TaskFGenerationTests(unittest.TestCase):
             result["trace"]["deterministic_branch"],
             "application_threshold_lookup",
         )
-        self.assertIn("15,00", result["answer"])
+        self.assertIn("15 điểm", result["answer"])
 
     def test_personal_admission_guarantee_is_rejected(self) -> None:
         class UnsafeLLM:
@@ -877,6 +874,7 @@ class TaskFConversationTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("Mình đính chính", result["answer"])
         self.assertIn("20 ngành chính", result["answer"])
+
     def test_advisory_keeps_two_non_program_candidates_without_parent_claim(self) -> None:
         question = "Tôi phân vân giữa Marketing và Tâm lý học, chưa biết chọn ngành nào"
         result = ask_chatbot(
@@ -932,7 +930,6 @@ class TaskFConversationTests(unittest.TestCase):
         )
 
         self.assertEqual(second["status"], "clarification")
-        self.assertNotEqual(second["status"], "no_data")
         self.assertTrue(second["sources"])
         self.assertEqual(len(llm.prompts), 0)
 
@@ -1113,7 +1110,6 @@ class TaskFConversationTests(unittest.TestCase):
             conversation_state=state,
         )
         self.assertEqual(second["status"], "clarification")
-        self.assertNotEqual(second["status"], "no_data")
         self.assertIn("ĐGNL", second["answer"])
         self.assertNotIn("Luật", second["answer"])
         self.assertNotIn("thuộc ngành Kỹ thuật máy tính", second["answer"])

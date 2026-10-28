@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass
 
 
 def normalize_semantic_text(value: str) -> str:
@@ -24,6 +25,13 @@ def enrollment_request(question: str) -> str:
     text = normalize_semantic_text(question.partition("intent:")[0])
     if is_cash_payment_request(text):
         return "cash_payment"
+    if "nhap hoc" not in text and any(
+        marker in text
+        for marker in ("xet tuyen bo sung", "tuyen sinh bo sung", "dot bo sung")
+    ):
+        # Supplementary deadlines belong to the supplementary-round parser,
+        # not the general admission/enrollment deadline request.
+        return ""
     if "dang ky xet tuyen" in text and re.search(r"\b(?:han|lich)\b|\bkhi nao\b|\bngay nao\b", text):
         return "deadline"
     enrollment_context = any(
@@ -88,6 +96,7 @@ def excludes_optional_english_test(question: str) -> bool:
             "khong thi",
             "khong kiem tra",
             "khong dong",
+            "khong gom",
             "khong bao gom",
             "khong phat sinh",
         )
@@ -109,6 +118,174 @@ def is_semester_fee_total_question(question: str) -> bool:
     )
     semester = any(marker in folded for marker in ("hoc ky", "hki", "hk1"))
     return asks_total and (semester or mentions_optional_english_test(folded))
+
+
+# One vocabulary for recognizing and reading the verified DHV fee-table rows.
+# ``key`` is the stable identifier used by the fee request parser; the marker
+# is matched against normalized source lines, and the label is display text.
+FEE_ROW_SPECS = (
+    ("tuition_hki", ("hoc phi hki",), "Học phí HKI (10 tín chỉ)"),
+    ("enrollment_fee", ("phi nhap hoc",), "Phí nhập học"),
+    ("learning_materials", ("tai khoan hoc lieu dien tu", "hoc lieu"), "Tài khoản học liệu điện tử"),
+    (
+        "english_test_fee",
+        ("kiem tra nang luc tieng anh", "kiem tra tieng anh"),
+        "Kiểm tra năng lực Tiếng Anh (nếu có)",
+    ),
+)
+
+
+@dataclass(frozen=True)
+class FeeRequest:
+    """Normalized details requested about tuition and its verified fee table."""
+
+    is_fee_request: bool = False
+    scope: str = "unknown"
+    topics: tuple[str, ...] = ()
+    semester: str | None = None
+    credits: int | None = None
+    optional_english: str = "unknown"
+    relationship: str | None = None
+    follow_up: bool = False
+    fee_items: tuple[str, ...] = ()
+    ambiguous_topics: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "is_fee_request": self.is_fee_request,
+            "scope": self.scope,
+            "topics": list(self.topics),
+            "semester": self.semester,
+            "credits": self.credits,
+            "optional_english": self.optional_english,
+            "relationship": self.relationship,
+            "follow_up": self.follow_up,
+            "fee_items": list(self.fee_items),
+            "ambiguous_topics": list(self.ambiguous_topics),
+        }
+
+
+def analyze_fee_request(question: str) -> FeeRequest:
+    """Parse fee scope and requested topics without deriving any amounts.
+
+    Amounts remain the responsibility of the verified fee-table formatter.
+    This parser only supplies a compact, shared interpretation for routing and
+    coverage checks.
+    """
+
+    text = normalize_semantic_text(question)
+    has_money_request = any(
+        marker in text
+        for marker in (
+            "hoc phi", "tien hoc", "phi nhap hoc", "hoc lieu",
+            "kiem tra nang luc tieng anh", "kiem tra tieng anh",
+            "khoan thu", "khoan khac", "cac khoan", "dong bao nhieu",
+            "phai dong", "can dong", "con dong", "tong tien", "tong cac khoan",
+            "tong chi phi", "tong cong", "tong la bao nhieu", "so tien", "cong het",
+            "cong lai", "het bao nhieu", "gia tin chi", "don gia",
+        )
+    ) or (
+        "tin chi" in text
+        and any(marker in text for marker in ("bao nhieu", "gia", "phi", "tien", "dong"))
+    )
+    if not has_money_request:
+        return FeeRequest()
+
+    items = tuple(
+        key
+        for key, markers, _label in FEE_ROW_SPECS[1:]
+        if any(marker in text for marker in markers)
+    )
+    asks_total = any(
+        marker in text
+        for marker in (
+            "tong", "so tien", "cong het", "cong lai", "het bao nhieu", "bao nhieu tat ca",
+        )
+    )
+    asks_other_fees = any(
+        marker in text
+        for marker in (
+            "ngoai hoc phi", "ngoai tien hoc", "khoan thu khac", "khoan khac",
+            "cac khoan khac", "nhung khoan", "cac khoan", "dong them",
+            "them cac khoan", "phat sinh", "khi nhap hoc",
+        )
+    )
+    asks_tuition = any(marker in text for marker in ("hoc phi", "tien hoc", "gia tin chi", "don gia")) and not any(
+        marker in text
+        for marker in (
+            "ngoai hoc phi", "ngoai tien hoc", "co nam trong hoc phi",
+            "nam trong hoc phi", "da bao gom hoc phi", "bao gom hoc phi",
+        )
+    )
+    if not asks_tuition and not items and not asks_other_fees and any(
+        marker in text for marker in ("hoc ky", "hki", "hk1", "dong bao nhieu", "phai dong", "can dong")
+    ):
+        asks_tuition = True
+
+    topics: list[str] = []
+    if asks_tuition:
+        topics.append("tuition")
+    if asks_other_fees or items:
+        topics.append("other_fees")
+    if asks_total:
+        topics.append("total")
+    if items:
+        topics.append("specific_fee")
+    scholarship = "hoc bong" in text
+    if scholarship:
+        topics.append("scholarship")
+
+    annual = any(marker in text for marker in ("theo nam", "moi nam", "hang nam", "trung binh nam"))
+    semester = None
+    if re.search(r"\b(?:hki|hk1|hoc ky i|hoc ki i|hoc ky 1|hoc ki 1)\b", text):
+        semester = "HKI"
+    elif re.search(r"\b(?:hkii|hk2|hoc ky ii|hoc ki ii|hoc ky 2|hoc ki 2)\b", text):
+        semester = "HKII"
+    credit_match = re.search(r"\b(\d{1,2})\s*tin chi\b", text)
+    credits = int(credit_match.group(1)) if credit_match else None
+    if annual:
+        scope = "annual"
+    elif semester or items or asks_other_fees or asks_total:
+        scope = "semester"
+    elif asks_tuition or credits is not None:
+        scope = "per_credit"
+    else:
+        scope = "unknown"
+
+    if excludes_optional_english_test(text):
+        optional_english = "exclude"
+    elif mentions_optional_english_test(text) and any(
+        marker in text for marker in ("neu co", "co kiem tra", "neu kiem tra", "tinh ca", "bao gom")
+    ):
+        optional_english = "include"
+    else:
+        optional_english = "unknown"
+
+    relationship = None
+    if any(marker in text for marker in ("thu rieng", "phi rieng", "tinh rieng")):
+        relationship = "separate"
+    elif any(marker in text for marker in (
+        "co nam trong", "nam trong hoc phi", "da gom", "da bao gom", "bao gom hoc phi",
+        "bao gom phi", "duoc tinh trong hoc phi",
+    )):
+        relationship = "included"
+
+    follow_up = bool(re.search(r"\b(?:vay|the|con|neu|cach|cong)\b", text))
+    ambiguous_topics = ("scholarship",) if scholarship and not any(
+        marker in text for marker in ("dau vao", "hoc ba", "hoan hoc phi", "dgnl", "cam ket")
+    ) else ()
+    return FeeRequest(
+        is_fee_request=True,
+        scope=scope,
+        topics=tuple(topics),
+        semester=semester,
+        credits=credits,
+        optional_english=optional_english,
+        relationship=relationship,
+        follow_up=follow_up,
+        fee_items=items,
+        ambiguous_topics=ambiguous_topics,
+    )
 
 
 # The verified HKI fee table lives in the tuition document; the previous

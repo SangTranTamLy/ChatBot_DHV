@@ -96,7 +96,7 @@ class DataPipelineRecoveryTests(unittest.TestCase):
         self.assertEqual(pages[0]["extraction_method"], "ocr")
         self.assertEqual(pages[0]["text"], "OCR text có đủ nội dung để lập chỉ mục.")
 
-    def test_manifest_provenance_preserves_verified_2024_source_url(self) -> None:
+    def test_manifest_provenance_preserves_source_url_from_entry(self) -> None:
         entry = _historical_tuition_entry()
         document = build_structured_document(
             raw_path=PROJECT_ROOT / str(entry["raw_file"]),

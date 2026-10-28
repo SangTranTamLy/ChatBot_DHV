@@ -7,232 +7,15 @@ from typing import Any
 from urllib.parse import urlparse
 
 from src.config.settings import settings
-from .evidence_utils import _evidence_sentences, _evidence_text_lines
+from .evidence_utils import _evidence_sentences
 from .query_analysis import QueryAnalysis, normalize_question
 from .query_semantics import (
-    excludes_optional_english_test,
+    FEE_ROW_SPECS,
+    FeeRequest,
+    analyze_fee_request,
     is_fee_table_page_text,
-    is_semester_fee_total_question,
     is_tuition_increase_question,
-    mentions_optional_english_test,
-    should_include_optional_english_fee,
 )
-
-
-def _evidence_tuition_answer(evidence: Any) -> str | None:
-    """Lấy đúng dòng học phí để fallback khi model cục bộ trả lời lỗi.
-
-    Fallback này chỉ giữ dòng có nhãn ``Học phí`` và loại dòng ``Tổng chi phí``;
-    vì vậy không thể đổi tên hoặc gộp các khoản thu trong bằng chứng. Chỉ dùng
-    record tuition canonical đã xác minh; page text hoặc fixture chung không đủ
-    để bỏ qua luồng generation/validation.
-    """
-
-    for chunk in getattr(evidence, "chunks", ()) or ():
-        metadata = getattr(chunk, "metadata", {}) or {}
-        if (
-            str(metadata.get("record_type") or "") != "tuition"
-            or str(metadata.get("status") or "") != "verified"
-            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
-            or str(metadata.get("category") or "") != "hoc_phi"
-        ):
-            continue
-        try:
-            if int(metadata.get("year", 0)) != int(settings.target_year):
-                continue
-        except (TypeError, ValueError):
-            continue
-        if not str(metadata.get("source_url") or "").strip():
-            continue
-        for line in str(getattr(chunk, "text", "") or "").splitlines():
-            line = re.sub(r"\s+", " ", line).strip()
-            folded = normalize_question(line)
-            if "hoc phi" not in folded or "tong chi phi" in folded:
-                continue
-            if not re.search(r"\d[\d.,]*\s*(?:đồng|d|vnd|/)", line, re.IGNORECASE):
-                continue
-            return line.lstrip("• ").strip()
-    return None
-
-
-_FEE_ITEMS = (
-    (("phi nhap hoc",), "Phí nhập học"),
-    (("hoc lieu",), "Tài khoản học liệu điện tử"),
-    (("kiem tra nang luc tieng anh", "kiem tra tieng anh"), "Kiểm tra năng lực Tiếng Anh"),
-)
-
-
-def _evidence_fee_item_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    """Answer a question about one named fee row of the verified HKI fee table."""
-
-    normalized = normalize_question(analysis.normalized_question)
-    label = next((label for markers, label in _FEE_ITEMS if any(m in normalized for m in markers)), None)
-    if label is None:
-        return None
-    target_year = int(analysis.entities.get("year") or settings.target_year)
-    found: re.Match[str] | None = None
-    for chunk in getattr(evidence, "chunks", ()) or ():
-        metadata = getattr(chunk, "metadata", {}) or {}
-        try:
-            year = int(metadata.get("year"))
-        except (TypeError, ValueError):
-            continue
-        if (
-            str(metadata.get("category") or "") != "hoc_phi"
-            or str(metadata.get("status") or "") != "verified"
-            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
-            or year != target_year
-        ):
-            continue
-        flattened = re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or ""))
-        match = re.search(rf"{label}(\s*\(nếu có\))?\s*:?\s*(\d[\d.,]*\s*đồng)", flattened, re.IGNORECASE)
-        # Prefer the table row that keeps the "(nếu có)" qualifier.
-        if match and (found is None or match.group(1)):
-            found = match
-    if found is None:
-        return None
-    qualifier = " (nếu có)" if found.group(1) else ""
-    return (
-        f"{label}{qualifier} là một khoản riêng trong bảng phí học kỳ I năm {target_year} "
-        f"của DHV, ngoài học phí: {found.group(2)}."
-    )
-
-
-def _evidence_tuition_total_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    """Calculate a semester total from the verified page-text fee breakdown."""
-
-    normalized_question = normalize_question(analysis.normalized_question)
-    if not is_semester_fee_total_question(normalized_question):
-        return None
-    for chunk in getattr(evidence, "chunks", ()) or ():
-        metadata = getattr(chunk, "metadata", {}) or {}
-        if not is_fee_table_page_text(dict(metadata)):
-            continue
-        try:
-            year = int(metadata.get("year", 0))
-        except (TypeError, ValueError):
-            continue
-        expected_year = int(analysis.entities.get("year") or settings.target_year)
-        if year != expected_year:
-            continue
-        source_url = str(metadata.get("source_url") or "").strip()
-        parsed_source = urlparse(source_url)
-        source_host = (parsed_source.hostname or "").lower().rstrip(".")
-        if (
-            parsed_source.scheme.lower() != "https"
-            or not source_host
-            or not (source_host == "dhv.edu.vn" or source_host.endswith(".dhv.edu.vn"))
-        ):
-            continue
-        text = re.sub(r"\s+", " ", str(getattr(chunk, "text", "") or ""))
-        match = re.search(
-            r"TỔNG\s+CHI\s+PHÍ\s+HỌC\s+KỲ\s+I\s*"
-            r"(\d{1,3}(?:\.\d{3})+)\s+đồng\s*\+\s*"
-            r"(\d{1,3}(?:\.\d{3})+)\s+đồng",
-            text,
-            re.IGNORECASE,
-        )
-        if not match:
-            continue
-        amounts = [int(value.replace(".", "")) for value in match.groups()]
-        if any(amount <= 0 for amount in amounts):
-            continue
-        base = f"{amounts[0]:,}".replace(",", ".")
-        extra = f"{amounts[1]:,}".replace(",", ".")
-        folded_text = normalize_question(text)
-        if mentions_optional_english_test(normalized_question) and not mentions_optional_english_test(folded_text):
-            continue
-        if excludes_optional_english_test(normalized_question) and not any(
-            marker in folded_text for marker in ("neu co", "neu ap dung", "tuy truong hop", "chi ap dung")
-        ):
-            continue
-        if should_include_optional_english_fee(normalized_question):
-            total = amounts[0] + amounts[1]
-            formatted = f"{total:,}".replace(",", ".")
-            return (
-                "Theo bảng chi phí nhập học, tổng chi phí học kỳ I gồm "
-                f"{base} đồng và khoản kiểm tra tiếng Anh {extra} đồng, "
-                f"tổng cộng {formatted} đồng."
-            )
-        if excludes_optional_english_test(normalized_question):
-            return (
-                "Theo bảng chi phí nhập học, tổng các khoản học kỳ I trước khoản kiểm tra "
-                f"tiếng Anh là {base} đồng. Khoản kiểm tra tiếng Anh {extra} đồng chỉ áp dụng "
-                f"nếu thuộc diện kiểm tra; trường hợp bạn nêu không cộng khoản này, nên tổng là {base} đồng."
-            )
-        total = amounts[0] + amounts[1]
-        formatted = f"{total:,}".replace(",", ".")
-        return (
-            f"Theo bảng chi phí nhập học, tổng các khoản cơ bản học kỳ I là {base} đồng. "
-            f"Khoản kiểm tra tiếng Anh {extra} đồng chỉ cộng thêm nếu thuộc diện kiểm tra "
-            f"(tổng cộng {formatted} đồng nếu có kiểm tra tiếng Anh)."
-        )
-    return None
-
-
-def _evidence_tuition_per_credit_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    normalized_question = normalize_question(analysis.normalized_question)
-    if "tin chi" not in normalized_question:
-        return None
-    if any(marker in normalized_question for marker in ("bao nhieu tin chi", "so tin chi")) and not any(
-        marker in normalized_question for marker in ("hoc phi", "gia", "tien", "dong")
-    ):
-        return None
-    for line in _evidence_text_lines(evidence):
-        folded = normalize_question(line)
-        if "hoc phi" in folded and "tin chi" in folded and re.search(
-            r"\d[\d.,]*\s*(?:đồng|dong|vnd)\s*/\s*tín\s*chỉ",
-            line,
-            re.IGNORECASE,
-        ):
-            return line.lstrip("• ").strip()
-    return None
-
-
-def _evidence_optional_english_fee_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    normalized_question = normalize_question(analysis.normalized_question)
-    if "kiem tra nang luc tieng anh" not in normalized_question:
-        return None
-    if not any(marker in normalized_question for marker in ("ai cung", "tat ca", "bat buoc", "co phai", "can dong")):
-        return None
-    optional_row_found = False
-    for chunk in getattr(evidence, "chunks", ()) or ():
-        metadata = getattr(chunk, "metadata", {}) or {}
-        # The page-text table preserves the source row/cell adjacency. A
-        # separate normalized tuition record may contain conflicting fee
-        # metadata, so it cannot establish this conditional row's amount.
-        if str(metadata.get("record_type") or "") != "page_text":
-            continue
-        lines = [
-            re.sub(r"\s+", " ", line).strip()
-            for line in str(getattr(chunk, "text", "") or "").splitlines()
-        ]
-        for index, line in enumerate(lines):
-            if "kiem tra nang luc tieng anh" not in normalize_question(line):
-                continue
-            if "neu co" not in normalize_question(line):
-                continue
-            optional_row_found = True
-            amount = re.search(r"(\d[\d.,]*)\s*(?:đồng|dong|vnd)\b", line, re.IGNORECASE)
-            if amount is None and index + 1 < len(lines):
-                amount = re.search(
-                    r"^\s*(\d[\d.,]*)\s*(?:đồng|dong|vnd)\s*$",
-                    lines[index + 1],
-                    re.IGNORECASE,
-                )
-            if amount is not None:
-                return (
-                    "Không thể kết luận rằng tất cả thí sinh đều phải đóng khoản này. "
-                    "Bảng phí ghi khoản kiểm tra năng lực tiếng Anh là "
-                    f"{amount.group(1)} đồng (nếu có); mình chưa có thông tin cụ thể hơn về điều kiện áp dụng."
-                )
-    if optional_row_found:
-        return (
-            "Không thể kết luận rằng tất cả thí sinh đều phải đóng khoản này. "
-            "Bảng phí ghi khoản kiểm tra năng lực tiếng Anh là khoản phí phát sinh nếu có; "
-            "mình chưa có thông tin cụ thể hơn về điều kiện áp dụng."
-        )
-    return None
 
 
 _PAYMENT_QUESTION_MARKERS = (
@@ -299,27 +82,17 @@ def _evidence_semester_system_answer(analysis: QueryAnalysis, evidence: Any) -> 
     return None
 
 
-# --- HKI fee-table reasoning -------------------------------------------------
-# Every amount below is read from the verified page text of the fee table (the
-# same trust boundary as the semester-total answer); nothing is invented.
+# --- Verified tuition fee-table reasoning -----------------------------------
+# The parser and formatter share FEE_ROW_SPECS. All fee-table reads and all
+# arithmetic pass through _fee_table / answer_fee_request.
 
 _AMOUNT_RE = re.compile(r"(\d{1,3}(?:\.\d{3})+)\s*đồng", re.IGNORECASE)
-_FEE_ROW_LABELS = (
-    ("hoc phi hki", "Học phí HKI (10 tín chỉ)"),
-    ("phi nhap hoc", "Phí nhập học"),
-    ("tai khoan hoc lieu dien tu", "Tài khoản học liệu điện tử"),
-    ("kiem tra nang luc tieng anh", "Kiểm tra năng lực Tiếng Anh (nếu có)"),
-)
-_FEE_COMPOSITION_MARKERS = (
-    "ngoai hoc phi", "ngoai tien hoc", "ngoai tien hoc phi", "khoan nao", "nhung khoan",
-    "cac khoan", "khoan gi", "co nam trong", "nam trong", "toan bo", "chi tinh tien hoc",
-    "dong them", "con phai dong",
-)
 _PRE_SCHOLARSHIP_MARKERS = (
     "tru hoc bong", "da tru", "chua tru", "da giam", "chua giam", "truoc hoc bong",
     "chua ap dung hoc bong", "thay doi muc hoc phi", "lam thay doi", "so chua giam",
 )
 _PAYABLE_MARKERS = ("dong bao nhieu", "phai dong", "con dong", "can dong", "con lai", "so tien")
+_REQUIRED_FEE_ROWS = frozenset({"tuition_hki", "enrollment_fee", "learning_materials"})
 
 
 def _money(amount: int) -> str:
@@ -327,126 +100,416 @@ def _money(amount: int) -> str:
 
 
 def _fee_rows_text(rows: list[tuple[str, int]]) -> str:
-    """``phí nhập học 1.500.000 đồng; kiểm tra năng lực Tiếng Anh (nếu có) 250.000 đồng``."""
     return "; ".join(f"{label[0].lower()}{label[1:]} {_money(amount)}" for label, amount in rows)
 
 
 def _parse_vnd(text: str) -> int | None:
-    """Parse ``12,5 triệu`` / ``12.500.000`` style amounts from a question."""
+    """Parse user-entered ``12,5 triệu`` / ``12.500.000`` amounts."""
     million = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:trieu|tr)\b", text)
     if million:
-        return int(round(float(million.group(1).replace(",", ".")) * 1_000_000))
+        try:
+            return int(round(float(million.group(1).replace(",", ".")) * 1_000_000))
+        except (OverflowError, ValueError):
+            return None
     exact = re.search(r"\b(\d{1,3}(?:\.\d{3}){2,})\b", text)
-    return int(exact.group(1).replace(".", "")) if exact else None
+    if exact is None:
+        return None
+    try:
+        return int(exact.group(1).replace(".", ""))
+    except ValueError:
+        return None
+
+
+def _trusted_dhv_url(value: object) -> bool:
+    source_url = str(value or "").strip()
+    try:
+        parsed_source = urlparse(source_url)
+        source_host = (parsed_source.hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    return (
+        parsed_source.scheme.lower() == "https"
+        and bool(source_host)
+        and (source_host == "dhv.edu.vn" or source_host.endswith(".dhv.edu.vn"))
+    )
+
+
+def _trusted_fee_table_metadata(metadata: dict[str, object]) -> bool:
+    return is_fee_table_page_text(metadata) and _trusted_dhv_url(metadata.get("source_url"))
 
 
 def _fee_table(analysis: QueryAnalysis, evidence: Any) -> dict[str, object] | None:
-    """Read rows, per-credit price and the pre-scholarship note from page text."""
+    """Read verified DHV fee rows and unit price once for every formatter."""
 
     expected_year = int(analysis.entities.get("year") or settings.target_year)
+    partial_table: dict[str, object] | None = None
     for chunk in getattr(evidence, "chunks", ()) or ():
-        metadata = getattr(chunk, "metadata", {}) or {}
-        if not is_fee_table_page_text(dict(metadata)):
-            continue
+        metadata = dict(getattr(chunk, "metadata", {}) or {})
         try:
-            if int(metadata.get("year", 0)) != expected_year:
-                continue
-        except (TypeError, ValueError):
+            year = int(metadata.get("year", 0))
+        except (OverflowError, TypeError, ValueError):
             continue
-        lines = [re.sub(r"\s+", " ", line).strip() for line in str(getattr(chunk, "text", "") or "").splitlines()]
-        lines = [line for line in lines if line]
-        rows: list[tuple[str, int]] = []
-        for marker, label in _FEE_ROW_LABELS:
-            for index, line in enumerate(lines):
-                if marker not in normalize_question(line):
-                    continue
-                amount = _AMOUNT_RE.search(line) or (
-                    _AMOUNT_RE.fullmatch(lines[index + 1]) if index + 1 < len(lines) else None
-                )
-                if amount:
-                    rows.append((label, int(amount.group(1).replace(".", ""))))
-                    break
-        if len(rows) < 2 or rows[0][0] != _FEE_ROW_LABELS[0][1]:
+        if year != expected_year:
             continue
-        per_credit = re.search(r"(\d{1,3}(?:\.\d{3})+)\s*đồng\s*/\s*tín\s*chỉ", " ".join(lines), re.IGNORECASE)
-        folded_text = normalize_question(" ".join(lines))
-        return {
-            "rows": rows,
-            "per_credit": int(per_credit.group(1).replace(".", "")) if per_credit else None,
-            "pre_scholarship": "chua ap dung hoc bong" in folded_text,
-            "year": expected_year,
-        }
-    return None
+        if _trusted_fee_table_metadata(metadata):
+            raw_text = str(getattr(chunk, "text", "") or "").replace("\\n", "\n")
+            lines = [
+                re.sub(r"\s+", " ", line).strip()
+                for line in raw_text.splitlines()
+            ]
+            lines = [line for line in lines if line]
+            row_values: dict[str, int] = {}
+            row_labels: dict[str, str] = {}
+            for key, markers, label in FEE_ROW_SPECS:
+                for index, line in enumerate(lines):
+                    if not any(marker in normalize_question(line) for marker in markers):
+                        continue
+                    amount = _AMOUNT_RE.search(line) or (
+                        _AMOUNT_RE.fullmatch(lines[index + 1]) if index + 1 < len(lines) else None
+                    )
+                    if amount:
+                        row_values[key] = int(amount.group(1).replace(".", ""))
+                        row_labels[key] = label
+                        break
+            per_credit = re.search(
+                r"(\d{1,3}(?:\.\d{3})+)\s*(?:đồng|VNĐ|VND)\s*/\s*tín\s*chỉ",
+                " ".join(lines),
+                re.IGNORECASE,
+            )
+            folded_text = normalize_question(" ".join(lines))
+            fee_total = re.search(
+                r"TỔNG\s+CHI\s+PHÍ\s+HỌC\s+KỲ\s+I\s*[:：]?\s*"
+                r"(\d{1,3}(?:\.\d{3})+)\s*đồng\s*\+\s*"
+                r"(\d{1,3}(?:\.\d{3})+)\s*đồng",
+                " ".join(lines),
+                re.IGNORECASE,
+            )
+            table = {
+                "rows": tuple(
+                    (row_labels[key], row_values[key])
+                    for key, _markers, _label in FEE_ROW_SPECS
+                    if key in row_values
+                ),
+                "row_values": row_values,
+                "per_credit": int(per_credit.group(1).replace(".", "")) if per_credit else None,
+                "pre_scholarship": "chua ap dung hoc bong" in folded_text,
+                "published_base_total": int(fee_total.group(1).replace(".", "")) if fee_total else None,
+                "published_optional_fee": int(fee_total.group(2).replace(".", "")) if fee_total else None,
+                "year": expected_year,
+            }
+            if _REQUIRED_FEE_ROWS.issubset(row_values):
+                return table
+            if table["per_credit"] or row_values or table["published_base_total"]:
+                partial_table = table
+
+    # Canonical verified tuition records can provide the unit rate when the
+    # page table was not retrieved. They never establish fee rows or totals.
+    for chunk in getattr(evidence, "chunks", ()) or ():
+        metadata = dict(getattr(chunk, "metadata", {}) or {})
+        try:
+            year = int(metadata.get("year", 0))
+        except (OverflowError, TypeError, ValueError):
+            continue
+        if (
+            str(metadata.get("category") or "") != "hoc_phi"
+            or str(metadata.get("status") or "").casefold() != "verified"
+            or str(metadata.get("school_code") or "").strip().upper() != "DHV"
+            or year != expected_year
+            or not _trusted_dhv_url(metadata.get("source_url"))
+        ):
+            continue
+        amount = re.search(
+            r"(\d{1,3}(?:\.\d{3})+)\s*(?:đồng|VNĐ|VND)\s*/\s*tín\s*chỉ",
+            str(getattr(chunk, "text", "") or ""),
+            re.IGNORECASE,
+        )
+        if amount:
+            rate_only = {
+                "rows": (), "row_values": {},
+                "per_credit": int(amount.group(1).replace(".", "")),
+                "pre_scholarship": False, "year": expected_year,
+            }
+            if partial_table is not None:
+                partial_table["per_credit"] = rate_only["per_credit"]
+                return partial_table
+            return rate_only
+    return partial_table
 
 
-def _evidence_fee_breakdown_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    """Answer composition, credit arithmetic and scholarship-adjusted fee questions."""
+def _fee_result(
+    answer: str | None,
+    request: FeeRequest,
+    *,
+    answered: set[str] | None = None,
+    missing: set[str] | None = None,
+) -> dict[str, object]:
+    answered_topics = answered or set()
+    ambiguous_topics = set(request.ambiguous_topics)
+    missing_topics = (set(request.topics) - answered_topics - ambiguous_topics) | (missing or set())
+    return {
+        "answer": answer,
+        "requested_topics": list(request.topics),
+        "answered_topics": sorted(answered_topics),
+        "ambiguous_topics": sorted(ambiguous_topics),
+        "missing_topics": sorted(missing_topics),
+    }
+
+
+def answer_fee_request(
+    analysis: QueryAnalysis,
+    evidence: Any,
+    request: FeeRequest | None = None,
+) -> dict[str, object] | None:
+    """Answer every clear fee-table part from verified rows and code arithmetic."""
 
     question = normalize_question(analysis.normalized_question)
+    fee_request = request or analyze_fee_request(question)
+    if not fee_request.is_fee_request:
+        return None
     table = _fee_table(analysis, evidence)
     if table is None:
-        return None
-    rows: list[tuple[str, int]] = table["rows"]  # type: ignore[assignment]
-    tuition_label, tuition = rows[0]
-    per_credit = table["per_credit"]
-    year = table["year"]
-    credits_match = re.search(r"\b(\d{1,2})\s*tin chi\b", question)
+        return _fee_result(None, fee_request)
 
-    # 1) "N tín chỉ thì tiền học bao nhiêu?"
-    if per_credit and credits_match and "bao nhieu tin chi" not in question and any(
-        marker in question for marker in ("bao nhieu", "uoc tinh", "tien hoc", "hoc phi", "het bao")
+    per_credit = table.get("per_credit")
+    row_values: dict[str, int] = table.get("row_values", {})  # type: ignore[assignment]
+    rows: list[tuple[str, int]] = list(table.get("rows", ()))  # type: ignore[arg-type]
+    rows_by_key = {key: row_values[key] for key, _markers, _label in FEE_ROW_SPECS if key in row_values}
+    label_by_key = {key: label for key, _markers, label in FEE_ROW_SPECS}
+    year = int(table["year"])
+
+    relationship_answer = None
+    if fee_request.relationship and fee_request.fee_items and all(
+        key in rows_by_key for key in fee_request.fee_items
     ):
-        credits = int(credits_match.group(1))
-        if credits == 1:
-            return f"Học phí năm {year} của DHV là {_money(per_credit)}/tín chỉ (chưa trừ học bổng)."
-        return (
-            f"Học phí năm {year} của DHV là {_money(per_credit)}/tín chỉ, nên {credits} tín chỉ "
-            f"tương ứng khoảng {_money(credits * per_credit)} (chưa gồm các khoản thu khác và chưa trừ học bổng)."
+        selected = [
+            (label_by_key[key], rows_by_key[key])
+            for key in fee_request.fee_items
+        ]
+        item_text = "; ".join(
+            f"{label} ({_money(amount)})" for label, amount in selected
         )
-
-    # 2) "12,5 triệu tương ứng bao nhiêu tín chỉ?"
-    asked_amount = _parse_vnd(question)
-    if per_credit and asked_amount and any(m in question for m in ("bao nhieu tin chi", "may tin chi", "so tin chi")):
-        if asked_amount % per_credit == 0:
-            return (
-                f"Với mức {_money(per_credit)}/tín chỉ, {_money(asked_amount)} tương ứng "
-                f"{asked_amount // per_credit} tín chỉ."
+        if fee_request.relationship == "separate":
+            relationship_answer = f"Có. {item_text} là khoản riêng ngoài học phí."
+        else:
+            relationship_answer = (
+                f"Không nằm trong học phí; {item_text} là khoản riêng ngoài học phí."
             )
-        return None
 
-    # 3) "Học bổng 70% học phí chuẩn HK1 thì phải đóng bao nhiêu?"
+    if fee_request.semester == "HKII":
+        return _fee_result(None, fee_request, missing={"HKII fee table"})
+
+    if fee_request.scope == "annual":
+        if per_credit:
+            answer = (
+                "Mình chưa có số liệu học phí trung bình theo năm. "
+                f"Mức được công bố là {_money(int(per_credit))}/tín chỉ; tổng học phí mỗi năm "
+                "phụ thuộc vào số tín chỉ thực tế đăng ký."
+            )
+            return _fee_result(answer, fee_request, answered={"tuition"}, missing={"annual_total"})
+        return _fee_result(None, fee_request, missing={"annual_total"})
+
+    tuition = rows_by_key.get("tuition_hki")
+    english_fee = rows_by_key.get("english_test_fee")
+    if english_fee is None:
+        english_fee = table.get("published_optional_fee")
+    base_rows = [row for row in rows if row[0] != label_by_key["english_test_fee"]]
+    base_total = (
+        sum(amount for _label, amount in base_rows)
+        if _REQUIRED_FEE_ROWS.issubset(rows_by_key)
+        else table.get("published_base_total")
+    )
     percent = re.search(r"\b(\d{1,3})\s*%", question)
-    if percent and "hoc phi" in question and any(marker in question for marker in _PAYABLE_MARKERS):
+
+    if (
+        per_credit and fee_request.credits and "bao nhieu tin chi" not in question
+        and any(marker in question for marker in ("bao nhieu", "uoc tinh", "tien hoc", "hoc phi", "het bao"))
+    ):
+        amount = int(per_credit) * fee_request.credits
+        answer = (
+            f"Mức học phí năm {year} của DHV là {_money(int(per_credit))}/tín chỉ; "
+            f"{fee_request.credits} tín chỉ tương ứng {_money(amount)} tiền học, chưa gồm khoản thu khác và chưa trừ học bổng."
+        )
+        return _fee_result(answer, fee_request, answered={"tuition"})
+
+    asked_amount = _parse_vnd(question)
+    if per_credit and asked_amount and any(marker in question for marker in ("bao nhieu tin chi", "may tin chi", "so tin chi")):
+        if asked_amount % int(per_credit) == 0:
+            answer = (
+                f"Với mức {_money(int(per_credit))}/tín chỉ, {_money(asked_amount)} tương ứng "
+                f"{asked_amount // int(per_credit)} tín chỉ."
+            )
+            return _fee_result(answer, fee_request, answered={"tuition"})
+        return _fee_result(None, fee_request, missing={"credit_count"})
+
+    if percent and tuition and "hoc phi" in question and any(marker in question for marker in _PAYABLE_MARKERS):
         rate = int(percent.group(1))
         if 0 < rate <= 100:
             support = tuition * rate // 100
-            others = _fee_rows_text(rows[1:])
-            return (
+            extras = _fee_rows_text([row for row in rows if row[0] != label_by_key["tuition_hki"]])
+            answer = (
                 f"Học phí chuẩn HK1 năm {year} là {_money(tuition)}. Hỗ trợ {rate}% tương đương "
                 f"{_money(support)}, nên phần học phí HK1 còn phải đóng là {_money(tuition - support)}. "
-                + (f"Các khoản thu khác được tính riêng: {others}." if others else "")
+                + (f"Các khoản thu khác được tính riêng: {extras}." if extras else "")
             ).strip()
+            return _fee_result(answer, fee_request, answered={"tuition", "other_fees", "total"})
 
-    # 4) "Học phí đã trừ học bổng chưa?" / "Học bổng có làm thay đổi đơn giá?"
-    if "hoc bong" in question and "hoc phi" in question and any(m in question for m in _PRE_SCHOLARSHIP_MARKERS):
-        if not table["pre_scholarship"]:
-            return None
-        unit = f", tương ứng {_money(per_credit)}/tín chỉ" if per_credit else ""
+    if "hoc bong" in question and "hoc phi" in question and any(marker in question for marker in _PRE_SCHOLARSHIP_MARKERS):
+        if not table.get("pre_scholarship") or tuition is None:
+            return _fee_result(None, fee_request)
+        rate_text = f", tương ứng {_money(int(per_credit))}/tín chỉ" if per_credit else ""
         lead = "Không." if "thay doi" in question else "Chưa."
-        return (
-            f"{lead} {tuition_label} năm {year} là {_money(tuition)}{unit}; đây là mức chưa áp dụng "
-            "học bổng và các chính sách hỗ trợ. Đơn giá tín chỉ giữ nguyên, học bổng (nếu được xét) "
+        answer = (
+            f"{lead} Học phí HKI năm {year} là {_money(tuition)}{rate_text}; đây là mức chưa áp dụng "
+            "học bổng và các chính sách hỗ trợ. Đơn giá tín chỉ giữ nguyên; học bổng (nếu được xét) "
             "sẽ giảm vào số tiền bạn phải đóng."
         )
+        return _fee_result(answer, fee_request, answered={"tuition", "scholarship"})
 
-    # 5) "Ngoài học phí còn những khoản nào?" / "Phí nhập học có nằm trong học phí không?"
-    if any(marker in question for marker in _FEE_COMPOSITION_MARKERS) and len(rows) >= 2:
-        extras = _fee_rows_text(rows[1:])
-        yes_no = any(m in question for m in ("co nam trong", "nam trong", "toan bo", "co phai"))
-        lead = "Không. " if yes_no else ""
-        note = " (mức chưa áp dụng học bổng)" if table["pre_scholarship"] else ""
-        return (
-            f"{lead}Theo bảng phí học kỳ I năm {year} của DHV{note}, {tuition_label[0].lower()}{tuition_label[1:]} là {_money(tuition)}; "
-            f"các khoản thu khác được tính riêng: {extras}."
+    relation_question = any(marker in question for marker in ("co nam trong", "nam trong", "toan bo", "co phai"))
+    if relation_question and tuition is not None and base_total is not None:
+        extras = _fee_rows_text([row for row in rows if row[0] != label_by_key["tuition_hki"]])
+        answer = (
+            f"Không. Theo bảng phí học kỳ I năm {year} của DHV, học phí là {_money(tuition)}; "
+            f"các khoản khác được tính riêng: {extras}."
         )
-    return None
+        return _fee_result(answer, fee_request, answered={"tuition", "other_fees"})
+
+    if "total" in fee_request.topics:
+        if base_total is None:
+            return _fee_result(None, fee_request, missing={"total"})
+        details = _fee_rows_text(rows)
+        if fee_request.optional_english == "include":
+            if english_fee is None:
+                return _fee_result(None, fee_request, missing={"english_test_fee", "total"})
+            total = base_total + english_fee
+            if details:
+                answer = (
+                    f"Theo bảng phí học kỳ I năm {year} của DHV, gồm {details}; "
+                    f"tổng cộng {_money(total)}."
+                )
+            else:
+                answer = (
+                    f"Theo bảng phí học kỳ I năm {year} của DHV, tổng cơ bản {_money(base_total)} "
+                    f"cộng phí kiểm tra năng lực Tiếng Anh {_money(english_fee)} thành {_money(total)}."
+                )
+        elif fee_request.optional_english == "exclude":
+            english_note = (
+                f" Khoản kiểm tra năng lực Tiếng Anh {_money(english_fee)} không được cộng vì bạn nêu không kiểm tra."
+                if english_fee is not None else ""
+            )
+            answer = f"Tổng các khoản cơ bản học kỳ I năm {year} là {_money(base_total)}.{english_note}"
+        else:
+            if english_fee is None:
+                answer = f"Tổng các khoản theo bảng phí học kỳ I năm {year} là {_money(base_total)}. Chi tiết: {details}."
+            else:
+                breakdown = f" ({details})" if details else ""
+                answer = (
+                    f"Tổng các khoản cơ bản học kỳ I năm {year} là {_money(base_total)}{breakdown}. "
+                    f"Nếu thuộc diện kiểm tra năng lực Tiếng Anh, cộng thêm {_money(english_fee)}, "
+                    f"thành tối đa {_money(base_total + english_fee)}."
+                )
+        answered = {"total"}
+        if tuition is not None:
+            answered.add("tuition")
+        if len(rows) > 1:
+            answered.add("other_fees")
+        if fee_request.fee_items and all(key in rows_by_key for key in fee_request.fee_items):
+            answered.add("specific_fee")
+        if "scholarship" in fee_request.topics and fee_request.ambiguous_topics:
+            answer += " Về học bổng, bạn muốn tìm học bổng đầu vào, học bổng theo học bạ, cam kết hoàn học phí hay xem tất cả?"
+        if relationship_answer:
+            answer = f"{relationship_answer} {answer}"
+        return _fee_result(answer, fee_request, answered=answered)
+
+    if fee_request.fee_items:
+        selected = [
+            (label_by_key[key], rows_by_key[key])
+            for key in fee_request.fee_items if key in rows_by_key
+        ]
+        missing_items = set(fee_request.fee_items) - set(rows_by_key)
+        if not selected:
+            return _fee_result(None, fee_request, missing=missing_items)
+        if relationship_answer:
+            return _fee_result(
+                relationship_answer,
+                fee_request,
+                answered={"specific_fee", "other_fees"},
+                missing=missing_items,
+            )
+        lines = []
+        for label, amount in selected:
+            if "Tiếng Anh" in label:
+                lines.append(f"{label}: {_money(amount)}; khoản này chỉ áp dụng nếu thuộc diện kiểm tra.")
+            else:
+                lines.append(f"{label}: {_money(amount)}, là khoản riêng ngoài học phí.")
+        answer = " ".join(lines)
+        if missing_items:
+            missing_labels = [label_by_key[key] for key, _markers, label in FEE_ROW_SPECS if key in missing_items]
+            answer += " Bảng phí đã kiểm chứng chưa có số tiền cho " + ", ".join(missing_labels) + "."
+        return _fee_result(answer, fee_request, answered={"specific_fee", "other_fees"}, missing=missing_items)
+
+    if "other_fees" in fee_request.topics:
+        extras = [row for row in rows if row[0] != label_by_key["tuition_hki"]]
+        if not extras or tuition is None:
+            return _fee_result(None, fee_request, missing={"other_fees"})
+        answer = (
+            f"Theo bảng phí học kỳ I năm {year} của DHV, học phí là {_money(tuition)}. "
+            f"Ngoài ra, các khoản thu khác gồm: {_fee_rows_text(extras)}."
+        )
+        return _fee_result(answer, fee_request, answered={"tuition", "other_fees"})
+
+    if "tuition" in fee_request.topics:
+        if fee_request.scope == "semester" and tuition is not None:
+            rate_note = f" Đơn giá là {_money(int(per_credit))}/tín chỉ." if per_credit else ""
+            answer = f"Học phí HKI (10 tín chỉ) năm {year} của DHV là {_money(tuition)}.{rate_note}"
+        elif fee_request.scope == "per_credit" and per_credit:
+            answer = (
+                f"Học phí theo tín chỉ năm {year} của DHV là {_money(int(per_credit))}/tín chỉ. "
+                "Tổng học phí phụ thuộc vào số tín chỉ thực tế đăng ký."
+            )
+        else:
+            return _fee_result(None, fee_request, missing={"per_credit"})
+        if fee_request.ambiguous_topics:
+            answer += " Về học bổng, bạn muốn tìm học bổng đầu vào, học bổng theo học bạ, cam kết hoàn học phí hay xem tất cả?"
+        return _fee_result(answer, fee_request, answered={"tuition"})
+
+    if "specific_fee" in fee_request.topics or "total" in fee_request.topics:
+        return _fee_result(None, fee_request)
+    return _fee_result(None, fee_request)
+
+
+def _fee_request_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    result = answer_fee_request(analysis, evidence)
+    return str(result["answer"]) if result and result.get("answer") else None
+
+
+# Compatibility adapters keep the multi-issue formatter API stable while all
+# table parsing, topic selection, and arithmetic live in answer_fee_request.
+def _evidence_tuition_answer(evidence: Any, analysis: QueryAnalysis | None = None) -> str | None:
+    return _fee_request_answer(analysis, evidence) if analysis is not None else None
+
+
+def _evidence_fee_item_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    request = analyze_fee_request(analysis.normalized_question)
+    return _fee_request_answer(analysis, evidence) if "specific_fee" in request.topics else None
+
+
+def _evidence_tuition_total_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    request = analyze_fee_request(analysis.normalized_question)
+    return _fee_request_answer(analysis, evidence) if "total" in request.topics else None
+
+
+def _evidence_tuition_per_credit_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    request = analyze_fee_request(analysis.normalized_question)
+    return _fee_request_answer(analysis, evidence) if request.scope == "per_credit" else None
+
+
+def _evidence_optional_english_fee_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    request = analyze_fee_request(analysis.normalized_question)
+    if "english_test_fee" not in request.fee_items:
+        return None
+    return _fee_request_answer(analysis, evidence)
+
+
+def _evidence_fee_breakdown_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    return _fee_request_answer(analysis, evidence)

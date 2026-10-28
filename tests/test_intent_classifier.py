@@ -150,11 +150,11 @@ class IntentDatasetTests(unittest.TestCase):
     def test_holdout_accuracy_is_at_least_80_percent(self) -> None:
         model = load_model()
         test = load_records(DEFAULT_TEST_PATH)
-        correct = sum(
-            model.predict(row["text"]) is not None
-            and model.predict(row["text"]).intent == row["intent"]
-            for row in test
-        )
+        correct = 0
+        for row in test:
+            prediction = model.predict(row["text"])
+            if prediction is not None and prediction.intent == row["intent"]:
+                correct += 1
 
         self.assertGreaterEqual(correct / len(test), 0.80)
 

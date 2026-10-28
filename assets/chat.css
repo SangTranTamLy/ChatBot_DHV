@@ -234,7 +234,6 @@
     flex-direction: row;
     justify-content: flex-end;
 }
-[data-testid="stChatMessage"]:has([aria-label*="user"]) [data-testid="stChatMessageAvatarUser"] { display: none; }
 [data-testid="stChatMessageContent"] { min-width: 0; overflow-wrap: anywhere; box-sizing: border-box; }
 [data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
 [data-testid="stChatMessageContent"][aria-label*="user"] {
@@ -258,8 +257,6 @@
     border-radius: 1.15rem;
     background: #f1f5fb;
 }
-[data-testid="stChatMessageAvatarAssistant"],
-[data-testid="stChatMessageAvatarCustom"] { display: none; }
 [data-testid="stChatMessage"] p { line-height: 1.7; margin: 0 0 0.75rem; white-space: normal; }
 [data-testid="stChatMessage"] p:last-child { margin-bottom: 0; }
 [data-testid="stChatMessage"] ul,
@@ -2901,11 +2898,13 @@ body, [data-testid="stAppViewContainer"] {
 }
 
 .st-key-topbar {
-    width:calc(100% + 4.6rem) !important;
+    width:calc(100% + clamp(2.4rem, 8vw, 6.5rem)) !important;
     max-width:none !important;
     min-height:4.2rem;
-    margin:0 -2.3rem !important;
-    padding:0 2.3rem !important;
+    margin-left:calc(0px - clamp(1.2rem, 4vw, 3.25rem)) !important;
+    margin-right:calc(0px - clamp(1.2rem, 4vw, 3.25rem)) !important;
+    padding-left:clamp(1.2rem, 4vw, 3.25rem) !important;
+    padding-right:clamp(1.2rem, 4vw, 3.25rem) !important;
     border-bottom:1px solid #dce7f4;
     background:#ffffffec !important;
     box-shadow:none !important;
@@ -4117,63 +4116,113 @@ body, [data-testid="stAppViewContainer"] {
     padding:.25rem 0 !important;
 }
 
-/* User-message tools and branch navigation remain compact and unobtrusive. */
-[class*="st-key-message_actions_"] {
-    min-height:0 !important;
-    margin-top:.2rem !important;
-    opacity:0 !important;
-    pointer-events:none !important;
-    transition:opacity .16s ease !important;
-}
-[data-testid="stChatMessage"]:hover [class*="st-key-message_actions_"] {
-    opacity:1 !important;
-    pointer-events:auto !important;
-}
-[class*="st-key-message_actions_"] [data-testid="stButton"] button {
-    min-height:1.8rem !important;
-    padding:.2rem .5rem !important;
-    border:0 !important;
-    border-radius:.45rem !important;
-    background:transparent !important;
-    color:#587396 !important;
-    font-size:.72rem !important;
-}
-[class*="st-key-message_branch_nav_"] {
-    align-items:center !important;
-    gap:.15rem !important;
-    margin:.15rem 0 .15rem 3rem !important;
-    min-height:1.8rem !important;
-}
-[class*="st-key-message_branch_nav_"] [data-testid="stCaptionContainer"] {
-    width:auto !important;
-    min-width:2.4rem !important;
-    text-align:center !important;
-    color:#6f86a3 !important;
-    font-size:.72rem !important;
-}
-[class*="st-key-message_branch_nav_"] [data-testid="stButton"] button {
-    min-height:1.7rem !important;
-    padding:.15rem .35rem !important;
-    border:0 !important;
-    border-radius:.4rem !important;
-    background:transparent !important;
-    color:#526f95 !important;
-    font-size:.7rem !important;
-}
-[class*="st-key-message_branch_preview_"] {
-    margin:.15rem 0 .7rem 3rem !important;
-    padding:.55rem .7rem !important;
-    border-left:2px solid #c7d7ec !important;
-    border-radius:0 .55rem .55rem 0 !important;
-    background:#f4f8fd !important;
-    color:#36557b !important;
-    font-size:.83rem !important;
-}
-
 @media(max-width:700px) {
-    [data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"],
-    [class*="st-key-message_actions_"] {
+    [data-testid="stSidebar"]:has(.st-key-dhv_sidebar_v3) [class*="st-key-chat_actions_"] {
         opacity:1 !important;
         pointer-events:auto !important;
+    }
+}
+
+/* Keep the chatbot and visitor identifiable beside every chat bubble. */
+[data-testid="stChatMessageAvatarAssistant"],
+[data-testid="stChatMessageAvatarCustom"] {
+    display:grid !important;
+    flex:0 0 2.35rem !important;
+    width:2.35rem !important;
+    height:2.35rem !important;
+    place-items:center !important;
+    overflow:hidden !important;
+    margin-top:.1rem !important;
+    border-radius:50% !important;
+    background:#db1032 !important;
+    color:#fff !important;
+}
+[data-testid="stChatMessageAvatarAssistant"] svg,
+[data-testid="stChatMessageAvatarCustom"] svg {
+    width:1.35rem !important;
+    height:1.35rem !important;
+    color:#fff !important;
+}
+[data-testid="stChatMessageAvatarUser"] {
+    display:grid !important;
+    flex:0 0 2.35rem !important;
+    width:2.35rem !important;
+    height:2.35rem !important;
+    place-items:center !important;
+    overflow:hidden !important;
+    margin-top:.1rem !important;
+    border:1px solid #dce6f3 !important;
+    border-radius:50% !important;
+    background:#eaf0f8 !important;
+    color:#173761 !important;
+    font-size:.9rem !important;
+    font-weight:750 !important;
+}
+[data-testid="stChatMessageAvatarUser"] svg {
+    width:1.2rem !important;
+    height:1.2rem !important;
+    color:#173761 !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageContent"][aria-label*="user"]) {
+    display:flex !important;
+    flex-direction:row-reverse !important;
+    align-items:flex-start !important;
+    justify-content:flex-start !important;
+    gap:.65rem !important;
+}
+[data-testid="stChatMessage"]:has([data-testid="stChatMessageContent"][aria-label*="user"]) [data-testid="stChatMessageContent"] {
+    align-self:flex-start !important;
+    width:fit-content !important;
+    max-width:min(78%, 36rem) !important;
+    min-height:0 !important;
+    height:auto !important;
+    margin:0 !important;
+}
+@media(max-width:700px) {
+    [data-testid="stChatMessage"]:has([data-testid="stChatMessageContent"][aria-label*="user"]) [data-testid="stChatMessageContent"] {
+        max-width:min(88%, 36rem) !important;
+    }
+}
+
+/* Keep the top bar flush with the main content edge on each breakpoint. */
+@media(max-width:1100px) and (min-width:851px) {
+    .st-key-topbar {
+        width:calc(100% + 2.6rem) !important;
+        margin-left:-1.3rem !important;
+        margin-right:-1.3rem !important;
+        padding-left:1.3rem !important;
+        padding-right:1.3rem !important;
+    }
+}
+@media(max-width:850px) and (min-width:701px) {
+    [data-testid="stApp"]:has(.st-key-chat_landing_reference) .st-key-topbar {
+        width:calc(100% + 2rem) !important;
+        margin-left:-1rem !important;
+        margin-right:-1rem !important;
+        padding-left:1rem !important;
+        padding-right:1rem !important;
+    }
+    [data-testid="stApp"]:not(:has(.st-key-chat_landing_reference)) .st-key-topbar {
+        width:calc(100% + 2.6rem) !important;
+        margin-left:-1.3rem !important;
+        margin-right:-1.3rem !important;
+        padding-left:1.3rem !important;
+        padding-right:1.3rem !important;
+    }
+}
+@media(max-width:700px) {
+    [data-testid="stApp"]:has(.st-key-chat_landing_reference) .st-key-topbar {
+        width:calc(100% + 2rem) !important;
+        margin-left:-1rem !important;
+        margin-right:-1rem !important;
+        padding-left:1rem !important;
+        padding-right:1rem !important;
+    }
+    [data-testid="stApp"]:not(:has(.st-key-chat_landing_reference)) .st-key-topbar {
+        width:calc(100% + 1.8rem) !important;
+        margin-left:-.9rem !important;
+        margin-right:-.9rem !important;
+        padding-left:.9rem !important;
+        padding-right:.9rem !important;
     }
 }

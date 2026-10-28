@@ -85,7 +85,6 @@ class Phase2ScopeAndScoreTests(unittest.TestCase):
             with self.subTest(question=question):
                 result = ask_chatbot(question, retriever=retriever, llm=llm)
                 self.assertEqual(result["status"], "no_data")
-                self.assertNotEqual(result["status"], "out_of_scope")
         self.assertEqual(retriever.calls, 2)
         self.assertEqual(llm.calls, 0)
 

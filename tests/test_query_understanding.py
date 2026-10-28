@@ -91,7 +91,7 @@ class QueryUnderstandingTests(unittest.TestCase):
             ("Trong ngày, trường nhận hồ sơ nhập học vào khung giờ nào?", ("06:00", "18:00")),
             ("Hồ sơ cần gì?", ("Học bạ", "Căn cước")),
             ("Hồ sơ cần gì, nộp ở đâu?", ("Học bạ", "Căn cước", "194 Lê Đức Thọ", "37 Kinh Dương Vương")),
-            ("Hồ sơ cần gì, nộp ở đâu và học phí bao nhiêu?", ("Học bạ", "194 Lê Đức Thọ", "12.500.000")),
+            ("Hồ sơ cần gì, nộp ở đâu và học phí bao nhiêu?", ("Học bạ", "194 Lê Đức Thọ", "1.250.000 đồng/tín chỉ")),
             ("Nộp hồ sơ nhập học ở đâu và nhận hồ sơ nhập học vào khung giờ nào?", ("194 Lê Đức Thọ", "06:00", "18:00")),
             ("Hồ sơ cần gì và nhận hồ sơ nhập học vào khung giờ nào?", ("Học bạ", "06:00", "18:00")),
             ("Nộp hồ sơ lúc nào trong ngày?", ("06:00", "18:00")),
@@ -148,6 +148,7 @@ class QueryUnderstandingTests(unittest.TestCase):
         for question, expected in (
             ("Ngưỡng nhận hồ sơ vào DHV là bao nhiêu?", "HOI_NGUONG_DAU_VAO"),
             ("Điểm tối thiểu để đăng ký ngành này", "HOI_NGUONG_DAU_VAO"),
+            ("Điểm xét tuyển tối thiểu đối với các ngành Luật là bao nhiêu (tính theo thang 30)?", "HOI_NGUONG_DAU_VAO"),
             ("Lịch đăng ký xét tuyển DHV", "HOI_LICH_TUYEN_SINH"),
             ("Thủ tục đăng ký nhập học cần gì?", "HOI_HO_SO"),
             ("Nộp hồ sơ đăng ký xét tuyển DHV", "HOI_DANG_KY_XET_TUYEN"),
@@ -155,6 +156,53 @@ class QueryUnderstandingTests(unittest.TestCase):
         ):
             with self.subTest(question=question):
                 self.assertEqual(analyze_question(question).intent, expected)
+
+    def test_english_certificate_eligibility_uses_the_scoped_official_rule(self):
+        question = (
+            "Cho em hỏi ngành Ngôn ngữ Anh có nhận xét tuyển đối với thí sinh "
+            "có chứng chỉ tiếng Anh quốc tế từ B1 trở lên không?"
+        )
+        analysis = analyze_question(question)
+        plan = route_question(analysis)
+        self.assertEqual(analysis.intent, "HOI_DANG_KY_XET_TUYEN")
+        self.assertEqual(plan.categories, ("phuong_thuc_xet_tuyen",))
+
+        result = ask_chatbot(question, retriever=_retriever(), llm=NeverGenerate())
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("phương thức 5", result["answer"])
+        self.assertIn("> B1", result["answer"])
+        self.assertIn("không xác nhận chứng chỉ đúng mức B1 là đủ", result["answer"])
+        self.assertNotIn("lịch tuyển sinh", result["answer"].casefold())
+
+    def test_score_minimum_with_inserted_descriptor_does_not_ask_for_clarification(self):
+        question = "Điểm xét tuyển tối thiểu đối với các ngành Luật là bao nhiêu (tính theo thang 30)?"
+        analysis = analyze_question(question)
+        self.assertEqual(analysis.intent, "HOI_NGUONG_DAU_VAO")
+        self.assertEqual(analysis.entities["score_type"], "application_threshold")
+        result = ask_chatbot(question, retriever=_retriever(), llm=NeverGenerate())
+        self.assertNotEqual(result["status"], "clarification")
+
+    def test_law_economics_threshold_uses_typed_threshold_evidence(self):
+        question = "Luật Kinh tế điểm đầu vào là bao nhiêu?"
+        analysis = analyze_question(question)
+        self.assertEqual(analysis.intent, "HOI_NGUONG_DAU_VAO")
+        self.assertEqual(analysis.entities["major_name"], "Luật Kinh tế")
+        self.assertEqual(analysis.entities["candidate_majors"], ["Luật Kinh tế"])
+        plan = route_question(analysis)
+        self.assertIn("nguong_dau_vao", plan.categories)
+        result = ask_chatbot(question, retriever=_retriever(), llm=NeverGenerate())
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("18 điểm", result["answer"])
+
+    def test_explicit_law_and_law_economics_remain_two_entities(self):
+        analysis = analyze_question("So sánh ngành Luật và Luật Kinh tế")
+        self.assertCountEqual(analysis.entities["candidate_majors"], ["Luật", "Luật Kinh tế"])
+
+    def test_ambiguous_commitment_policy_asks_a_clarifying_question(self):
+        result = ask_chatbot("Chính sách cam kết", retriever=_retriever(), llm=NeverGenerate())
+        self.assertEqual(result["status"], "clarification")
+        self.assertIn("không tăng học phí", result["answer"])
+        self.assertIn("học bổng cam kết hoàn học phí", result["answer"])
 
     def test_retrieval_failure_in_one_issue_keeps_other_answers(self):
         base = _retriever()
@@ -197,7 +245,7 @@ class QueryUnderstandingTests(unittest.TestCase):
 
                 self.assertEqual(result["status"], "ok")
                 self.assertFalse(result["partial"])
-                self.assertIn("12.500.000 đồng", result["answer"])
+                self.assertIn("1.250.000 đồng/tín chỉ", result["answer"])
                 self.assertIn("### Học bổng", result["answer"])
                 self.assertIn("75 tỷ đồng", result["answer"])
                 self.assertIn("Học bổng Tài năng", result["answer"])

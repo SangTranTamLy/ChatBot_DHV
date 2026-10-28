@@ -25,7 +25,7 @@ def _requested_kinds(query: str) -> tuple[str, ...]:
     from src.chatbot.query_semantics import enrollment_request
 
     # Ignore router annotations: an intent label is not a user request.
-    query = _fold(query.partition("intent:")[0])
+    query = _fold(query)
     request = enrollment_request(query)
     if request in {"reception_hours", "reception_dates", "submission_mode"}:
         return (request,)
@@ -90,6 +90,20 @@ def _document_kinds(document: Document) -> set[str]:
     return kinds
 
 
+def _normalized_filter_values(value: object) -> list[str]:
+    if isinstance(value, Mapping):
+        return []
+    if isinstance(value, set):
+        values = sorted(value, key=str)
+    elif isinstance(value, (list, tuple)):
+        values = value
+    elif value is None:
+        return []
+    else:
+        values = (value,)
+    return [normalized for item in values if (normalized := _fold(item))]
+
+
 def lookup_structured_documents(
     query: str,
     documents: Iterable[Document],
@@ -100,14 +114,28 @@ def lookup_structured_documents(
     An unsupported lookup simply contributes no third-stream vote. All SQL
     values, including user-derived entities, are bound parameters.
     """
-    kinds = _requested_kinds(query)
+    user_query = query.partition("intent:")[0]
+    kinds = _requested_kinds(user_query)
     if not kinds:
         return []
     filters = entity_filters or {}
-    body = _fold(query.partition("intent:")[0])
-    has_entity = any(filters.get(k) for k in (
-        "major_name", "major_code", "parent_major", "program_name", "candidate_majors", "candidate_programs"
-    )) or bool(re.search(r"\b\d{7}\b", body))
+    body = _fold(user_query)
+    codes = re.findall(r"\b\d{7}\b", user_query)
+    normalized_filters = {
+        key: _normalized_filter_values(filters.get(key))
+        for key in (
+            "major_name", "major_code", "parent_major", "parent_major_code",
+            "program_name", "candidate_majors", "candidate_programs",
+            "admission_method", "candidate_methods",
+        )
+    }
+    has_entity = bool(codes) or any(
+        normalized_filters[key]
+        for key in (
+            "major_name", "major_code", "parent_major", "parent_major_code", "program_name",
+            "candidate_majors", "candidate_programs",
+        )
+    )
     if set(kinds) & {"admission_score", "admission_threshold"} and not has_entity:
         return []
     method_number = re.search(r"\bphuong thuc(?: xet tuyen)?(?: thu)?\s*(\d+)\b", body)
@@ -131,9 +159,8 @@ def lookup_structured_documents(
         if isinstance(programs, list):
             rows.extend((index, "program_name", _fold(name), "") for name in programs if isinstance(name, str))
 
-    methods = filters.get("admission_method") or filters.get("candidate_methods")
+    methods = normalized_filters["admission_method"] or normalized_filters["candidate_methods"]
     if not methods and set(kinds) & {"admission_score", "admission_threshold", "admission_method"}:
-        body = _fold(query.partition("intent:")[0])
         methods = [method for method, pattern in (
             ("thpt", r"\b(?:theo|thi|phuong thuc)\s+(?:ket qua\s+)?(?:tot nghiep\s+)?thpt\b"),
             ("hoc_ba", r"\bhoc ba\b"),
@@ -141,23 +168,33 @@ def lookup_structured_documents(
             ("h_sca", r"\bh[- ]?sca\b|\bdanh gia nang luc chuyen biet\b"),
         ) if re.search(pattern, body)]
     # A code in a direct retriever query is also an exact entity constraint.
-    codes = re.findall(r"\b\d{7}\b", query.partition("intent:")[0])
     clauses = ["f.field = 'kind'", "f.value IN (" + ",".join("?" for _ in kinds) + ")"]
     params: list[object] = list(kinds)
     groups = (
-        (("major_code", "parent_major_code"), filters.get("major_code") or codes),
-        (("major_name", "parent_major"), filters.get("major_name") or filters.get("parent_major") or filters.get("candidate_majors")),
-        (("program_name",), filters.get("program_name") or filters.get("candidate_programs")),
+        (
+            ("major_code", "parent_major_code"),
+            normalized_filters["major_code"]
+            or normalized_filters["parent_major_code"]
+            or codes,
+        ),
+        (
+            ("major_name", "parent_major"),
+            normalized_filters["major_name"]
+            or normalized_filters["parent_major"]
+            or normalized_filters["candidate_majors"],
+        ),
+        (
+            ("program_name",),
+            normalized_filters["program_name"]
+            or normalized_filters["candidate_programs"],
+        ),
         (("method",), methods),
         (("method_number",), [method_number.group(1)] if method_number and kinds == ("admission_method",) else None),
     )
     for fields, values in groups:
         if not values:
             continue
-        values = values if isinstance(values, (list, tuple, set)) else [values]
-        normalized = [_fold(value) for value in values if value]
-        if not normalized:
-            continue
+        normalized = values
         clauses.append(
             "EXISTS (SELECT 1 FROM facts e WHERE e.doc = f.doc AND e.field IN ("
             + ",".join("?" for _ in fields) + ") AND e.value IN ("

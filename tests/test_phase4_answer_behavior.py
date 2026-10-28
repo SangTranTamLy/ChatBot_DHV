@@ -69,7 +69,7 @@ class Phase4AnswerBehaviorTests(unittest.TestCase):
         self.assertEqual(result["trace"]["deterministic_branch"], "application_threshold_lookup")
         self.assertEqual(result["trace"]["deterministic_validation"]["status"], "ok")
         self.assertIn("600", result["answer"])
-        self.assertIn("15,00", result["answer"])
+        self.assertIn("15 điểm", result["answer"])
         self.assertEqual(result["trace"]["final_status"], "ok")
 
     def test_supplementary_lookup_supports_paraphrases_without_threshold_mixing(self) -> None:
@@ -95,8 +95,8 @@ class Phase4AnswerBehaviorTests(unittest.TestCase):
                     result["trace"]["deterministic_branch"],
                     "supplementary_threshold_lookup",
                 )
-                self.assertIn("18.0", result["answer"])
-                self.assertIn("15.0", result["answer"])
+                self.assertIn("18 điểm", result["answer"])
+                self.assertIn("15 điểm", result["answer"])
                 self.assertNotIn("600", result["answer"])
 
     def test_major_specific_fact_overrides_global_only_for_its_method(self) -> None:

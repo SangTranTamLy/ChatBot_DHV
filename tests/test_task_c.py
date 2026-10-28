@@ -351,8 +351,8 @@ class TaskCTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["sources"], [{"title": "Học phí DHV 2026", "url": SOURCE_URL}])
         self.assertNotIn("fake.invalid", result["answer"])
-        self.assertTrue(llm.called)
-        self.assertNotIn(SOURCE_URL, llm.prompt)
+        self.assertIn("1.250.000 đồng/tín chỉ", result["answer"])
+        self.assertFalse(llm.called)
 
     def test_tuition_validator_does_not_relabel_total_cost_as_tuition(self) -> None:
         documents = [
@@ -367,7 +367,7 @@ class TaskCTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "no_data")
         self.assertEqual(result["sources"], [])
-        self.assertEqual(len(llm.prompts), 2)
+        self.assertFalse(llm.prompts)
 
     def test_threshold_answer_preserves_numeric_semantics_from_evidence(self) -> None:
         threshold_document = Document(
@@ -447,8 +447,7 @@ class TaskCTests(unittest.TestCase):
         self.assertEqual(result_2024["trace"]["evidence_count"], 1)
         self.assertIn("1.100.000", result_2024["answer"])
         self.assertNotIn("1.250.000", result_2024["answer"])
-        self.assertIn("1.100.000", llm_2024.prompt)
-        self.assertNotIn("1.250.000", llm_2024.prompt)
+        self.assertFalse(llm_2024.called)
 
         retriever_2026 = RecordingRetriever(
             [
@@ -507,8 +506,10 @@ class TaskCTests(unittest.TestCase):
 
         result = ask_chatbot("Học phí DHV 2026", retriever=retriever, llm=llm)
 
-        self.assertEqual(result["status"], "ollama_offline")
-        self.assertEqual(result["sources"], [])
+        # A complete answer from verified evidence does not depend on Ollama.
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["sources"], [{"title": "Học phí DHV 2026", "url": SOURCE_URL}])
+        self.assertIn("1.250.000 đồng/tín chỉ", result["answer"])
         self.assertNotIn("Traceback", result["answer"])
 
     def test_missing_chroma_is_classified_as_vector_db_error(self) -> None:

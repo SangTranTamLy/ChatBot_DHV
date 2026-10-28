@@ -801,7 +801,7 @@ class StructuredJSONPipelineTests(unittest.TestCase):
     def test_page_text_supplements_records_for_facts_not_structured_as_records(self) -> None:
         raw = ADMISSION_METHODS_PDF
         with tempfile.TemporaryDirectory() as temp_dir:
-            result = convert_pdf_to_structured_json(
+            convert_pdf_to_structured_json(
                 raw,
                 raw_root=RAW_ROOT,
                 output_root=Path(temp_dir),

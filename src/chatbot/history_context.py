@@ -10,7 +10,7 @@ from typing import Any
 
 from src.config.settings import Settings
 from src.models.local_llm import LocalLLM, OllamaError
-from .query_semantics import normalize_semantic_text
+from .query_semantics import analyze_fee_request, normalize_semantic_text
 from .scope_guard import detect_target_school
 
 
@@ -24,15 +24,20 @@ class HistoryResolution:
 def bounded_history(messages: object, question: str) -> tuple[dict[str, str], ...]:
     if not isinstance(messages, Sequence) or isinstance(messages, (str, bytes)):
         return ()
-    rows = []
+    rows: list[dict[str, str]] = []
+    last_row_is_current_question = False
+    current_question = question.strip()
     for message in messages[-9:]:
         if not isinstance(message, Mapping) or message.get("role") not in {"user", "assistant"}:
             continue
         content = message.get("content")
         if not isinstance(content, str) or not content.strip():
             continue
-        rows.append({"role": str(message["role"]), "content": content.strip()[:1200]})
-    if rows and rows[-1]["role"] == "user" and rows[-1]["content"] == question.strip():
+        content = content.strip()
+        role = str(message["role"])
+        rows.append({"role": role, "content": content[:1200]})
+        last_row_is_current_question = role == "user" and content == current_question
+    if rows and rows[-1]["role"] == "user" and last_row_is_current_question:
         rows.pop()
     rows = rows[-8:]
     while rows and rows[0]["role"] != "user":
@@ -40,17 +45,93 @@ def bounded_history(messages: object, question: str) -> tuple[dict[str, str], ..
     return tuple(rows)
 
 
+def _resolve_fee_followup(
+    question: str,
+    history: tuple[dict[str, str], ...],
+    previous_user_question: str,
+    previous_answer: str,
+) -> HistoryResolution | None:
+    """Make short fee follow-ups explicit only after a fee-table exchange."""
+
+    previous_context = normalize_semantic_text(previous_user_question + " " + previous_answer)
+    if not analyze_fee_request(previous_context).is_fee_request:
+        return None
+
+    text = normalize_semantic_text(question)
+    asks_about_scholarship_only = "hoc bong" in text and not any(
+        marker in text
+        for marker in (
+            "hoc phi", "tien hoc", "tin chi", "dong", "tong", "khoan",
+            "chi phi", "kiem tra tieng anh",
+        )
+    )
+    if asks_about_scholarship_only:
+        return None
+
+    continuation = any(
+        marker in text
+        for marker in (
+            "vay hoc ky", "vay tong", "vay luc nhap hoc", "tong la bao nhieu",
+            "tong bao nhieu", "tong cac khoan", "cong het", "cong lai",
+            "neu them", "cac khoan khac", "khoan khac", "dong them",
+            "ngoai hoc phi", "da gom", "bao gom", "nam trong",
+            "kiem tra tieng anh", "hoc ky i", "hki", "hk1",
+        )
+    ) or (
+        any(marker in text for marker in ("vay", "the", "con", "neu"))
+        and any(marker in text for marker in ("tong", "dong", "khoan", "hoc phi", "tien", "bao nhieu"))
+    )
+    if not continuation:
+        return None
+
+    recent_history_text = " ".join(
+        row["content"] for row in history[-8:] if row.get("role") in {"user", "assistant"}
+    )
+    recent_context = normalize_semantic_text(recent_history_text)
+    years = re.findall(r"\b20\d{2}\b", recent_history_text + " " + previous_user_question + " " + previous_answer)
+    year = years[-1] if years else ""
+    year_suffix = f" năm {year}" if year else ""
+    period = "học kỳ I" if any(marker in recent_context for marker in ("hoc ky i", "hki", "hk1")) else "học kỳ"
+
+    if any(marker in text for marker in ("khong kiem tra", "khong thi", "khong dong", "khong bao gom")) and "tieng anh" in text:
+        resolved = (
+            f"Tổng các khoản thu {period}{year_suffix} của DHV, không gồm phí kiểm tra năng lực tiếng Anh, "
+            "là bao nhiêu?"
+        )
+    elif "tieng anh" in text and any(marker in text for marker in ("neu co", "co kiem tra", "neu kiem tra")):
+        resolved = (
+            f"Tổng các khoản thu {period}{year_suffix} của DHV, gồm phí kiểm tra năng lực tiếng Anh nếu có, "
+            "là bao nhiêu?"
+        )
+    elif any(marker in text for marker in ("tong", "cong het", "cong lai", "het bao nhieu")):
+        resolved = f"Tổng các khoản thu {period}{year_suffix} của DHV là bao nhiêu?"
+    elif any(marker in text for marker in ("khoan khac", "cac khoan khac", "ngoai hoc phi", "dong them", "them cac khoan")):
+        resolved = f"Ngoài học phí {period}{year_suffix} của DHV, còn những khoản thu nào và tổng cộng bao nhiêu?"
+    elif any(marker in text for marker in ("da gom", "bao gom", "nam trong")):
+        resolved = f"Khoản phí vừa hỏi có nằm trong học phí {period}{year_suffix} của DHV không?"
+    else:
+        resolved = f"Học phí {period}{year_suffix} của DHV: {question.strip()}"
+
+    return HistoryResolution(resolved, "fee_history_resolution")
+
+
 def resolve_history_question(question: str, history: tuple[dict[str, str], ...], *,
                              settings_obj: Settings, llm: Any | None = None) -> HistoryResolution:
     text = normalize_semantic_text(question)
+    if not history:
+        return HistoryResolution(question)
+    last = next((row["content"] for row in reversed(history) if row["role"] == "assistant"), "")
+    last_user = next((row["content"] for row in reversed(history) if row["role"] == "user"), "")
+    if not last:
+        return HistoryResolution(question)
+    fee_resolution = _resolve_fee_followup(question, history, last_user, last)
+    if fee_resolution:
+        return fee_resolution
     reference = bool(re.search(
         r"\b(?:cai|muc|giay|khoan)\s+(?:thu|do|nay)|\b(?:y toi|y em|y minh|da co|co roi|con thieu|con lai|can mang gi|nop o dau|chu nhat|thu bay|noi ro hon|giai thich them)\b|\bco\b.{1,120}\broi\b",
         text,
     ))
-    if not history or not reference:
-        return HistoryResolution(question)
-    last = next((row["content"] for row in reversed(history) if row["role"] == "assistant"), "")
-    if not last:
+    if not reference:
         return HistoryResolution(question)
     topic = normalize_semantic_text(last)
     if "khong phai" in text and any(term in text for term in ("y toi", "y em", "y minh")):
@@ -61,7 +142,11 @@ def resolve_history_question(question: str, history: tuple[dict[str, str], ...],
     ordinal = re.search(r"(?:cai|muc|giay|khoan)(?: to)?\s+thu\s+(\d+|nhat|mot|hai|ba|tu|bon|nam)\b", text)
     if ordinal:
         number = ordinal.group(1)
-        index = int(number) if number.isdigit() else {"nhat": 1, "mot": 1, "hai": 2, "ba": 3, "tu": 4, "bon": 4, "nam": 5}[number]
+        if number.isdigit():
+            digits = number.lstrip("0") or "0"
+            index = int(digits) if len(digits) <= 3 else 0
+        else:
+            index = {"nhat": 1, "mot": 1, "hai": 2, "ba": 3, "tu": 4, "bon": 4, "nam": 5}[number]
         items = re.findall(r"^\s*(?:[-•*]|\d+[.)])\s+(.+)$", last, re.M)
         if last.count("###") <= 1 and 1 <= index <= len(items):
             original = re.search(r"(?:cái|mục|giấy(?: tờ)?|khoản)\s+thứ\s+(?:\d+|nhất|một|hai|ba|tư|bốn|năm)", question, re.I)
@@ -89,7 +174,12 @@ def resolve_history_question(question: str, history: tuple[dict[str, str], ...],
         + json.dumps({"history": history, "question": question}, ensure_ascii=False)
     )
     try:
-        model = llm or LocalLLM(settings_obj=replace(settings_obj, ollama_timeout_seconds=min(settings_obj.ollama_timeout_seconds, 12)))
+        model = llm if llm is not None else LocalLLM(
+            settings_obj=replace(
+                settings_obj,
+                ollama_timeout_seconds=min(settings_obj.ollama_timeout_seconds, 12),
+            )
+        )
         raw = model.generate(prompt).strip()
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.I)
         payload = json.loads(raw)
@@ -97,7 +187,8 @@ def resolve_history_question(question: str, history: tuple[dict[str, str], ...],
         if isinstance(resolved, str) and resolved.strip() and len(resolved) <= 600:
             source = json.dumps(history, ensure_ascii=False) + " " + question
             numbers = re.findall(r"\d[\d.,/:-]*", resolved)
-            added_numbers = any(number not in set(re.findall(r"\d[\d.,/:-]*", source)) for number in numbers)
+            source_numbers = set(re.findall(r"\d[\d.,/:-]*", source))
+            added_numbers = any(number not in source_numbers for number in numbers)
             before = detect_target_school(question)
             after = detect_target_school(resolved)
             school_changed = bool(before.get("explicit_school") and before.get("target_school") != after.get("target_school"))

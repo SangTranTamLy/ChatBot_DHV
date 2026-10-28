@@ -33,6 +33,8 @@ ADMISSIONS_KEYWORDS = frozenset(
         "nhap hoc",
         "tan sinh vien",
         "hoc lieu",
+        "kiem tra tieng anh",
+        "kiem tra nang luc tieng anh",
         "phi nhap hoc",
         "xac nhan nhap hoc",
         "lich tuyen sinh",
@@ -71,7 +73,6 @@ ADMISSIONS_KEYWORDS = frozenset(
         "website",
         "trang web",
         "web",
-        " web",
         "nganh hoc",
         "diem nhan ho so",
         "diem nhan ho so bo sung",
@@ -90,7 +91,6 @@ ADMISSIONS_KEYWORDS = frozenset(
         "duoc cong bao nhieu diem",
         "duoc cong may diem",
         "thi sinh khuyet tat",
-        "kiem tra nang luc tieng anh",
         "khoan hoc ky",
         "hoc ky i",
         "tong chi phi",
@@ -183,6 +183,7 @@ ADMISSIONS_KEYWORDS = frozenset(
         "dieu kien tot nghiep",
         # Học phí, thanh toán, ngân hàng
         "cam ket hoc phi",
+        "chinh sach cam ket",
         "khong tang hoc phi",
         "on dinh hoc phi",
         "hoc phi co tang khong",
@@ -281,16 +282,6 @@ SCHOOL_DIRECTORY_KEYWORDS = frozenset(
         "cong thong tin dao tao",
     }
 )
-SCHOOL_KEYWORDS = frozenset(
-    {
-        "dhv",
-        "dai hoc hung vuong",
-        "hung vuong",
-        "hung vuong tphcm",
-        "hung vuong thanh pho ho chi minh",
-    }
-)
-
 # Các tên dưới đây là những tổ chức giáo dục thường xuất hiện trong câu hỏi
 # ``điểm chuẩn/học phí trường khác``.  Không đưa mọi chuỗi ``đại học`` vào đây:
 # các câu hỏi chung như ``Trường có xét học bạ không?`` vẫn phải được hiểu là
@@ -376,7 +367,6 @@ _GENERIC_INSTITUTION_FOLLOWERS = frozenset(
         "giai",
         "giao",
         "gi",
-        "gì",
         "gom",
         "hop",
         "hoc",
@@ -782,10 +772,6 @@ def scope_reason(
         return SCOPE_REASON_IN_SCOPE_DHV
     if target == TARGET_SCHOOL_DHV:
         return SCOPE_REASON_IN_SCOPE_DHV
-    if _OUT_OF_SCOPE_RE.search(normalized):
-        return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
-    if any(keyword in normalized for keyword in ("thoi tiet", "gia vang", "nau pho", "cau chuyen", "xin viec", "viec lam")):
-        return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
     return SCOPE_REASON_GENERAL_OUT_OF_SCOPE
 
 
