@@ -1,0 +1,1756 @@
+{
+  "description": "Hỏi đáp bổ sung DHV 2026 lấy từ Nhóm 4_Thu_Thap_Q&A.xlsx cho các câu mà chatbot thật (Chroma + Ollama) chưa trả lời được từ data/processed.",
+  "year": 2026,
+  "entries": [
+    {
+      "id": "UQ0007",
+      "question": "Nếu thí sinh có bằng tốt nghiệp THPT từ năm 2025 trở về trước, có được tham gia xét tuyển năm 2026 không?",
+      "answer": "Thí sinh đã được công nhận tốt nghiệp THPT của Việt Nam (hoặc tương đương) đều đủ điều kiện dự tuyển.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0009",
+      "question": "Đối với thí sinh khuyết tật, Trường có những chính sách hỗ trợ nào?",
+      "answer": "Hiệu trưởng sẽ thực hiện các biện pháp can thiệp (thông qua kiểm tra hồ sơ y tế) và tạo điều kiện tốt nhất để thí sinh được đăng ký dự tuyển và theo học các ngành phù hợp.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0010",
+      "question": "Muốn xét tuyển vào trường đại học Hùng Vương Tp.Hồ Chí Minh thì điều kiện cơ bản là gì?",
+      "answer": "Thí sinh đã tốt nghiệp THPT hoặc có trình độ tương đương theo quy định của Bộ Giáo dục và Đào tạo được đăng ký xét tuyển vào Trường đại học Hùng Vương Tp.Hồ Chí Minh.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0032",
+      "question": "Xét bổ sung em phải đến trường nộp hay đăng ký online được ạ?",
+      "answer": "Thí sinh có thể lựa chọn 1 trong 2 hình thức nộp hồ sơ xét tuyển bổ sung: \nHình thức trực tuyến: Đăng ký trực tiếp tại cổng thông tin tuyển sinh của trường: tuyensinh.dhv.edu.vn. \nHình thức trực tiếp: Nộp hồ sơ tại Ban Tư vấn Tuyển sinh thuộc một trong hai cơ sở đào tạo của Nhà trường: \nCơ sở 1: Số 194 Lê Đức Thọ, Phường An Nhơn, TP.HCM. \nCơ sở 2: Số 37 Kinh Dương Vương, Phường Phú Lâm, TP.HCM.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0049",
+      "question": "Nếu được hỗ trợ 5 triệu vào học kỳ I thì số tiền cần đóng theo bảng hỗ trợ học bổng là bao nhiêu?",
+      "answer": "Em còn đóng 5,5 triệu đồng cho học kỳ I nhé. Với trường hợp này, em có học bổng đầu vào 5 triệu đồng và được hỗ trợ thêm 5 triệu đồng ở học kỳ I; sang học kỳ II còn được giảm tiếp 1 triệu đồng.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0055",
+      "question": "Nếu em đủ điều kiện nhiều chương trình hỗ trợ thì có được hưởng cùng lúc không ạ?",
+      "answer": "Trường hợp này còn tùy vào điều kiện của từng chương trình. Em nên liên hệ tư vấn viên của Trường Đại học Hùng Vương TP. Hồ Chí Minh để được kiểm tra và hướng dẫn chính xác hơn.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0066",
+      "question": "Sinh viên ngành Kế toán có được học các học phần thực hành nghề nghiệp trước khi tốt nghiệp không?",
+      "answer": "Có. Trang chương trình ngành Kế toán nêu các học phần Thực hành Nghề nghiệp 1, Thực hành Nghề nghiệp 2 và khóa luận tốt nghiệp nhằm tăng trải nghiệm thực tế cho sinh viên.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0085",
+      "question": "Mốc 13/8 và mốc 21/8 trong hướng dẫn có phải cùng một ý nghĩa không?",
+      "answer": "Mốc 13/08/2026 và mốc 21/08/2026 là hai mốc khác nhau và có ý nghĩa khác nhau trong quá trình nhập học tại Trường Đại học Hùng Vương TP. Hồ Chí Minh.\nMốc 13/08/2026: Liên quan đến quyền lợi và chính sách hỗ trợ của trường. Tân sinh viên hoàn tất xác nhận trước ngày 13/08/2026 sẽ được hưởng mức ưu đãi cao nhất của chương trình hỗ trợ UniBridge, trong đó có hỗ trợ học phí học kỳ I và các quyền lợi tương ứng theo mức học bổng. \nMốc 21/08/2026: Là thời hạn xác nhận nhập học trên Hệ thống hỗ trợ tuyển sinh chung của Bộ Giáo dục và Đào tạo. Thí sinh trúng tuyển cần thực hiện xác nhận từ 14/08/2026 đến 17 giờ 00 ngày 21/08/2026.\nLưu ý: Bạn có thể liên hệ tư vấn viên \nThông tin liên lạc: 0287 1000 888 \nTheo dõi và kiểm tra thông tin tuyển sinh chính thức tại website của Trường Đại học Hùng Vương TP. Hồ Chí Minh: https://tuyensinh.dhv.edu.vn/?utm_source=chatgpt.com",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0088",
+      "question": "Hạn chót nộp hồ sơ tuyển sinh là khi nào?",
+      "answer": "Hạn chót đăng ký xét tuyển năm 2026 vào Trường Đại học Hùng Vương TP. Hồ Chí Minh là hết ngày 13/08/2026. Riêng đợt xét tuyển bổ sung, trường nhận hồ sơ đến hết ngày 21/08/2026.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0108",
+      "question": "Viện IATAI của trường phụ trách những lĩnh vực đào tạo và nghiên cứu nào?",
+      "answer": "Viện Công nghệ Tiên tiến và Trí tuệ Nhân tạo tập trung vào kỹ thuật, công nghệ cao, khoa học dữ liệu, công nghệ thông tin, trí tuệ nhân tạo, chuyển đổi số và đổi mới sáng tạo.",
+      "source_url": "https://iatai.dhv.edu.vn/",
+      "source_note": "https://iatai.dhv.edu.vn/"
+    },
+    {
+      "id": "UQ0111",
+      "question": "Ngành Trí tuệ nhân tạo tại DHV có những chuyên ngành nào?",
+      "answer": "Hiện tài liệu tuyển sinh năm 2026 chỉ xác định Trí tuệ nhân tạo là một ngành đào tạo riêng, nhưng chưa nêu cụ thể các chuyên ngành bên trong ngành này. Vì vậy, nếu bạn muốn biết các hướng chuyên sâu hoặc chuyên ngành cụ thể, nên liên hệ tư vấn viên của Trường Đại học Hùng Vương TP. Hồ Chí Minh để được xác nhận chính xác hơn",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0113",
+      "question": "Ngành Quản trị kinh doanh có chú trọng ứng dụng nền tảng công nghệ số trong đào tạo không?",
+      "answer": "Có. Chương trình Quản trị kinh doanh trang bị kiến thức quản lý doanh nghiệp, quản trị điều hành và khởi sự doanh nghiệp gắn với việc ứng dụng các nền tảng công nghệ số.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0126",
+      "question": "Ngành Luật và Luật kinh tế tại DHV có bao nhiêu chuyên ngành?",
+      "answer": "Hiện thông tin tuyển sinh năm 2026 của Trường Đại học Hùng Vương TP. Hồ Chí Minh chỉ công bố riêng ngành Luật và ngành Luật kinh tế, chưa chia thành các chuyên ngành cụ thể. Vì vậy, chưa có số lượng chuyên ngành riêng để liệt kê cho hai ngành này.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0128",
+      "question": "Ngành Kinh tế quốc tế tại DHV có những chuyên ngành nào?",
+      "answer": "Ngành Kinh tế quốc tế tại DHV có mã ngành 7310106.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0130",
+      "question": "Ngành CNTT tại DHV đào tạo theo định hướng gì?",
+      "answer": "Ngành CNTT tại DHV đào tạo theo hướng ứng dụng, tăng cường đồ án và dự án thực tế. Các lĩnh vực gồm phát triển ứng dụng Web và Mobile, hệ thống thông tin, an toàn thông tin, phân tích và xử lý dữ liệu, và truyền thông đa phương tiện.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0132",
+      "question": "Sinh viên ngành CNTT DHV được rèn luyện những kỹ năng mềm gì?",
+      "answer": "Sinh viên ngành CNTT DHV được rèn: giao tiếp và làm việc nhóm, tư duy thiết kế, tư duy phản biện và giải quyết vấn đề; có thể tham gia dự án nhóm, bài toán gần thực tiễn doanh nghiệp và đồ án chuyên ngành.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0136",
+      "question": "Điểm sàn xét tuyển bổ sung bằng học bạ tại DHV 2026 là bao nhiêu?",
+      "answer": "Điểm sàn xét tuyển bổ sung bằng học bạ THPT: phần lớn chương trình từ 18 điểm; Luật và Luật kinh tế có điều kiện riêng.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0139",
+      "question": "Website của Khoa Ngôn ngữ DHV là gì?",
+      "answer": "Website của Khoa Ngôn ngữ DHV là https://lan.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0141",
+      "question": "Website của Khoa Luật DHV là gì?",
+      "answer": "Website của Khoa Luật DHV là https://law.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0142",
+      "question": "Website của Khoa Tài chính - Ngân hàng - Kế toán DHV là gì?",
+      "answer": "Website của Khoa Tài chính - Ngân hàng - Kế toán DHV là https://fba.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0143",
+      "question": "Website của Khoa Quản trị Kinh doanh - Marketing DHV là gì?",
+      "answer": "Website của Khoa Quản trị Kinh doanh - Marketing DHV là https://bam.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0144",
+      "question": "Website của Khoa Khoa học Sức khỏe DHV là gì?",
+      "answer": "Website của Khoa Khoa học Sức khỏe DHV là https://heal.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0145",
+      "question": "DHV có Viện Liên kết Giáo dục và Đào tạo từ xa không?",
+      "answer": "Có, Viện Liên kết Giáo dục và Đào tạo từ xa của DHV có website là https://epdl.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0146",
+      "question": "Tạp chí khoa học của DHV có website gì?",
+      "answer": "Tạp chí Khoa học Trường Đại học Hùng Vương TP. Hồ Chí Minh có website là https://tapchikhoahoc.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0150",
+      "question": "Việc hợp tác giữa trường và Công ty Công nghệ PREP năm 2026 hướng tới những lợi ích nào cho sinh viên?",
+      "answer": "Thỏa thuận hợp tác với PREP hướng tới nâng cao chất lượng đào tạo, gắn lý thuyết với thực tiễn và mở rộng cơ hội học tập, trải nghiệm, phát triển nghề nghiệp cho sinh viên.",
+      "source_url": "https://lan.dhv.edu.vn/news-event/news/le-ky-ket-bien-ban-ghi-nho-hop-tac-truong-dai-hoc-hung-vuong-tp-hcm-cong-ty-co-phan-cong-nghe-prep",
+      "source_note": "https://lan.dhv.edu.vn/news-event/news/le-ky-ket-bien-ban-ghi-nho-hop-tac-truong-dai-hoc-hung-vuong-tp-hcm-cong-ty-co-phan-cong-nghe-prep"
+    },
+    {
+      "id": "UQ0160",
+      "question": "Viện Công nghệ Tiên tiến và Trí tuệ Nhân tạo có đào tạo trình độ đại học về Trí tuệ nhân tạo không?",
+      "answer": "Có. Trang chính thức của Viện IATAI liệt kê Trí tuệ nhân tạo trong nhóm chương trình đào tạo bậc đại học.",
+      "source_url": "https://iatai.dhv.edu.vn/",
+      "source_note": "https://iatai.dhv.edu.vn/"
+    },
+    {
+      "id": "UQ0179",
+      "question": "Điểm trúng tuyển ngành Tâm lý học DHV 2026 cao hơn các ngành khác vì sao?",
+      "answer": "Điểm trúng tuyển ngành Tâm lý học đợt 1 là 20,0 điểm (cùng với Luật và Luật Kinh tế), trong khi các ngành còn lại là 15,0 điểm.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0189",
+      "question": "Các phòng lab công nghệ của DHV chỉ dùng cho giờ thực hành trên lớp hay còn có mô hình hoạt động khác?",
+      "answer": "Các phòng lab được xây dựng theo mô hình mở, kết nối sinh viên, giảng viên, chuyên gia và doanh nghiệp trong cùng một hệ sinh thái.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026"
+    },
+    {
+      "id": "UQ0197",
+      "question": "Sinh viên có thể thực hiện những hoạt động gì trong các phòng thí nghiệm công nghệ của DHV?",
+      "answer": "Không gian lab được dùng để phát triển đề tài nghiên cứu ứng dụng, xây dựng sản phẩm công nghệ, thử nghiệm ý tưởng đổi mới sáng tạo và giải quyết các bài toán thực tế từ doanh nghiệp.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026"
+    },
+    {
+      "id": "UQ0201",
+      "question": "DHV có đào tạo sau đại học không?",
+      "answer": "Có, DHV có Viện Đào tạo Sau đại học với website https://ipic.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0209",
+      "question": "DHV có trung tâm Công nghệ riêng không?",
+      "answer": "Có, Trung tâm Công nghệ của DHV có website là https://tek.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0210",
+      "question": "Viện Văn hóa Doanh nghiệp DHV có website gì?",
+      "answer": "Viện Văn hóa Doanh nghiệp DHV có website là https://core.dhv.edu.vn/",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0231",
+      "question": "Aero Space Lab tại DHV phục vụ nghiên cứu những công nghệ nào?",
+      "answer": "Aero Space Lab tập trung vào UAV và công nghệ vệ tinh.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026"
+    },
+    {
+      "id": "UQ0233",
+      "question": "Sinh viên ngành CNTT DHV có được thực tập tại doanh nghiệp không?",
+      "answer": "Có, Khoa Kỹ thuật Công nghệ DHV nêu cơ hội tham gia workshop, talkshow, giao lưu chuyên gia và trải nghiệm thực tập tại doanh nghiệp cho sinh viên ngành CNTT.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0236",
+      "question": "DHV hợp tác với đơn vị nào để mở rộng cơ hội thực tập tại Hoa Kỳ cho sinh viên?",
+      "answer": "Nhà trường ký biên bản ghi nhớ hợp tác với Công ty Cổ phần Học viện Hạnh phúc Việt Nam trong chương trình được công bố ngày 19/06/2026.",
+      "source_url": "https://lan.dhv.edu.vn/news-event/news/dhv-ky-ket-hop-tac-voi-hoc-vien-hanh-phuc-viet-nam-mo-rong-co-hoi-thuc-tap-hoa-ky-cho-sinh-vien",
+      "source_note": "https://lan.dhv.edu.vn/news-event/news/dhv-ky-ket-hop-tac-voi-hoc-vien-hanh-phuc-viet-nam-mo-rong-co-hoi-thuc-tap-hoa-ky-cho-sinh-vien"
+    },
+    {
+      "id": "UQ0243",
+      "question": "UniHackfest Unitour × DHV năm 2026 diễn ra vào ngày nào?",
+      "answer": "Chương trình được Khoa Kỹ thuật Công nghệ phối hợp tổ chức vào sáng ngày 18/06/2026.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao"
+    },
+    {
+      "id": "UQ0244",
+      "question": "Đơn vị nào phối hợp với Khoa Kỹ thuật Công nghệ tổ chức UniHackfest Unitour × DHV?",
+      "answer": "Khoa Kỹ thuật Công nghệ phối hợp cùng Ban Tổ chức UniHackfest 2026 triển khai chương trình cho sinh viên.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao"
+    },
+    {
+      "id": "UQ0245",
+      "question": "UniHackfest Unitour × DHV giúp sinh viên tiếp cận những xu hướng công nghệ nào?",
+      "answer": "Sinh viên được cập nhật về nền kinh tế số, tài sản số, hệ sinh thái Web3 và các xu hướng đổi mới sáng tạo trong công nghệ.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao"
+    },
+    {
+      "id": "UQ0246",
+      "question": "Tại UniHackfest Unitour × DHV, sinh viên được nghe chia sẻ gì về hệ sinh thái Solana?",
+      "answer": "Chương trình có nội dung về hành trình xây dựng và phát triển sản phẩm trên hệ sinh thái Solana từ những người trực tiếp triển khai dự án.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao"
+    },
+    {
+      "id": "UQ0248",
+      "question": "DHV ký biên bản ghi nhớ với SCTV vào thời điểm nào trong năm 2026?",
+      "answer": "Trường ký Biên bản ghi nhớ hợp tác với Công ty Truyền hình Cáp Saigontourist (SCTV) vào sáng ngày 02/06/2026.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/category/ket-noi-doanh-nghiep",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/category/ket-noi-doanh-nghiep"
+    },
+    {
+      "id": "UQ0249",
+      "question": "UniHackfest Unitour × DHV có đề cập đến cơ hội nghề nghiệp trong các lĩnh vực công nghệ mới không?",
+      "answer": "Có. Chương trình giới thiệu cơ hội nghề nghiệp trong các ngành công nghệ mới nổi và giúp sinh viên hiểu thêm về yêu cầu kỹ năng trong bối cảnh chuyển đổi số.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao"
+    },
+    {
+      "id": "UQ0250",
+      "question": "Khoa Quản trị Kinh doanh – Marketing tổ chức tọa đàm về mô hình CO-OP vào thời điểm nào?",
+      "answer": "Tọa đàm “Mô hình CO-OP trong đào tạo Kinh tế quốc tế” được tổ chức ngày 27/03/2026 và bài tổng kết được đăng ngày 30/03/2026.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/toa-dam-dhv-mo-hinh-co-op-ket-noi-dao-tao-voi-thuc-tien-doanh-nghiep",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/toa-dam-dhv-mo-hinh-co-op-ket-noi-dao-tao-voi-thuc-tien-doanh-nghiep"
+    },
+    {
+      "id": "UQ0251",
+      "question": "Khoa BAM tổ chức workshop định hướng nghề nghiệp cho sinh viên Thương mại điện tử vào ngày nào?",
+      "answer": "Workshop “La bàn nghề nghiệp: Khám phá tiềm năng và định hướng tương lai ngành Thương mại điện tử” được tổ chức sáng ngày 03/07/2026.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong?page=1",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong?page=1"
+    },
+    {
+      "id": "UQ0253",
+      "question": "Mô hình CO-OP được Khoa Quản trị Kinh doanh – Marketing thảo luận nhằm giải quyết mục tiêu đào tạo nào?",
+      "answer": "Tọa đàm hướng đến việc gắn đào tạo Kinh tế quốc tế với thực tiễn doanh nghiệp và nâng cao chất lượng nguồn nhân lực trong bối cảnh hội nhập.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/toa-dam-dhv-mo-hinh-co-op-ket-noi-dao-tao-voi-thuc-tien-doanh-nghiep",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/toa-dam-dhv-mo-hinh-co-op-ket-noi-dao-tao-voi-thuc-tien-doanh-nghiep"
+    },
+    {
+      "id": "UQ0254",
+      "question": "Workshop “La bàn nghề nghiệp” của Khoa BAM hỗ trợ sinh viên về nội dung gì?",
+      "answer": "Chương trình tập trung giúp sinh viên khám phá tiềm năng và định hướng con đường nghề nghiệp trong lĩnh vực Thương mại điện tử.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong?page=1",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong?page=1"
+    },
+    {
+      "id": "UQ0255",
+      "question": "Mô hình giáo dục nào được giới thiệu tại UniHackfest Unitour × DHV năm 2026?",
+      "answer": "Một nội dung của chương trình là các mô hình đổi mới giáo dục trong kỷ nguyên Web3.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/unihackfest-unitour-dhv-ket-noi-sinh-vien-voi-xu-huong-web3-tai-san-so-va-doi-moi-sang-tao"
+    },
+    {
+      "id": "UQ0256",
+      "question": "Sinh viên Khoa Kỹ thuật Công nghệ đã báo cáo bao nhiêu đề tài nghiên cứu khoa học cấp trường trong đợt công bố tháng 7/2026?",
+      "answer": "Ba nhóm sinh viên đã trình bày kết quả của ba đề tài nghiên cứu khoa học cấp trường trước Hội đồng khoa học.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong"
+    },
+    {
+      "id": "UQ0257",
+      "question": "Đề tài SV-18-24 của sinh viên Khoa Kỹ thuật Công nghệ xây dựng sản phẩm gì?",
+      "answer": "Đề tài SV-18-24 tập trung xây dựng hệ thống điểm danh bằng thẻ sinh viên DHV.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong"
+    },
+    {
+      "id": "UQ0258",
+      "question": "Đề tài SV-19-24 của sinh viên Khoa Kỹ thuật Công nghệ hướng đến nhu cầu nào?",
+      "answer": "Nhóm nghiên cứu xây dựng một website thương mại điện tử dành cho sinh viên DHV.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong"
+    },
+    {
+      "id": "UQ0259",
+      "question": "Chuyến học thực tế tại Food & Hospitality Vietnam 2026 của sinh viên Kinh tế quốc tế nằm trong học phần nào?",
+      "answer": "Chuyến đi ngày 24/03/2026 được tổ chức trong khuôn khổ học phần Quản trị Đa văn hóa của ngành Kinh tế quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026"
+    },
+    {
+      "id": "UQ0260",
+      "question": "Học kỳ Doanh nghiệp của Khoa Tài chính – Ngân hàng – Kế toán năm 2026 kéo dài trong bao lâu?",
+      "answer": "Chương trình Học kỳ Doanh nghiệp năm 2026 của khoa được tổ chức liên tục trong 18 tuần, từ ngày 08/09/2026 đến ngày 15/02/2027.",
+      "source_url": "https://fba.dhv.edu.vn/en/news-event/news/hoc-ky-doanh-nghiepketoan",
+      "source_note": "https://fba.dhv.edu.vn/en/news-event/news/hoc-ky-doanh-nghiepketoan"
+    },
+    {
+      "id": "UQ0261",
+      "question": "Sinh viên Khoa Kỹ thuật Công nghệ có nghiên cứu phần mềm phục vụ các cuộc thi không?",
+      "answer": "Có. Đề tài SV-20-24 thiết kế phần mềm thi trắc nghiệm để phục vụ các cuộc thi.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong"
+    },
+    {
+      "id": "UQ0262",
+      "question": "Hoạt động nghiên cứu khoa học cấp trường giúp sinh viên Khoa Kỹ thuật Công nghệ rèn những kỹ năng gì?",
+      "answer": "Thông qua đề tài, sinh viên có điều kiện vận dụng kiến thức vào thực tiễn, rèn tư duy nghiên cứu, kỹ năng làm việc nhóm, quản lý dự án và phát triển giải pháp công nghệ.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/sinh-vien-khoa-ky-thuat-cong-nghe-bao-cao-thanh-cong-cac-de-tai-nghien-cuu-khoa-hoc-cap-truong"
+    },
+    {
+      "id": "UQ0263",
+      "question": "Sinh viên Khoa Tài chính – Ngân hàng – Kế toán tham gia Học kỳ Doanh nghiệp năm 2026 vào khoảng thời gian nào?",
+      "answer": "Đợt Học kỳ Doanh nghiệp được triển khai từ 08/09/2026 đến 15/02/2027, giúp sinh viên có một giai đoạn trải nghiệm nghề nghiệp kéo dài xuyên suốt 18 tuần.",
+      "source_url": "https://fba.dhv.edu.vn/en/news-event/news/hoc-ky-doanh-nghiepketoan",
+      "source_note": "https://fba.dhv.edu.vn/en/news-event/news/hoc-ky-doanh-nghiepketoan"
+    },
+    {
+      "id": "UQ0264",
+      "question": "Lễ ra quân Chiến dịch Mùa Hè Xanh 2026 của DHV được tổ chức vào ngày nào?",
+      "answer": "Trường tổ chức lễ ra quân vào sáng ngày 30/07/2026 để chính thức khởi động chiến dịch tình nguyện.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/le-ra-quan-chien-dich-mua-he-xanh-2026-sinh-vien-khoa-ky-thuat-cong-nghe-san-sang-len-duong-cong-hien",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/le-ra-quan-chien-dich-mua-he-xanh-2026-sinh-vien-khoa-ky-thuat-cong-nghe-san-sang-len-duong-cong-hien"
+    },
+    {
+      "id": "UQ0265",
+      "question": "Sinh viên Khoa Kỹ thuật Công nghệ tham gia Mùa Hè Xanh 2026 tại địa bàn nào?",
+      "answer": "Đội hình sinh viên tham gia các hoạt động tình nguyện tại xã Long Sơn, TP. Hồ Chí Minh.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/le-ra-quan-chien-dich-mua-he-xanh-2026-sinh-vien-khoa-ky-thuat-cong-nghe-san-sang-len-duong-cong-hien",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/le-ra-quan-chien-dich-mua-he-xanh-2026-sinh-vien-khoa-ky-thuat-cong-nghe-san-sang-len-duong-cong-hien"
+    },
+    {
+      "id": "UQ0266",
+      "question": "Học kỳ Doanh nghiệp của Khoa Tài chính – Ngân hàng – Kế toán được tổ chức tại môi trường nào?",
+      "answer": "Sinh viên được bố trí tham gia tại các ngân hàng và công ty, qua đó tiếp xúc trực tiếp với môi trường làm việc thay vì chỉ học lý thuyết trên lớp.",
+      "source_url": "https://fba.dhv.edu.vn/en/news-event/news/hoc-ky-doanh-nghiepketoan",
+      "source_note": "https://fba.dhv.edu.vn/en/news-event/news/hoc-ky-doanh-nghiepketoan"
+    },
+    {
+      "id": "UQ0267",
+      "question": "Chiến dịch Mùa Hè Xanh 2026 tạo cơ hội gì cho sinh viên DHV ngoài hoạt động học tập?",
+      "answer": "Chiến dịch tạo môi trường để sinh viên phát huy tinh thần xung kích, trách nhiệm và vận dụng sức trẻ, tri thức vào các hoạt động phục vụ cộng đồng.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/le-ra-quan-chien-dich-mua-he-xanh-2026-sinh-vien-khoa-ky-thuat-cong-nghe-san-sang-len-duong-cong-hien",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/le-ra-quan-chien-dich-mua-he-xanh-2026-sinh-vien-khoa-ky-thuat-cong-nghe-san-sang-len-duong-cong-hien"
+    },
+    {
+      "id": "UQ0270",
+      "question": "Cuộc thi Talent Administrator 2026 mà sinh viên Khoa Kỹ thuật Công nghệ tham gia do đơn vị nào tổ chức?",
+      "answer": "Cuộc thi do Khoa Công nghệ Thông tin, Trường Đại học Công Thương TP. Hồ Chí Minh tổ chức ngày 07/06/2026.",
+      "source_url": "https://tec.dhv.edu.vn/en/news-event/news/chuc-mung-sinh-vien-khoa-ky-thuat-cong-nghe-dat-thanh-tich-tai-cuoc-thi-talent-administrator-2026",
+      "source_note": "https://tec.dhv.edu.vn/en/news-event/news/chuc-mung-sinh-vien-khoa-ky-thuat-cong-nghe-dat-thanh-tich-tai-cuoc-thi-talent-administrator-2026"
+    },
+    {
+      "id": "UQ0271",
+      "question": "Sinh viên DHV đạt những hạng giải nào tại Talent Administrator 2026?",
+      "answer": "Sinh viên Khoa Kỹ thuật Công nghệ đạt hai Giải Ba và hai Giải Khuyến khích tại cuộc thi.",
+      "source_url": "https://tec.dhv.edu.vn/en/news-event/news/chuc-mung-sinh-vien-khoa-ky-thuat-cong-nghe-dat-thanh-tich-tai-cuoc-thi-talent-administrator-2026",
+      "source_note": "https://tec.dhv.edu.vn/en/news-event/news/chuc-mung-sinh-vien-khoa-ky-thuat-cong-nghe-dat-thanh-tich-tai-cuoc-thi-talent-administrator-2026"
+    },
+    {
+      "id": "UQ0272",
+      "question": "Talent Administrator 2026 là sân chơi học thuật gắn với nhóm kiến thức nào?",
+      "answer": "Cuộc thi được giới thiệu là sân chơi học thuật chuyên sâu về quản trị hệ thống và mạng.",
+      "source_url": "https://tec.dhv.edu.vn/en/news-event/news/chuc-mung-sinh-vien-khoa-ky-thuat-cong-nghe-dat-thanh-tich-tai-cuoc-thi-talent-administrator-2026",
+      "source_note": "https://tec.dhv.edu.vn/en/news-event/news/chuc-mung-sinh-vien-khoa-ky-thuat-cong-nghe-dat-thanh-tich-tai-cuoc-thi-talent-administrator-2026"
+    },
+    {
+      "id": "UQ0273",
+      "question": "Hội thảo quốc tế SCFF26 mà Khoa Kỹ thuật Công nghệ tham gia có chủ đề gì?",
+      "answer": "SCFF26 có chủ đề “From Smart Cities to Smart Factories for a Sustainable Future”, tập trung vào hướng phát triển từ thành phố thông minh đến nhà máy thông minh và tương lai bền vững.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/khoa-ky-thuat-cong-nghe-tham-gia-hoi-thao-khoa-hoc-quoc-te-scff26",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/khoa-ky-thuat-cong-nghe-tham-gia-hoi-thao-khoa-hoc-quoc-te-scff26"
+    },
+    {
+      "id": "UQ0274",
+      "question": "SCFF26 đề cập đến những lĩnh vực công nghệ nổi bật nào?",
+      "answer": "Hội thảo tập trung vào các lĩnh vực như trí tuệ nhân tạo, học máy, dữ liệu lớn, chuyển đổi số, nhà máy thông minh và phát triển bền vững.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/khoa-ky-thuat-cong-nghe-tham-gia-hoi-thao-khoa-hoc-quoc-te-scff26",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/khoa-ky-thuat-cong-nghe-tham-gia-hoi-thao-khoa-hoc-quoc-te-scff26"
+    },
+    {
+      "id": "UQ0275",
+      "question": "Giảng viên Khoa Kỹ thuật Công nghệ tham dự IAAA 2026 vào thời gian và địa điểm nào?",
+      "answer": "Các giảng viên tham dự và báo cáo tại IAAA 2026 trong hai ngày 27–28/07/2026 tại Trường Đại học Bách khoa – Đại học Quốc gia TP. Hồ Chí Minh.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/giang-vien-khoa-ky-thuat-cong-nghe-tham-gia-bao-cao-tai-hoi-thao-khoa-hoc-quoc-te-iaaa-2026",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/giang-vien-khoa-ky-thuat-cong-nghe-tham-gia-bao-cao-tai-hoi-thao-khoa-hoc-quoc-te-iaaa-2026"
+    },
+    {
+      "id": "UQ0276",
+      "question": "Các công trình của Khoa Kỹ thuật Công nghệ tại IAAA 2026 thuộc những hướng nghiên cứu nào?",
+      "answer": "Bốn công trình được giới thiệu thuộc các hướng an ninh mạng, trí tuệ nhân tạo, mạng UAV và điện toán biên.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/giang-vien-khoa-ky-thuat-cong-nghe-tham-gia-bao-cao-tai-hoi-thao-khoa-hoc-quoc-te-iaaa-2026",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/giang-vien-khoa-ky-thuat-cong-nghe-tham-gia-bao-cao-tai-hoi-thao-khoa-hoc-quoc-te-iaaa-2026"
+    },
+    {
+      "id": "UQ0277",
+      "question": "Kết quả nghiên cứu từ IAAA 2026 được Khoa Kỹ thuật Công nghệ định hướng đưa vào hoạt động đào tạo ra sao?",
+      "answer": "Các kết quả nghiên cứu được định hướng chuyển hóa thành nội dung giảng dạy, đề tài nghiên cứu khoa học và đồ án tốt nghiệp để sinh viên tiếp cận công nghệ mới.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/giang-vien-khoa-ky-thuat-cong-nghe-tham-gia-bao-cao-tai-hoi-thao-khoa-hoc-quoc-te-iaaa-2026",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/giang-vien-khoa-ky-thuat-cong-nghe-tham-gia-bao-cao-tai-hoi-thao-khoa-hoc-quoc-te-iaaa-2026"
+    },
+    {
+      "id": "UQ0278",
+      "question": "Hội thao Sinh viên DHV 2026 của Khoa Kỹ thuật Công nghệ sử dụng chủ đề gì?",
+      "answer": "Hội thao sử dụng chủ đề “Break Your Limits – Bứt phá mọi giới hạn”.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/hoi-thao-sinh-vien-dhv-2026-khoa-ky-thuat-cong-nghe",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/hoi-thao-sinh-vien-dhv-2026-khoa-ky-thuat-cong-nghe"
+    },
+    {
+      "id": "UQ0279",
+      "question": "Hội thao của Khoa Kỹ thuật Công nghệ hướng sinh viên rèn luyện những phẩm chất nào?",
+      "answer": "Hoạt động tạo điều kiện để sinh viên rèn luyện thể chất, tinh thần đồng đội, sự kiên trì, ý chí và bản lĩnh khi tham gia thi đấu.",
+      "source_url": "https://tec.dhv.edu.vn/news-event/news/hoi-thao-sinh-vien-dhv-2026-khoa-ky-thuat-cong-nghe",
+      "source_note": "https://tec.dhv.edu.vn/news-event/news/hoi-thao-sinh-vien-dhv-2026-khoa-ky-thuat-cong-nghe"
+    },
+    {
+      "id": "UQ0280",
+      "question": "Workshop “Chiến lược bán lẻ đa kênh toàn diện” của Khoa BAM được tổ chức khi nào?",
+      "answer": "Workshop được Khoa Quản trị Kinh doanh – Marketing tổ chức vào sáng ngày 09/07/2026.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong"
+    },
+    {
+      "id": "UQ0281",
+      "question": "DHV thành lập những câu lạc bộ công nghệ nào cùng với hệ thống phòng lab năm 2026?",
+      "answer": "Nhà trường thành lập các Câu lạc bộ Trí tuệ nhân tạo, Robotics và UAV để tạo môi trường học tập, nghiên cứu và sáng tạo về STEM.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026"
+    },
+    {
+      "id": "UQ0282",
+      "question": "Workshop về bán lẻ đa kênh mang đến cho sinh viên những nội dung thực tiễn nào?",
+      "answer": "Chương trình giúp sinh viên cập nhật xu hướng bán lẻ hiện đại và cách doanh nghiệp xây dựng trải nghiệm khách hàng trong thời đại số.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/category/tin-tuc-hoat-dong"
+    },
+    {
+      "id": "UQ0283",
+      "question": "Trong chuyến đi Food & Hospitality Vietnam 2026, sinh viên Kinh tế quốc tế quan sát điều gì về khác biệt văn hóa?",
+      "answer": "Sinh viên tìm hiểu cách khác biệt văn hóa tác động đến vận hành, giao tiếp và hoạt động kinh doanh của các doanh nghiệp quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026"
+    },
+    {
+      "id": "UQ0286",
+      "question": "Sinh viên Kinh tế quốc tế được cập nhật những xu hướng nào tại Food & Hospitality Vietnam 2026?",
+      "answer": "Chuyến thực tế giúp sinh viên tiếp cận các xu hướng mới trong F&B, dịch vụ và trải nghiệm khách hàng.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026"
+    },
+    {
+      "id": "UQ0287",
+      "question": "Hội thảo về ứng dụng AI trong ngân hàng số của trường được tổ chức vào ngày nào trong năm 2026?",
+      "answer": "Hội thảo được tổ chức vào sáng ngày 12/09/2026 và thông tin sự kiện được Khoa Tài chính – Ngân hàng – Kế toán đăng ngày 13/09/2026.",
+      "source_url": "https://fba.dhv.edu.vn/news-event/news/hoi-thao-khoa-hoc-ve-ung-dung-ai-trong-ngan-hang-so",
+      "source_note": "https://fba.dhv.edu.vn/news-event/news/hoi-thao-khoa-hoc-ve-ung-dung-ai-trong-ngan-hang-so"
+    },
+    {
+      "id": "UQ0288",
+      "question": "Chương trình hợp tác giữa Khoa Ngôn ngữ và Công ty CHIVI năm 2026 tập trung trao đổi về vấn đề gì?",
+      "answer": "Chương trình ngày 05/08/2026 tập trung chia sẻ định hướng phát triển, mô hình đào tạo hiện đại và cơ hội hợp tác trong giáo dục, ngoại ngữ và phát triển nguồn nhân lực.",
+      "source_url": "https://lan.dhv.edu.vn/student-experience/partner",
+      "source_note": "https://lan.dhv.edu.vn/student-experience/partner"
+    },
+    {
+      "id": "UQ0289",
+      "question": "Chương trình FHV Premier Connect giúp sinh viên Kinh tế quốc tế quan sát khía cạnh nào của thương mại?",
+      "answer": "Sinh viên có cơ hội quan sát mô hình kết nối thương mại toàn cầu thông qua chương trình FHV Premier Connect.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/sinh-vien-nganh-kinh-te-quoc-te-dhv-hoc-that-tai-food-hospitality-vietnam-2026"
+    },
+    {
+      "id": "UQ0290",
+      "question": "Hội thảo khoa học về AI trong ngân hàng số tập trung vào vấn đề gì?",
+      "answer": "Nội dung trọng tâm là ứng dụng AI trong quản trị rủi ro và phát hiện gian lận ở ngân hàng số.",
+      "source_url": "https://fba.dhv.edu.vn/news-event/news/hoi-thao-khoa-hoc-ve-ung-dung-ai-trong-ngan-hang-so",
+      "source_note": "https://fba.dhv.edu.vn/news-event/news/hoi-thao-khoa-hoc-ve-ung-dung-ai-trong-ngan-hang-so"
+    },
+    {
+      "id": "UQ0291",
+      "question": "Company Tour của học phần Quản trị Nguồn nhân lực Quốc tế được tổ chức tại doanh nghiệp nào?",
+      "answer": "Sinh viên tham gia Company Tour tại JobTest, một doanh nghiệp hoạt động trong lĩnh vực công nghệ nhân sự (HR Tech).",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/quan-tri-nguon-nhan-luc-quoc-te-hoc-tu-thuc-tien-san-sang-hoi-nhap",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/quan-tri-nguon-nhan-luc-quoc-te-hoc-tu-thuc-tien-san-sang-hoi-nhap"
+    },
+    {
+      "id": "UQ0292",
+      "question": "Sinh viên tìm hiểu công nghệ nhân sự nào trong chuyến tham quan JobTest?",
+      "answer": "Sinh viên được giới thiệu hệ thống AIHR – HRM Software và các ứng dụng công nghệ trong quản trị nguồn nhân lực.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/quan-tri-nguon-nhan-luc-quoc-te-hoc-tu-thuc-tien-san-sang-hoi-nhap",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/quan-tri-nguon-nhan-luc-quoc-te-hoc-tu-thuc-tien-san-sang-hoi-nhap"
+    },
+    {
+      "id": "UQ0293",
+      "question": "Chuỗi hoạt động Quản trị Nguồn nhân lực Quốc tế giúp sinh viên phát triển khả năng hội nhập như thế nào?",
+      "answer": "Hoạt động giúp sinh viên hiểu cách doanh nghiệp quản trị nhân lực toàn cầu, rèn tư duy hội nhập, kỹ năng làm việc trong môi trường đa văn hóa và định hướng nghề nghiệp sớm.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/quan-tri-nguon-nhan-luc-quoc-te-hoc-tu-thuc-tien-san-sang-hoi-nhap",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/quan-tri-nguon-nhan-luc-quoc-te-hoc-tu-thuc-tien-san-sang-hoi-nhap"
+    },
+    {
+      "id": "UQ0294",
+      "question": "Chương trình K-EXPERIENCE: Marketing & Sales in Action được tổ chức với doanh nghiệp nào?",
+      "answer": "Khoa Quản trị Kinh doanh – Marketing phối hợp cùng Công ty SCJ tổ chức chương trình vào ngày 15/07/2026.",
+      "source_url": "https://bam.dhv.edu.vn/",
+      "source_note": "https://bam.dhv.edu.vn/"
+    },
+    {
+      "id": "UQ0295",
+      "question": "K-EXPERIENCE: Marketing & Sales in Action hướng sinh viên biến kiến thức trên lớp thành năng lực gì?",
+      "answer": "Chương trình được thiết kế để đưa kiến thức Marketing và Sales vào trải nghiệm thực chiến, giúp sinh viên phát triển kỹ năng nghề nghiệp từ bối cảnh doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/",
+      "source_note": "https://bam.dhv.edu.vn/"
+    },
+    {
+      "id": "UQ0296",
+      "question": "Chương trình “Khởi nghiệp cùng Sinh viên DHV 2026” của Khoa BAM diễn ra vào thời điểm nào?",
+      "answer": "Chương trình được tổ chức vào chiều ngày 20/07/2026 với sự tham gia của đông đảo sinh viên quan tâm đến đổi mới sáng tạo.",
+      "source_url": "https://bam.dhv.edu.vn/",
+      "source_note": "https://bam.dhv.edu.vn/"
+    },
+    {
+      "id": "UQ0297",
+      "question": "Sinh viên Khoa BAM tham gia Company Tour 2026 tại Kim Oanh Group vào ngày nào?",
+      "answer": "Chuyến trải nghiệm thực tế tại Kim Oanh Group diễn ra ngày 17/07/2026.",
+      "source_url": "https://bam.dhv.edu.vn/",
+      "source_note": "https://bam.dhv.edu.vn/"
+    },
+    {
+      "id": "UQ0298",
+      "question": "Tốt nghiệp ngành Công nghệ thông tin, sinh viên có thể làm công việc kiểm thử phần mềm không?",
+      "answer": "Có. Trang chương trình ngành Công nghệ thông tin liệt kê kiểm thử phần mềm là một trong những hướng nghề nghiệp dành cho cử nhân sau khi tốt nghiệp.",
+      "source_url": "https://tec.dhv.edu.vn/educational-program/cong-nghe-thong-tin?program=dai-hoc",
+      "source_note": "https://tec.dhv.edu.vn/educational-program/cong-nghe-thong-tin?program=dai-hoc"
+    },
+    {
+      "id": "UQ0300",
+      "question": "Chuyến tham quan Kim Oanh Group mang lại giá trị gì cho sinh viên Khoa BAM?",
+      "answer": "Hoạt động giúp sinh viên tiếp cận môi trường làm việc thực tế, nâng cao kỹ năng nghề nghiệp và tăng cường kết nối với doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/",
+      "source_note": "https://bam.dhv.edu.vn/"
+    },
+    {
+      "id": "UQ0301",
+      "question": "Sinh viên Khoa Luật tham quan Công ty Luật TNHH MTV Bình Yên trong học phần nào?",
+      "answer": "Chuyến tham quan ngày 19/06/2026 được tổ chức trong khuôn khổ học phần Tố tụng dân sự.",
+      "source_url": "https://law.dhv.edu.vn/news-event/news/sinh-vien-khoa-luat-dhv-tham-quan-thuc-te-tai-cong-ty-luat-tnhh-mtv-binh-yen",
+      "source_note": "https://law.dhv.edu.vn/news-event/news/sinh-vien-khoa-luat-dhv-tham-quan-thuc-te-tai-cong-ty-luat-tnhh-mtv-binh-yen"
+    },
+    {
+      "id": "UQ0302",
+      "question": "Sinh viên FBA tham gia sân chơi “Nhà đầu tư tương lai 2026” do đơn vị nào tổ chức?",
+      "answer": "Vòng chung kết cuộc thi “Nhà đầu tư tương lai 2026” mùa 4 được Trường Đại học Văn Lang tổ chức vào ngày 25/04/2026.",
+      "source_url": "https://fba.dhv.edu.vn/news-event/news/tu-hao-sinh-vien-fba-ghi-dau-an-tai-san-choi-hoc-thuat-toan-quoc",
+      "source_note": "https://fba.dhv.edu.vn/news-event/news/tu-hao-sinh-vien-fba-ghi-dau-an-tai-san-choi-hoc-thuat-toan-quoc"
+    },
+    {
+      "id": "UQ0303",
+      "question": "Trong chuyến tham quan Công ty Luật Bình Yên, sinh viên được tìm hiểu những công việc nghề luật nào?",
+      "answer": "Sinh viên tìm hiểu công việc hằng ngày của luật sư và nhân viên pháp lý, kỹ năng tiếp xúc khách hàng, nghiên cứu hồ sơ, chuẩn bị đơn khởi kiện, tài liệu và chứng cứ.",
+      "source_url": "https://law.dhv.edu.vn/news-event/news/sinh-vien-khoa-luat-dhv-tham-quan-thuc-te-tai-cong-ty-luat-tnhh-mtv-binh-yen",
+      "source_note": "https://law.dhv.edu.vn/news-event/news/sinh-vien-khoa-luat-dhv-tham-quan-thuc-te-tai-cong-ty-luat-tnhh-mtv-binh-yen"
+    },
+    {
+      "id": "UQ0304",
+      "question": "Mục tiêu của chuyến tham quan thực tế tại Công ty Luật Bình Yên là gì?",
+      "answer": "Chuyến đi giúp sinh viên tiếp cận môi trường hành nghề luật sư và kết nối kiến thức lý thuyết với kỹ năng thực tiễn trong tố tụng dân sự.",
+      "source_url": "https://law.dhv.edu.vn/news-event/news/sinh-vien-khoa-luat-dhv-tham-quan-thuc-te-tai-cong-ty-luat-tnhh-mtv-binh-yen",
+      "source_note": "https://law.dhv.edu.vn/news-event/news/sinh-vien-khoa-luat-dhv-tham-quan-thuc-te-tai-cong-ty-luat-tnhh-mtv-binh-yen"
+    },
+    {
+      "id": "UQ0305",
+      "question": "Đội sinh viên FBA đạt kết quả gì tại cuộc thi “Nhà đầu tư tương lai 2026”?",
+      "answer": "Đội của Khoa Tài chính – Ngân hàng – Kế toán đã vào Top 5 chung cuộc và nhận Giải Khuyến khích.",
+      "source_url": "https://fba.dhv.edu.vn/news-event/news/tu-hao-sinh-vien-fba-ghi-dau-an-tai-san-choi-hoc-thuat-toan-quoc",
+      "source_note": "https://fba.dhv.edu.vn/news-event/news/tu-hao-sinh-vien-fba-ghi-dau-an-tai-san-choi-hoc-thuat-toan-quoc"
+    },
+    {
+      "id": "UQ0306",
+      "question": "Talkshow “Tư duy pháp lý trong học tập và hành nghề luật” thu hút khoảng bao nhiêu sinh viên?",
+      "answer": "Sự kiện ngày 25/06/2026 thu hút hơn 100 sinh viên tham dự.",
+      "source_url": "https://law.dhv.edu.vn/news-event/news/khoa-luat-to-chuc-thanh-cong-talkshow-tu-duy-phap-ly-trong-hoc-tap-va-hanh-nghe-luat",
+      "source_note": "https://law.dhv.edu.vn/news-event/news/khoa-luat-to-chuc-thanh-cong-talkshow-tu-duy-phap-ly-trong-hoc-tap-va-hanh-nghe-luat"
+    },
+    {
+      "id": "UQ0307",
+      "question": "Sinh viên Khoa Ngôn ngữ DHV đạt thành tích gì tại Giải thưởng Lương Văn Can lần thứ 12?",
+      "answer": "Hai sinh viên của Khoa Ngôn ngữ, thuộc ngành Ngôn ngữ Trung Quốc và Ngôn ngữ Anh, đã lọt Top 50 vòng Chung kết của giải thưởng.",
+      "source_url": "https://lan.dhv.edu.vn/news-event/news/dhv-chuc-mung-02-sinh-vien-khoa-ngon-ngu-xuat-sac-lot-top-50-chung-ket-giai-thuong-luong-van-can-lan-thu-12",
+      "source_note": "https://lan.dhv.edu.vn/news-event/news/dhv-chuc-mung-02-sinh-vien-khoa-ngon-ngu-xuat-sac-lot-top-50-chung-ket-giai-thuong-luong-van-can-lan-thu-12"
+    },
+    {
+      "id": "UQ0314",
+      "question": "Em muốn hỏi ngoài tổng điểm học bạ 18 điểm ra thì điều kiện phụ để xét học bạ DHV 2026 gồm những gì ạ?",
+      "answer": "Theo ghi chú chính thức: (1) Kết quả học tập Lớp 12 đạt loại Tốt; (2) Tổng điểm 03 môn thi tốt nghiệp THPT đạt từ 18,00 điểm trở lên; (3) Điểm trung bình môn Toán và Văn cấp THPT từ 6,00 trở lên.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0316",
+      "question": "Sinh viên Kế toán có thể học tiếp hoặc theo đuổi những chứng chỉ nghề nghiệp quốc tế nào?",
+      "answer": "Sau khi tốt nghiệp, sinh viên Kế toán có thể học cao học hoặc theo đuổi các chứng chỉ nghề nghiệp như CMA, CPA, CFA, CIA và ACCA để bổ sung kiến thức chuyên sâu.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0319",
+      "question": "Tốt nghiệp ngành Quản trị Dịch vụ Du lịch và Lữ hành, sinh viên có thể làm hướng dẫn viên du lịch không?",
+      "answer": "Có. Hướng dẫn viên du lịch là một trong các hướng nghề nghiệp được nêu trên trang chương trình Quản trị Dịch vụ Du lịch và Lữ hành.",
+      "source_url": "https://host.dhv.edu.vn/educational-program/quan-tri-dich-vu-du-lich-lu-hanh?program=dai-hoc",
+      "source_note": "https://host.dhv.edu.vn/educational-program/quan-tri-dich-vu-du-lich-lu-hanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0322",
+      "question": "Sinh viên Ngôn ngữ Trung Quốc có thể làm biên phiên dịch trong lĩnh vực thương mại hoặc hành chính không?",
+      "answer": "Có. Cử nhân Ngôn ngữ Trung Quốc có thể làm biên phiên dịch trong lĩnh vực thương mại, hành chính văn phòng tại doanh nghiệp, cơ quan nhà nước, báo chí hoặc phòng công chứng.",
+      "source_url": "https://lan.dhv.edu.vn/educational-program/ngon-ngu-trung-quoc?program=dai-hoc",
+      "source_note": "https://lan.dhv.edu.vn/educational-program/ngon-ngu-trung-quoc?program=dai-hoc"
+    },
+    {
+      "id": "UQ0323",
+      "question": "Ngành Quản lý bệnh viện có đào tạo về hệ thống HIS và hồ sơ bệnh án điện tử không?",
+      "answer": "Có. Chương trình Quản lý bệnh viện có nội dung ứng dụng công nghệ thông tin y tế, bao gồm hệ thống quản lý bệnh viện HIS và hồ sơ bệnh án điện tử.",
+      "source_url": "https://heal.dhv.edu.vn/educational-program/quan-ly-benh-vien?program=dai-hoc",
+      "source_note": "https://heal.dhv.edu.vn/educational-program/quan-ly-benh-vien?program=dai-hoc"
+    },
+    {
+      "id": "UQ0326",
+      "question": "DHV công bố điểm trúng tuyển đợt 1 năm 2026 vào ngày nào?",
+      "answer": "DHV công bố điểm trúng tuyển đại học hệ chính quy đợt 1 năm 2026 vào ngày 09/08/2026.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0327",
+      "question": "Lễ ký kết với 6 doanh nghiệp ngày 26/06/2026 mang lại những cơ hội nào cho sinh viên?",
+      "answer": "Hoạt động ký kết với 6 doanh nghiệp hướng tới xây dựng học kỳ doanh nghiệp, mời chuyên gia chia sẻ thực tiễn và kết nối thực tập, hướng nghiệp, tuyển dụng cho sinh viên.",
+      "source_url": "https://bam.dhv.edu.vn/news-event/news/dhv-ky-ket-chien-luoc-cung-06-doanh-nghiep-mo-rong-co-hoi-thuc-tap-va-viec-lam-cho-sinh-vien",
+      "source_note": "https://bam.dhv.edu.vn/news-event/news/dhv-ky-ket-chien-luoc-cung-06-doanh-nghiep-mo-rong-co-hoi-thuc-tap-va-viec-lam-cho-sinh-vien"
+    },
+    {
+      "id": "UQ0329",
+      "question": "Công việc của một AI Researcher được Viện IATAI mô tả gồm những nhiệm vụ nào?",
+      "answer": "Viện IATAI mô tả AI Researcher là người nghiên cứu và cải tiến công nghệ AI, phát triển thuật toán, tạo nguyên mẫu phần mềm và công bố kết quả nghiên cứu khoa học.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/co-hoi-viec-lam-cua-nganh-tri-tue-nhan-tao",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/co-hoi-viec-lam-cua-nganh-tri-tue-nhan-tao"
+    },
+    {
+      "id": "UQ0330",
+      "question": "AI Developer thường đảm nhiệm những công việc gì theo thông tin của Viện IATAI?",
+      "answer": "AI Developer thiết kế và triển khai phần mềm thông minh, lập trình mô hình học máy, xử lý dữ liệu, tối ưu hệ thống và phối hợp với kỹ sư phần mềm để tích hợp AI vào thực tế.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/co-hoi-viec-lam-cua-nganh-tri-tue-nhan-tao",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/co-hoi-viec-lam-cua-nganh-tri-tue-nhan-tao"
+    },
+    {
+      "id": "UQ0331",
+      "question": "Mạng lưới đối tác của Viện IATAI có hoạt động trong lĩnh vực học máy không?",
+      "answer": "Có. Danh sách lĩnh vực hợp tác của Viện IATAI năm 2026 có trí tuệ nhân tạo và học máy.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/vien-iatai-mo-rong-hop-tac-voi-gan-30-doi-tac-cong-nghe-tao-co-hoi-thuc-tap-som-cho-sinh-vien-nganh-tri-tue-nhan-tao",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/vien-iatai-mo-rong-hop-tac-voi-gan-30-doi-tac-cong-nghe-tao-co-hoi-thuc-tap-som-cho-sinh-vien-nganh-tri-tue-nhan-tao"
+    },
+    {
+      "id": "UQ0332",
+      "question": "Mạng lưới đối tác công nghệ của Viện IATAI có bao gồm lĩnh vực điện toán đám mây không?",
+      "answer": "Có. Điện toán đám mây là một trong những lĩnh vực hoạt động của các đối tác công nghệ mà Viện IATAI kết nối.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/vien-iatai-mo-rong-hop-tac-voi-gan-30-doi-tac-cong-nghe-tao-co-hoi-thuc-tap-som-cho-sinh-vien-nganh-tri-tue-nhan-tao",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/vien-iatai-mo-rong-hop-tac-voi-gan-30-doi-tac-cong-nghe-tao-co-hoi-thuc-tap-som-cho-sinh-vien-nganh-tri-tue-nhan-tao"
+    },
+    {
+      "id": "UQ0333",
+      "question": "Viện IATAI có kết nối đối tác trong lĩnh vực an toàn thông tin không?",
+      "answer": "Có. An toàn thông tin được liệt kê trong nhóm lĩnh vực của mạng lưới đối tác công nghệ thuộc Viện IATAI.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/vien-iatai-mo-rong-hop-tac-voi-gan-30-doi-tac-cong-nghe-tao-co-hoi-thuc-tap-som-cho-sinh-vien-nganh-tri-tue-nhan-tao",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/vien-iatai-mo-rong-hop-tac-voi-gan-30-doi-tac-cong-nghe-tao-co-hoi-thuc-tap-som-cho-sinh-vien-nganh-tri-tue-nhan-tao"
+    },
+    {
+      "id": "UQ0341",
+      "question": "khi được cấp tài khoản edu của trường thì tài khoản và mật khẩu là gì ạ?",
+      "answer": "ài khoản và mật khẩu đăng nhập được nhà trường cấp riêng cho từng sinh viên sau khi hoàn tất các bước theo quy định. Nếu chưa nhận được hoặc quên thông tin đăng nhập, bạn nên liên hệ bộ phận hỗ trợ sinh viên của trường để được cấp lại hoặc hướng dẫn đăng nhập.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0344",
+      "question": "trường có quy định khi đi học có bắt buộc phải mặc đồng phục không ạ?",
+      "answer": "Trường chưa công bố quy định chung bắt buộc tất cả sinh viên phải mặc đồng phục trong mọi buổi học. Tuy nhiên, một số khoa hoặc một số hoạt động có thể có quy định trang phục riêng, vì vậy sinh viên cần thực hiện theo thông báo của khoa và từng học phần.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0345",
+      "question": "bãi đỗ xe có tính phí không?",
+      "answer": "không, trường sẽ hỗ trợ cho sinh viên nhưng số lượng có hạn.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0346",
+      "question": "nếu phải mua riêng đồng phục thì giá sẽ là bao nhiêu ạ?",
+      "answer": "một số khoa hoặc hoạt động có thể yêu cầu trang phục riêng. Mức đồng phục được thông báo gồm áo trắng 190.000 đồng, bộ đồ thể dục màu đỏ 250.000 đồng, hoặc mua 1 combo gồm cả hai với giá 440.000 đồng",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0347",
+      "question": "trường có tổ chức lễ khai giảng cho sinh viên không ạ?",
+      "answer": "Có. Trường Đại học Hùng Vương TP. Hồ Chí Minh có tổ chức lễ khai giảng và chào đón tân sinh viên. Ví dụ, ngày 05/09/2025, trường đã tổ chức Lễ Khai giảng năm học 2025–2026 và đón tân sinh viên niên khóa 2025–2029 tại cơ sở 194 Lê Đức Thọ.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0348",
+      "question": "khi học ngôn ngữ anh có được miễn tiếng anh đầu ra không ạ",
+      "answer": "Có. Sinh viên ngành Ngôn ngữ Anh được miễn yêu cầu chứng chỉ tiếng Anh đầu ra vì tiếng Anh là ngôn ngữ chuyên ngành chính. Tuy nhiên, việc này không có nghĩa là được miễn toàn bộ các điều kiện tốt nghiệp; những chứng chỉ hoặc chuẩn đầu ra khác theo quy định của chương trình đào tạo vẫn phải hoàn thành đầy đủ.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0349",
+      "question": "trường có phòng cho sinh viên nghỉ ngơi sau mỗi tiết học không ạ?",
+      "answer": "có, trường có chỗ cho sinh viên để có thể nghỉ ngơi có, Sảnh G để ngơi: Cơ sở 194 Lê Đức Thọ P.An Nhơn, TP.HCM, 736 Nguyễn Trãi P. Chợ Lớn TP.HCM, Căn tin để ngơi: 37 Kinh Dương Vương P. Phú Lâm TP.HCM",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0350",
+      "question": "Khi học ngành Công nghệ thông tin có được miễn chứng chỉ tin học đầu ra không ạ?",
+      "answer": "Có. Sinh viên ngành Công nghệ thông tin được miễn chứng chỉ tin học đầu ra vì đây là nội dung thuộc chuyên môn của ngành. Tuy nhiên, sinh viên vẫn bắt buộc phải đáp ứng yêu cầu về chứng chỉ tiếng Anh đầu ra theo quy định của Trường Đại học Hùng Vương TP. Hồ Chí Minh.",
+      "source_url": "",
+      "source_note": "Tự làm"
+    },
+    {
+      "id": "UQ0351",
+      "question": "Trong ngành Quản trị kinh doanh, sinh viên có được học về kiến thức nền tảng về kinh tế không?",
+      "answer": "Chương trình Quản trị kinh doanh trang bị kiến thức nền tảng về kinh tế để sinh viên hiểu môi trường và hoạt động của doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0352",
+      "question": "Chương trình Quản trị kinh doanh trang bị kiến thức về quản lý doanh nghiệp như thế nào?",
+      "answer": "Sinh viên được học kiến thức và kỹ năng quản lý doanh nghiệp, phục vụ việc tổ chức và điều hành hoạt động kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0353",
+      "question": "Nếu theo học ngành Quản trị kinh doanh, em có được tiếp cận nội dung quản trị điều hành không?",
+      "answer": "Nội dung quản trị điều hành giúp sinh viên hiểu cách phối hợp nguồn lực và vận hành hoạt động trong doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0354",
+      "question": "Kiến thức về quản trị tài chính có nằm trong định hướng đào tạo ngành Quản trị kinh doanh không?",
+      "answer": "Chương trình có nội dung liên quan đến quản trị tài chính nhằm giúp sinh viên phân tích và hỗ trợ các quyết định kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0356",
+      "question": "Nội dung quản trị chiến lược có vai trò gì trong chương trình Quản trị kinh doanh?",
+      "answer": "Quản trị chiến lược là một nội dung chuyên môn giúp sinh viên tiếp cận việc xây dựng định hướng và mục tiêu dài hạn cho doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0357",
+      "question": "Ngành Quản trị kinh doanh có đào tạo phần kiến thức quản trị sản xuất và vận hành không?",
+      "answer": "Chương trình đề cập đến quản trị sản xuất và vận hành để sinh viên hiểu cách tổ chức hoạt động tạo ra sản phẩm và dịch vụ.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0359",
+      "question": "Sau khi tốt nghiệp ngành Quản trị kinh doanh, sinh viên có thể làm chuyên viên kinh doanh không?",
+      "answer": "Cử nhân Quản trị kinh doanh có thể làm chuyên viên kinh doanh tại doanh nghiệp sản xuất, thương mại hoặc dịch vụ.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0360",
+      "question": "Vị trí chuyên viên marketing có phải là một hướng nghề nghiệp của cử nhân Quản trị kinh doanh không?",
+      "answer": "Marketing là một trong những bộ phận mà cử nhân Quản trị kinh doanh có thể làm việc sau khi tốt nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0361",
+      "question": "Cử nhân Quản trị kinh doanh có thể ứng tuyển công việc chuyên viên hỗ trợ và giao dịch khách hàng không?",
+      "answer": "Cử nhân Quản trị kinh doanh có thể làm ở bộ phận hỗ trợ và giao dịch khách hàng trong doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0362",
+      "question": "Nếu em muốn làm nhân viên bán hàng, ngành Quản trị kinh doanh có tạo nền tảng phù hợp không?",
+      "answer": "Bán hàng là một hướng công việc phù hợp với kiến thức quản trị và kinh doanh mà sinh viên được trang bị.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0363",
+      "question": "Một hướng việc làm sau ngành Quản trị kinh doanh có phải là chuyên viên nhân sự không?",
+      "answer": "Cử nhân Quản trị kinh doanh có thể làm việc tại bộ phận quản lý nhân sự của doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0364",
+      "question": "Sinh viên tốt nghiệp Quản trị kinh doanh có thể phát triển nghề nghiệp theo hướng chuyên viên đàm phán thương mại không?",
+      "answer": "Kiến thức kinh doanh cho phép cử nhân hướng tới các công việc liên quan đến giao dịch và đàm phán thương mại.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0366",
+      "question": "Công việc chuyên viên chiến lược kinh doanh có phù hợp với nền tảng của cử nhân Quản trị kinh doanh không?",
+      "answer": "Sinh viên sau tốt nghiệp có thể phát triển theo hướng phân tích và xây dựng chiến lược kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0367",
+      "question": "Sau khi ra trường, cử nhân Quản trị kinh doanh có thể hướng đến nghề vị trí quản lý doanh nghiệp không?",
+      "answer": "Sau quá trình tích lũy kinh nghiệm, cử nhân Quản trị kinh doanh có thể phát triển lên các vị trí quản lý và điều hành.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0368",
+      "question": "Em học Quản trị kinh doanh thì sau này có thể làm khởi nghiệp và thành lập doanh nghiệp không?",
+      "answer": "Người học có thể vận dụng kiến thức quản trị và khởi sự doanh nghiệp để phát triển dự án kinh doanh của riêng mình.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0369",
+      "question": "Sinh viên ngành Quản trị kinh doanh có được rèn luyện kỹ năng phân tích hoạt động của doanh nghiệp không?",
+      "answer": "Chương trình rèn khả năng phân tích các hoạt động như sản xuất, chất lượng, marketing, tài chính, kinh doanh quốc tế và nhân sự.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0370",
+      "question": "Kỹ năng lập kế hoạch kinh doanh được phát triển như thế nào trong ngành Quản trị kinh doanh?",
+      "answer": "Sinh viên được rèn khả năng xây dựng kế hoạch kinh doanh dựa trên thông tin và mục tiêu của doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0371",
+      "question": "Chương trình Quản trị kinh doanh có chú trọng khả năng nhận diện và giải quyết vấn đề trong doanh nghiệp không?",
+      "answer": "Chuẩn đầu ra hướng đến khả năng nhận diện vấn đề và đề xuất giải pháp phù hợp cho hoạt động doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0372",
+      "question": "Học ngành Quản trị kinh doanh có giúp sinh viên rèn khả năng thích ứng trong môi trường đa văn hóa không?",
+      "answer": "Sinh viên được chuẩn bị khả năng thích ứng với môi trường đa văn hóa thông qua kiến thức về thay đổi và quản trị rủi ro.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0373",
+      "question": "Chuẩn đầu ra ngành Quản trị kinh doanh có đề cập đến làm việc độc lập và làm việc nhóm không?",
+      "answer": "Chương trình yêu cầu người học có khả năng làm việc độc lập hoặc phối hợp nhóm trong bối cảnh công việc thay đổi.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0374",
+      "question": "Trong quá trình học Quản trị kinh doanh, sinh viên được chuẩn bị ra sao về sử dụng tiếng Anh ở mức bậc 3/6?",
+      "answer": "Chuẩn đầu ra của chương trình nêu yêu cầu năng lực tiếng Anh ở bậc 3/6 theo Khung năng lực ngoại ngữ Việt Nam.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0375",
+      "question": "Trong quá trình học ngành Quản trị kinh doanh, sinh viên có cơ hội phát triển tư duy nghiên cứu độc lập không?",
+      "answer": "Định hướng đào tạo khuyến khích sinh viên hình thành tư duy nghiên cứu độc lập để phục vụ công việc và học tập lâu dài.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0376",
+      "question": "Chương trình Quản trị kinh doanh hỗ trợ người học hình thành khả năng học tập suốt đời như thế nào?",
+      "answer": "Chương trình hướng người học đến khả năng tự học và tiếp tục cập nhật kiến thức trong suốt quá trình nghề nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0377",
+      "question": "Ngành Quản trị kinh doanh có chú trọng việc rèn luyện trách nhiệm xã hội và đạo đức nghề nghiệp không?",
+      "answer": "Mục tiêu đào tạo nhấn mạnh phẩm chất nghề nghiệp và trách nhiệm xã hội bên cạnh kiến thức quản trị.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/quan-tri-kinh-doanh?program=dai-hoc"
+    },
+    {
+      "id": "UQ0378",
+      "question": "Chương trình Marketing trang bị kiến thức về nghiên cứu thị trường như thế nào?",
+      "answer": "Sinh viên Marketing được học cách nghiên cứu thị trường để nhận diện nhu cầu, xu hướng và cơ hội kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0379",
+      "question": "Nếu theo học ngành Marketing, em có được tiếp cận nội dung phân tích dữ liệu marketing không?",
+      "answer": "Chương trình trang bị năng lực đọc hiểu và phân tích dữ liệu phục vụ quyết định marketing.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0380",
+      "question": "Kiến thức về quản lý thương hiệu có nằm trong định hướng đào tạo ngành Marketing không?",
+      "answer": "Quản lý thương hiệu là một nội dung chuyên môn giúp sinh viên hiểu cách xây dựng và phát triển giá trị thương hiệu.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0381",
+      "question": "Sinh viên ngành Marketing được chuẩn bị kiến thức gì liên quan đến lập kế hoạch marketing chiến lược?",
+      "answer": "Sinh viên được rèn cách lập kế hoạch marketing chiến lược phù hợp với mục tiêu kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0382",
+      "question": "Nội dung sáng tạo nội dung có vai trò gì trong chương trình Marketing?",
+      "answer": "Chương trình chú trọng kỹ năng sáng tạo nội dung để phục vụ truyền thông và tiếp thị trên nhiều nền tảng.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0383",
+      "question": "Ngành Marketing có đào tạo phần kiến thức sử dụng công cụ kỹ thuật số không?",
+      "answer": "Sinh viên được tiếp cận các công cụ kỹ thuật số phục vụ hoạt động marketing hiện đại.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0384",
+      "question": "Em muốn học về digital marketing thì trong ngành Marketing có nội dung này không?",
+      "answer": "Digital marketing là một phần quan trọng trong định hướng đào tạo, bên cạnh kiến thức marketing nền tảng.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0385",
+      "question": "Trong ngành Marketing, sinh viên có được học về hành vi người tiêu dùng trên nền tảng số không?",
+      "answer": "Chương trình giúp sinh viên phân tích và thấu hiểu người tiêu dùng, trong đó có hành vi trên các nền tảng số.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0386",
+      "question": "Vị trí chuyên viên marketing có phải là một hướng nghề nghiệp của cử nhân Marketing không?",
+      "answer": "Cử nhân Marketing có thể làm chuyên viên marketing tại doanh nghiệp sản xuất, thương mại hoặc dịch vụ.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0389",
+      "question": "Một hướng việc làm sau ngành Marketing có phải là nhân viên phát triển thị trường không?",
+      "answer": "Cử nhân Marketing có thể tham gia các hoạt động mở rộng thị trường và phát triển nhóm khách hàng.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0390",
+      "question": "Sinh viên tốt nghiệp Marketing có thể phát triển nghề nghiệp theo hướng nhân viên chăm sóc khách hàng không?",
+      "answer": "Chăm sóc khách hàng là một hướng công việc phù hợp với nền tảng hiểu người tiêu dùng của ngành Marketing.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0391",
+      "question": "Ngành Marketing có mở ra cơ hội làm việc ở vị trí trợ lý quản lý nhãn hàng không?",
+      "answer": "Sinh viên mới tốt nghiệp có thể phát triển nghề nghiệp theo hướng trợ lý quản lý nhãn hàng.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0392",
+      "question": "Công việc quản lý nhãn hàng có phù hợp với nền tảng của cử nhân Marketing không?",
+      "answer": "Sau khi tích lũy năng lực và kinh nghiệm, cử nhân có thể đảm nhiệm vị trí quản lý nhãn hàng.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0393",
+      "question": "Sau khi ra trường, cử nhân Marketing có thể hướng đến nghề trưởng phòng marketing không?",
+      "answer": "Ngành Marketing mở ra lộ trình phát triển lên các vị trí quản lý như trưởng phòng marketing.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0394",
+      "question": "Em học Marketing thì sau này có thể làm chuyên viên phát triển sản phẩm không?",
+      "answer": "Kiến thức thị trường và người tiêu dùng giúp cử nhân tham gia công việc quản lý, phát triển sản phẩm.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0395",
+      "question": "Sau khi tốt nghiệp ngành Marketing, sinh viên có thể làm người sáng tạo nội dung hoặc copywriter không?",
+      "answer": "Cử nhân Marketing có thể phát triển theo hướng sáng tạo nội dung, copywriting hoặc các công việc truyền thông liên quan.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0396",
+      "question": "Kỹ năng đọc hiểu số liệu thị trường được phát triển như thế nào trong ngành Marketing?",
+      "answer": "Chương trình rèn khả năng đọc hiểu số liệu để hỗ trợ phân tích thị trường và đánh giá hoạt động marketing.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0397",
+      "question": "Chương trình Marketing có chú trọng khả năng phân tích nhu cầu người tiêu dùng không?",
+      "answer": "Sinh viên được rèn năng lực lắng nghe, phân tích và thấu hiểu nhu cầu của người tiêu dùng.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0398",
+      "question": "Học ngành Marketing có giúp sinh viên rèn khả năng đề xuất chiến lược marketing không?",
+      "answer": "Người học được chuẩn bị khả năng đề xuất chiến lược marketing dựa trên dữ liệu và mục tiêu của doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0399",
+      "question": "Chuẩn đầu ra ngành Marketing có đề cập đến xây dựng chương trình truyền thông tích hợp không?",
+      "answer": "Chương trình hướng đến khả năng thiết kế các hoạt động truyền thông tích hợp phục vụ mục tiêu kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0400",
+      "question": "Trong quá trình học Marketing, sinh viên được chuẩn bị ra sao về xây dựng và phát triển thương hiệu?",
+      "answer": "Sinh viên được rèn kỹ năng đề xuất giải pháp nhằm xây dựng và phát triển thương hiệu doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0401",
+      "question": "Sinh viên ngành Marketing có được rèn luyện kỹ năng làm việc độc lập và phối hợp nhóm không?",
+      "answer": "Chuẩn đầu ra yêu cầu sinh viên có khả năng làm việc độc lập hoặc làm việc nhóm trong điều kiện công việc thay đổi.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0403",
+      "question": "Ngành Marketing có chú trọng việc rèn luyện kỹ năng mềm song song với chuyên môn không?",
+      "answer": "Ngoài kiến thức marketing, chương trình chú trọng các kỹ năng mềm và kỹ năng nghề nghiệp cần cho môi trường doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0404",
+      "question": "Trong quá trình học ngành Marketing, sinh viên có cơ hội phát triển tính tự tin và trách nhiệm nghề nghiệp không?",
+      "answer": "Định hướng đào tạo nhấn mạnh các phẩm chất trách nhiệm, trung nghĩa và tự tin để sinh viên thích ứng với tổ chức.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/marketing?program=dai-hoc"
+    },
+    {
+      "id": "UQ0405",
+      "question": "Nếu theo học ngành Thương mại điện tử, em có được tiếp cận nội dung tổ chức hoạt động kinh doanh thương mại điện tử không?",
+      "answer": "Chương trình giúp sinh viên hiểu cách tổ chức và triển khai quá trình kinh doanh thương mại điện tử của doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0406",
+      "question": "Kiến thức về kiểm soát hoạt động thương mại điện tử có nằm trong định hướng đào tạo ngành Thương mại điện tử không?",
+      "answer": "Sinh viên được trang bị kiến thức để theo dõi và kiểm soát hoạt động thương mại điện tử trong doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0407",
+      "question": "Sinh viên ngành Thương mại điện tử được chuẩn bị kiến thức gì liên quan đến hoạch định chiến lược thương mại điện tử?",
+      "answer": "Chương trình hướng đến khả năng hoạch định chiến lược cho hoạt động kinh doanh trên nền tảng số.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0408",
+      "question": "Nội dung xây dựng giải pháp công nghệ cho kinh doanh có vai trò gì trong chương trình Thương mại điện tử?",
+      "answer": "Sinh viên được học cách xây dựng giải pháp và khai thác nền tảng công nghệ thông tin phục vụ kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0410",
+      "question": "Em muốn học về quản trị doanh nghiệp thì trong ngành Thương mại điện tử có nội dung này không?",
+      "answer": "Chương trình trang bị nghiệp vụ quản trị doanh nghiệp để người học kết nối kiến thức kinh doanh với công nghệ.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0411",
+      "question": "Trong ngành Thương mại điện tử, sinh viên có được học về khởi nghiệp trong nền kinh tế số không?",
+      "answer": "Sinh viên được tiếp cận kiến thức khởi nghiệp phù hợp với kinh tế thị trường và bối cảnh số.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0412",
+      "question": "Chương trình Thương mại điện tử trang bị kiến thức về hội nhập quốc tế trong thương mại điện tử như thế nào?",
+      "answer": "Chương trình đặt hoạt động thương mại điện tử trong bối cảnh kinh tế thị trường và hội nhập quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0413",
+      "question": "Cử nhân Thương mại điện tử có thể ứng tuyển công việc chuyên viên phát triển kinh doanh số không?",
+      "answer": "Cử nhân Thương mại điện tử có thể tham gia phát triển hoạt động kinh doanh trên các nền tảng số.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0415",
+      "question": "Một hướng việc làm sau ngành Thương mại điện tử có phải là tư vấn giải pháp công nghệ không?",
+      "answer": "Cử nhân có thể làm công việc tư vấn các giải pháp công nghệ phục vụ hoạt động kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0416",
+      "question": "Sinh viên tốt nghiệp Thương mại điện tử có thể phát triển nghề nghiệp theo hướng nhân viên digital marketing không?",
+      "answer": "Digital marketing là một hướng nghề nghiệp phù hợp với nền tảng thương mại điện tử.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0417",
+      "question": "Ngành Thương mại điện tử có mở ra cơ hội làm việc ở vị trí chuyên viên quản trị quan hệ khách hàng không?",
+      "answer": "Cử nhân có thể làm các công việc liên quan đến quản trị quan hệ khách hàng trong môi trường kinh doanh số.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0418",
+      "question": "Công việc nhân sự tại doanh nghiệp logistics thương mại điện tử có phù hợp với nền tảng của cử nhân Thương mại điện tử không?",
+      "answer": "Sinh viên tốt nghiệp có thể làm việc tại các đơn vị cung cấp dịch vụ logistics cho thương mại điện tử.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0419",
+      "question": "Sau khi ra trường, cử nhân Thương mại điện tử có thể hướng đến nghề nhân sự tại doanh nghiệp cung cấp dịch vụ e-marketing không?",
+      "answer": "Các doanh nghiệp cung cấp dịch vụ e-marketing là một môi trường nghề nghiệp được trang chương trình đề cập.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0421",
+      "question": "Sau khi tốt nghiệp ngành Thương mại điện tử, sinh viên có thể làm chuyên viên quản lý nhà nước về thương mại điện tử không?",
+      "answer": "Cử nhân có thể tham gia các công việc quản lý hoặc xây dựng chính sách liên quan đến thương mại điện tử.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0422",
+      "question": "Vị trí nghiên cứu viên về thương mại điện tử có phải là một hướng nghề nghiệp của cử nhân Thương mại điện tử không?",
+      "answer": "Các viện và trung tâm nghiên cứu là một hướng phát triển nghề nghiệp cho người học quan tâm đến nghiên cứu.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0423",
+      "question": "Chương trình Thương mại điện tử có chú trọng khả năng phân tích hiệu quả hoạt động thương mại điện tử không?",
+      "answer": "Sinh viên được rèn khả năng phân tích và đánh giá hiệu quả các hoạt động thương mại điện tử.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0424",
+      "question": "Học ngành Thương mại điện tử có giúp sinh viên rèn khả năng đề xuất giải pháp quản lý thương mại điện tử không?",
+      "answer": "Chuẩn đầu ra hướng đến khả năng đề xuất giải pháp quản lý cho các vấn đề phát sinh trong kinh doanh số.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0425",
+      "question": "Chuẩn đầu ra ngành Thương mại điện tử có đề cập đến sử dụng công nghệ để phân tích dữ liệu kinh doanh không?",
+      "answer": "Chương trình rèn khả năng sử dụng công cụ công nghệ thông tin để hỗ trợ phân tích dữ liệu kinh doanh.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0426",
+      "question": "Trong quá trình học Thương mại điện tử, sinh viên được chuẩn bị ra sao về thiết kế công cụ ứng dụng cho thương mại điện tử?",
+      "answer": "Sinh viên được chuẩn bị khả năng thiết kế hoặc vận dụng công cụ ứng dụng phục vụ hoạt động thương mại điện tử.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0428",
+      "question": "Kỹ năng làm việc độc lập và làm việc nhóm được phát triển như thế nào trong ngành Thương mại điện tử?",
+      "answer": "Người học được rèn khả năng làm việc độc lập hoặc phối hợp nhóm trong môi trường nghề nghiệp thay đổi.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0429",
+      "question": "Ngành Thương mại điện tử có chú trọng việc học theo định hướng ứng dụng không?",
+      "answer": "Chương trình Thương mại điện tử được xây dựng theo hướng ứng dụng, nhấn mạnh khả năng vận dụng kiến thức vào hoạt động doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0430",
+      "question": "Trong quá trình học ngành Thương mại điện tử, sinh viên có cơ hội kết hợp đồng thời kiến thức kinh doanh và công nghệ không?",
+      "answer": "Điểm cốt lõi của chương trình là kết hợp kiến thức kinh doanh với nền tảng công nghệ để giải quyết bài toán thực tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0431",
+      "question": "Chương trình Thương mại điện tử hỗ trợ người học phát triển tư duy tự chủ và học tập liên tục như thế nào?",
+      "answer": "Chuẩn đầu ra hướng đến khả năng tự định hướng, chịu trách nhiệm và tiếp tục cập nhật kiến thức nghề nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/thuong-mai-dien-tu?program=dai-hoc"
+    },
+    {
+      "id": "UQ0432",
+      "question": "Kiến thức về thương mại quốc tế có nằm trong định hướng đào tạo ngành Kinh tế quốc tế không?",
+      "answer": "Chương trình trang bị kiến thức về hoạt động thương mại và kinh doanh giữa các quốc gia.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0433",
+      "question": "Sinh viên ngành Kinh tế quốc tế được chuẩn bị kiến thức gì liên quan đến nghiệp vụ xuất nhập khẩu?",
+      "answer": "Sinh viên được tiếp cận các nội dung liên quan đến xuất nhập khẩu trong hoạt động kinh doanh quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0434",
+      "question": "Nội dung logistics và chuỗi cung ứng có vai trò gì trong chương trình Kinh tế quốc tế?",
+      "answer": "Logistics và chuỗi cung ứng là nhóm kiến thức quan trọng giúp sinh viên hiểu dòng vận động hàng hóa quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0435",
+      "question": "Ngành Kinh tế quốc tế có đào tạo phần kiến thức quản trị kinh doanh quốc tế không?",
+      "answer": "Chương trình giúp sinh viên hiểu cách tổ chức và quản trị hoạt động kinh doanh trong môi trường quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0436",
+      "question": "Em muốn học về tài chính quốc tế thì trong ngành Kinh tế quốc tế có nội dung này không?",
+      "answer": "Sinh viên được trang bị kiến thức tài chính trong bối cảnh hoạt động của doanh nghiệp và thị trường quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0437",
+      "question": "Trong ngành Kinh tế quốc tế, sinh viên có được học về marketing quốc tế không?",
+      "answer": "Marketing quốc tế giúp người học hiểu cách tiếp cận và phát triển thị trường ở nhiều quốc gia.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0439",
+      "question": "Nếu theo học ngành Kinh tế quốc tế, em có được tiếp cận nội dung mua hàng và thu mua toàn cầu không?",
+      "answer": "Sinh viên được tiếp cận các vấn đề về mua hàng, thu mua và chuỗi cung ứng trong bối cảnh toàn cầu.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0440",
+      "question": "Nếu em muốn làm chuyên viên kinh doanh quốc tế, ngành Kinh tế quốc tế có tạo nền tảng phù hợp không?",
+      "answer": "Cử nhân có thể làm việc tại bộ phận kinh doanh quốc tế của doanh nghiệp.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0441",
+      "question": "Một hướng việc làm sau ngành Kinh tế quốc tế có phải là chuyên viên xuất nhập khẩu không?",
+      "answer": "Xuất nhập khẩu là một hướng nghề nghiệp phù hợp với kiến thức thương mại quốc tế được đào tạo.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0442",
+      "question": "Sinh viên tốt nghiệp Kinh tế quốc tế có thể phát triển nghề nghiệp theo hướng chuyên viên phát triển thị trường quốc tế không?",
+      "answer": "Cử nhân có thể tham gia nghiên cứu và mở rộng thị trường ở nước ngoài.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0443",
+      "question": "Ngành Kinh tế quốc tế có mở ra cơ hội làm việc ở vị trí chuyên viên logistics không?",
+      "answer": "Kiến thức chuỗi cung ứng cho phép sinh viên phát triển theo hướng công việc logistics.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0444",
+      "question": "Công việc chuyên viên chuỗi cung ứng có phù hợp với nền tảng của cử nhân Kinh tế quốc tế không?",
+      "answer": "Cử nhân có thể làm việc trong các bộ phận hoạch định và vận hành chuỗi cung ứng.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0445",
+      "question": "Sau khi ra trường, cử nhân Kinh tế quốc tế có thể hướng đến nghề chuyên viên thu mua quốc tế không?",
+      "answer": "Nền tảng về mua hàng toàn cầu giúp người học hướng tới các vị trí thu mua và tìm nguồn cung quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0446",
+      "question": "Em học Kinh tế quốc tế thì sau này có thể làm chuyên viên tài chính tại doanh nghiệp đa quốc gia không?",
+      "answer": "Kiến thức tài chính quốc tế hỗ trợ cử nhân làm việc trong các doanh nghiệp có hoạt động xuyên biên giới.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0447",
+      "question": "Sau khi tốt nghiệp ngành Kinh tế quốc tế, sinh viên có thể làm chuyên viên giao dịch thương mại quốc tế không?",
+      "answer": "Cử nhân có thể tham gia các hoạt động giao dịch, hợp tác và thương mại với đối tác nước ngoài.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0448",
+      "question": "Vị trí chuyên viên quản lý nhà nước về kinh tế quốc tế có phải là một hướng nghề nghiệp của cử nhân Kinh tế quốc tế không?",
+      "answer": "Người học có thể phát triển theo hướng công việc quản lý hoặc chính sách liên quan đến kinh tế và thương mại quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0449",
+      "question": "Cử nhân Kinh tế quốc tế có thể ứng tuyển công việc nghiên cứu viên về kinh tế và kinh doanh quốc tế không?",
+      "answer": "Các viện và trung tâm nghiên cứu là một hướng phát triển dành cho cử nhân có định hướng nghiên cứu.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0450",
+      "question": "Học ngành Kinh tế quốc tế có giúp sinh viên rèn khả năng lập kế hoạch kinh doanh quốc tế không?",
+      "answer": "Sinh viên được rèn khả năng xây dựng kế hoạch phù hợp với hoạt động kinh doanh trong môi trường quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0451",
+      "question": "Chuẩn đầu ra ngành Kinh tế quốc tế có đề cập đến phân tích hoạt động kinh doanh quốc tế không?",
+      "answer": "Chương trình giúp người học phân tích các hoạt động kinh doanh, logistics, tài chính và nhân lực trong bối cảnh toàn cầu.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0452",
+      "question": "Trong quá trình học Kinh tế quốc tế, sinh viên được chuẩn bị ra sao về giải quyết vấn đề kinh doanh xuyên biên giới?",
+      "answer": "Sinh viên được chuẩn bị để nhận diện và đề xuất giải pháp cho các vấn đề phát sinh trong kinh doanh quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0453",
+      "question": "Sinh viên ngành Kinh tế quốc tế có được rèn luyện kỹ năng thích ứng với môi trường đa văn hóa không?",
+      "answer": "Người học được rèn khả năng làm việc trong môi trường đa văn hóa và thích ứng với khác biệt giữa các thị trường.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0454",
+      "question": "Kỹ năng quản trị thay đổi và rủi ro được phát triển như thế nào trong ngành Kinh tế quốc tế?",
+      "answer": "Chương trình chú trọng khả năng thích ứng với thay đổi và nhận diện rủi ro trong hoạt động kinh doanh quốc tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0455",
+      "question": "Ba phòng thí nghiệm công nghệ trọng điểm được DHV đưa vào vận hành năm 2026 gồm những phòng nào?",
+      "answer": "Ba phòng gồm AI & Big Data Lab, Smart Factory Lab và Aero Space Lab.",
+      "source_url": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026",
+      "source_note": "https://iatai.dhv.edu.vn/news-event/news/dau-moc-khoi-dau-cho-he-sinh-thai-cong-nghe-va-hoc-thuat-cua-dhv-08-06-2026"
+    },
+    {
+      "id": "UQ0456",
+      "question": "Trong quá trình học ngành Kinh tế quốc tế, sinh viên có cơ hội học theo định hướng gắn với môi trường làm việc không?",
+      "answer": "Chương trình định hướng ứng dụng để sinh viên sớm hình dung và thích ứng với môi trường kinh doanh thực tế.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0457",
+      "question": "Chương trình Kinh tế quốc tế hỗ trợ người học phát triển tinh thần khởi nghiệp như thế nào?",
+      "answer": "Kiến thức kinh doanh quốc tế có thể được vận dụng để xây dựng dự án hoặc ý tưởng khởi nghiệp trong thị trường rộng hơn.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0458",
+      "question": "Ngành Kinh tế quốc tế có chú trọng việc duy trì khả năng tự học và cập nhật kiến thức không?",
+      "answer": "Người học được khuyến khích phát triển khả năng tự học để theo kịp thay đổi của thương mại và kinh tế toàn cầu.",
+      "source_url": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc",
+      "source_note": "https://bam.dhv.edu.vn/educational-program/kinh-te-quoc-te?program=dai-hoc"
+    },
+    {
+      "id": "UQ0459",
+      "question": "Sinh viên ngành Tài chính - Ngân hàng được chuẩn bị kiến thức gì liên quan đến phân tích chính sách tài chính?",
+      "answer": "Chương trình trang bị năng lực phân tích và đánh giá chính sách tài chính trong bối cảnh kinh tế - xã hội.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0460",
+      "question": "Nội dung sản phẩm ngân hàng bán lẻ có vai trò gì trong chương trình Tài chính - Ngân hàng?",
+      "answer": "Sinh viên được tiếp cận nghiệp vụ tư vấn và quản lý các sản phẩm ngân hàng dành cho khách hàng cá nhân.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0462",
+      "question": "Em muốn học về thẩm định tín dụng thì trong ngành Tài chính - Ngân hàng có nội dung này không?",
+      "answer": "Sinh viên được trang bị kiến thức phục vụ việc thẩm định hồ sơ và đề xuất hạn mức tín dụng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0463",
+      "question": "Trong ngành Tài chính - Ngân hàng, sinh viên có được học về quản lý sau cho vay không?",
+      "answer": "Nội dung nghiệp vụ ngân hàng bao gồm theo dõi và quản lý khách hàng sau khi khoản vay được giải ngân.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0464",
+      "question": "Chương trình Tài chính - Ngân hàng trang bị kiến thức về quản trị rủi ro tài chính - ngân hàng như thế nào?",
+      "answer": "Chương trình chú trọng nhận diện, phân tích và quản trị các loại rủi ro trong hoạt động tài chính - ngân hàng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0465",
+      "question": "Nếu theo học ngành Tài chính - Ngân hàng, em có được tiếp cận nội dung hoạt động nguồn vốn và đầu tư không?",
+      "answer": "Sinh viên được tiếp cận các hoạt động huy động vốn, đầu tư và quản lý nguồn vốn trong tổ chức tài chính.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0466",
+      "question": "Kiến thức về thanh toán quốc tế có nằm trong định hướng đào tạo ngành Tài chính - Ngân hàng không?",
+      "answer": "Thanh toán quốc tế là một trong những nghiệp vụ mà sinh viên có thể được chuẩn bị để làm việc trong lĩnh vực ngân hàng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0467",
+      "question": "Một hướng việc làm sau ngành Tài chính - Ngân hàng có phải là giao dịch viên ngân hàng không?",
+      "answer": "Cử nhân Tài chính - Ngân hàng có thể làm giao dịch viên tại ngân hàng hoặc tổ chức tài chính.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0468",
+      "question": "Sinh viên tốt nghiệp Tài chính - Ngân hàng có thể phát triển nghề nghiệp theo hướng chuyên viên tư vấn tài chính cá nhân không?",
+      "answer": "Tư vấn tài chính cá nhân là một hướng nghề nghiệp phù hợp với kiến thức tài chính và sản phẩm ngân hàng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0469",
+      "question": "Ngành Tài chính - Ngân hàng có mở ra cơ hội làm việc ở vị trí chuyên viên phân tích tài chính không?",
+      "answer": "Cử nhân có thể đảm nhiệm công việc phân tích tài chính tại doanh nghiệp hoặc tổ chức tài chính.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0470",
+      "question": "Công việc môi giới chứng khoán có phù hợp với nền tảng của cử nhân Tài chính - Ngân hàng không?",
+      "answer": "Kiến thức tài chính tạo nền tảng để người học phát triển theo hướng môi giới chứng khoán.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0471",
+      "question": "Sau khi ra trường, cử nhân Tài chính - Ngân hàng có thể hướng đến nghề chuyên viên tín dụng không?",
+      "answer": "Cử nhân có thể làm việc tại bộ phận tín dụng, từ tiếp nhận hồ sơ đến thẩm định và theo dõi khoản vay.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0472",
+      "question": "Em học Tài chính - Ngân hàng thì sau này có thể làm giám đốc tài chính không?",
+      "answer": "Sau khi tích lũy kinh nghiệm chuyên môn và quản lý, cử nhân có thể phát triển theo hướng giám đốc tài chính.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0473",
+      "question": "Sau khi tốt nghiệp ngành Tài chính - Ngân hàng, sinh viên có thể làm quản lý chi nhánh ngân hàng không?",
+      "answer": "Ngành học tạo nền tảng để người học phát triển dần lên các vị trí quản lý trong ngân hàng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0474",
+      "question": "Vị trí quản lý rủi ro có phải là một hướng nghề nghiệp của cử nhân Tài chính - Ngân hàng không?",
+      "answer": "Cử nhân có thể chuyên sâu vào công việc quản trị và kiểm soát rủi ro tại tổ chức tài chính.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0476",
+      "question": "Nếu em muốn làm phát triển sản phẩm tài chính - ngân hàng, ngành Tài chính - Ngân hàng có tạo nền tảng phù hợp không?",
+      "answer": "Cử nhân có thể tham gia nghiên cứu và phát triển các sản phẩm, dịch vụ tài chính phù hợp nhu cầu khách hàng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0477",
+      "question": "Chuẩn đầu ra ngành Tài chính - Ngân hàng có đề cập đến xây dựng quan hệ khách hàng không?",
+      "answer": "Sinh viên được rèn khả năng phát triển và duy trì quan hệ với khách hàng cá nhân hoặc doanh nghiệp.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0478",
+      "question": "Trong quá trình học Tài chính - Ngân hàng, sinh viên được chuẩn bị ra sao về đề xuất hạn mức tín dụng?",
+      "answer": "Kiến thức thẩm định giúp người học hiểu cách phân tích hồ sơ và đề xuất hạn mức tín dụng phù hợp.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0479",
+      "question": "Sinh viên ngành Tài chính - Ngân hàng có được rèn luyện kỹ năng đo lường rủi ro không?",
+      "answer": "Chương trình trang bị nền tảng để người học tiếp cận các phương pháp và mô hình đo lường rủi ro.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0480",
+      "question": "Kỹ năng phân tích dữ liệu rủi ro được phát triển như thế nào trong ngành Tài chính - Ngân hàng?",
+      "answer": "Sinh viên được chuẩn bị để sử dụng thông tin và dữ liệu phục vụ nhận diện, phân tích rủi ro tài chính.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0481",
+      "question": "Chương trình Tài chính - Ngân hàng có chú trọng khả năng huy động và quản lý nguồn vốn không?",
+      "answer": "Người học được tiếp cận kỹ năng liên quan đến huy động, sử dụng và quản lý nguồn vốn.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0482",
+      "question": "Học ngành Tài chính - Ngân hàng có giúp sinh viên rèn khả năng phân tích tình hình tài chính không?",
+      "answer": "Chương trình giúp sinh viên vận dụng kiến thức kinh tế - tài chính để đánh giá tình hình và hỗ trợ ra quyết định.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0483",
+      "question": "Chương trình Tài chính - Ngân hàng hỗ trợ người học vận dụng kiến thức kinh tế - xã hội vào nghiệp vụ tài chính như thế nào?",
+      "answer": "Mục tiêu đào tạo yêu cầu sinh viên biết kết nối kiến thức kinh tế - xã hội với các vấn đề chuyên môn tài chính - ngân hàng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0484",
+      "question": "Ngành Tài chính - Ngân hàng có chú trọng việc phát triển năng lực sáng tạo và ứng dụng không?",
+      "answer": "Chương trình hướng đến khả năng sáng tạo, vận dụng kiến thức để xử lý các vấn đề thực tế của lĩnh vực tài chính - ngân hàng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0485",
+      "question": "Trong quá trình học ngành Tài chính - Ngân hàng, sinh viên có cơ hội chuẩn bị nền tảng cho học tập và phát triển nghề nghiệp lâu dài không?",
+      "answer": "Kiến thức và kỹ năng chuyên môn được xây dựng để sinh viên có thể tiếp tục cập nhật nghiệp vụ khi thị trường tài chính thay đổi.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/tai-chinh-ngan-hang?program=dai-hoc"
+    },
+    {
+      "id": "UQ0486",
+      "question": "Nội dung kiến thức kế toán - tài chính chuyên sâu có vai trò gì trong chương trình Kế toán?",
+      "answer": "Chương trình Kế toán trang bị kiến thức chuyên sâu về kế toán và tài chính để sinh viên xử lý các nghiệp vụ thực tế.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0487",
+      "question": "Ngành Kế toán có đào tạo phần kiến thức nền tảng kinh tế phục vụ nghề kế toán không?",
+      "answer": "Sinh viên được học kiến thức cơ bản của khối ngành kinh tế để hiểu bối cảnh hoạt động của doanh nghiệp và đơn vị.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0488",
+      "question": "Em muốn học về ứng dụng ngoại ngữ trong công việc kế toán thì trong ngành Kế toán có nội dung này không?",
+      "answer": "Chương trình hướng người học đến khả năng sử dụng ngoại ngữ phù hợp với môi trường nghề nghiệp và hội nhập.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0489",
+      "question": "Trong ngành Kế toán, sinh viên có được học về ứng dụng tin học trên nền tảng công nghệ số không?",
+      "answer": "Ngành Kế toán chú trọng khả năng sử dụng tin học và công nghệ số để hỗ trợ xử lý thông tin kế toán.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0490",
+      "question": "Chương trình Kế toán trang bị kiến thức về kế toán thanh toán như thế nào?",
+      "answer": "Sinh viên được chuẩn bị kiến thức nghiệp vụ liên quan đến theo dõi và xử lý các khoản thanh toán của đơn vị.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0491",
+      "question": "Nếu theo học ngành Kế toán, em có được tiếp cận nội dung kế toán thuế không?",
+      "answer": "Nghiệp vụ thuế là một hướng chuyên môn quan trọng mà cử nhân Kế toán có thể vận dụng trong doanh nghiệp.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0492",
+      "question": "Kiến thức về kế toán chi phí và giá thành có nằm trong định hướng đào tạo ngành Kế toán không?",
+      "answer": "Chương trình cung cấp nền tảng để sinh viên xử lý thông tin chi phí và tính giá thành phục vụ quản trị doanh nghiệp.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0493",
+      "question": "Sinh viên ngành Kế toán được chuẩn bị kiến thức gì liên quan đến kế toán xuất nhập khẩu?",
+      "answer": "Sinh viên có thể phát triển năng lực xử lý nghiệp vụ kế toán phát sinh trong hoạt động xuất nhập khẩu.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0494",
+      "question": "Sinh viên tốt nghiệp Kế toán có thể phát triển nghề nghiệp theo hướng kế toán viên không?",
+      "answer": "Cử nhân Kế toán có thể làm kế toán viên tại doanh nghiệp, đơn vị hành chính sự nghiệp hoặc tổ chức khác.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0495",
+      "question": "Ngành Kế toán có mở ra cơ hội làm việc ở vị trí kế toán tổng hợp không?",
+      "answer": "Kế toán tổng hợp là một trong những vị trí nghề nghiệp phù hợp với nền tảng đào tạo của ngành.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0496",
+      "question": "Công việc kế toán trưởng có phù hợp với nền tảng của cử nhân Kế toán không?",
+      "answer": "Sau khi đáp ứng yêu cầu nghề nghiệp và tích lũy kinh nghiệm, cử nhân có thể phát triển lên vị trí kế toán trưởng.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0497",
+      "question": "Sau khi ra trường, cử nhân Kế toán có thể hướng đến nghề kế toán thuế không?",
+      "answer": "Cử nhân có thể đảm nhiệm công việc kế toán thuế, theo dõi và xử lý các nghĩa vụ thuế của đơn vị.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0498",
+      "question": "Em học Kế toán thì sau này có thể làm kế toán chi phí giá thành không?",
+      "answer": "Sinh viên tốt nghiệp có thể làm công việc theo dõi, tổng hợp và phân tích chi phí, giá thành.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0499",
+      "question": "Sau khi tốt nghiệp ngành Kế toán, sinh viên có thể làm kế toán vật tư không?",
+      "answer": "Kế toán vật tư là một hướng việc làm được trang chương trình của trường liệt kê cho cử nhân Kế toán.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    },
+    {
+      "id": "UQ0500",
+      "question": "Vị trí kế toán tiền lương có phải là một hướng nghề nghiệp của cử nhân Kế toán không?",
+      "answer": "Cử nhân có thể làm công việc liên quan đến tính toán, theo dõi và hạch toán tiền lương.",
+      "source_url": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc",
+      "source_note": "https://fba.dhv.edu.vn/educational-program/ke-toan?program=dai-hoc"
+    }
+  ]
+}

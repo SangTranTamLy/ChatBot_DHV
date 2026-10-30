@@ -59,6 +59,10 @@ class Settings:
     target_year: int
     ollama_timeout_seconds: float = 90.0
     rag_max_context_chars: int = 12000
+    # Ollama mặc định chỉ dùng cửa sổ 2048-4096 token; prompt RAG tiếng Việt
+    # (~10k ký tự luật + tới 12k ký tự context) vượt mức đó và Ollama sẽ âm thầm
+    # cắt phần ĐẦU prompt — chính là phần quy tắc chống bịa thông tin.
+    ollama_num_ctx: int = 12288
 
     def __post_init__(self) -> None:
         parsed_url = urlparse(self.ollama_base_url)
@@ -85,6 +89,8 @@ class Settings:
             raise ValueError("OLLAMA_TIMEOUT_SECONDS must be greater than zero")
         if self.rag_max_context_chars < 100:
             raise ValueError("RAG_MAX_CONTEXT_CHARS must be at least 100")
+        if self.ollama_num_ctx < 2048:
+            raise ValueError("OLLAMA_NUM_CTX must be at least 2048")
 
 
 def load_settings() -> Settings:
@@ -115,6 +121,7 @@ def load_settings() -> Settings:
         target_year=_read_int_env("TARGET_YEAR", 2026, "DHV_KB_YEAR"),
         ollama_timeout_seconds=_read_float_env("OLLAMA_TIMEOUT_SECONDS", 90.0),
         rag_max_context_chars=_read_int_env("RAG_MAX_CONTEXT_CHARS", 12000),
+        ollama_num_ctx=_read_int_env("OLLAMA_NUM_CTX", 12288),
     )
 
 

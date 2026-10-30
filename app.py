@@ -1195,7 +1195,7 @@ def _render_clean_conversation() -> None:
                         )
                         st.chat_input(
                             "Bạn muốn hỏi điều gì về tuyển sinh DHV?",
-                            key="chat_input", height=96, submit_mode="disable",
+                            key="chat_input", height=96, submit_mode="disable", max_chars=MAX_QUESTION_CHARS,
                             on_submit=_submit_chat_question,
                             disabled=st.session_state.chat_request_in_progress,
                         )
@@ -1555,7 +1555,7 @@ if st.session_state.pop("auth_login_notice", False):
 if st.session_state.pop("auth_session_expired_notice", False):
     st.toast("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.", icon=":material/info:", duration=5)
 
-from src.chatbot.chat_service import ask_chatbot
+from src.chatbot.chat_service import MAX_QUESTION_CHARS, ask_chatbot
 from src.chatbot.query_analysis import ConversationState
 from src.chatbot.warmup import start_background_warmup, wait_for_warmup
 
@@ -1580,7 +1580,7 @@ else:
         if st.session_state.messages:
             st.chat_input(
                 "Nhập câu hỏi về tuyển sinh DHV...",
-                key="chat_input", submit_mode="disable",
+                key="chat_input", submit_mode="disable", max_chars=MAX_QUESTION_CHARS,
                 on_submit=_submit_chat_question,
                 disabled=st.session_state.chat_request_in_progress,
             )

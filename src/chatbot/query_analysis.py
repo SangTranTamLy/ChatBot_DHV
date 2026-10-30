@@ -102,7 +102,7 @@ ENROLLMENT_CATEGORIES = ("ho_so", "nhap_hoc")
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 _CODE_RE = re.compile(r"\b(\d{7})\b")
 _DECIMAL_RE = r"\d+(?:[.,]\d+)?"
-_SCORE_RE = re.compile(rf"(?<!\w)({_DECIMAL_RE})\s*(?:điểm|diem)\b", re.IGNORECASE)
+_SCORE_RE = re.compile(rf"(?<![\w.,])({_DECIMAL_RE})\s*(?:điểm|diem|đ|d)\b", re.IGNORECASE)
 _SUBJECT_SCORE_RE = re.compile(
     rf"\b(toán|toan|văn|van|ngữ văn|ngu van|anh|tiếng anh|tieng anh)\s*[:=]?\s*({_DECIMAL_RE})",
     re.IGNORECASE,
@@ -784,6 +784,7 @@ def _is_school_info_request(normalized: str) -> bool:
         "truong thanh lap",
         "thanh lap khi nao",
         "thanh lap nam",
+        "thanh lap vao",
         "thanh lap chinh thuc",
         "moc thanh lap",
         "doi ten thanh",
@@ -931,6 +932,7 @@ def _is_verified_school_info_request(
         "truong thanh lap",
         "thanh lap khi nao",
         "thanh lap nam",
+        "thanh lap vao",
         "thanh lap chinh thuc",
         "moc thanh lap",
         "doi ten thanh",
@@ -2919,6 +2921,9 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         marker in normalized for marker in ("bo giao duc", "bo gddt", "trung tuyen", "nhap hoc")
     ):
         return "HOI_NHAP_HOC"
+    if "nhap hoc chinh thuc" in normalized:
+        # "hồ sơ và học phí" here is the context of one enrollment-status question, not two issues.
+        return "HOI_NHAP_HOC"
     issue_intents = _multi_issue_intents(normalized, entities)
     if issue_intents == ("HOI_NHAP_HOC",):
         return "HOI_NHAP_HOC"
@@ -3148,6 +3153,11 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     return "OUT_OF_SCOPE"
 
 
+_FEE_CUE_TOKENS = frozenset({
+    "phi", "tien", "dong", "gia", "thu", "tra", "nop", "vnd", "trieu", "nghin", "ngan", "mien", "giam",
+})
+
+
 def _fallback_rule_intent(normalized: str, entities: dict[str, object]) -> str | None:
     """Tín hiệu tuyển sinh rõ ràng mà model nhỏ hay bỏ sót.
 
@@ -3210,9 +3220,16 @@ def _classify_intent(
         ), "trained_model_with_safety_guard"
     fallback_intent = _fallback_rule_intent(normalized, entities)
     if prediction is not None and prediction.intent in INTENTS:
+        # The model links "bao nhieu" to fees; a fresh question with no money word
+        # ("1 nam co bao nhieu ki") must not be answered from the fee table.
+        unsupported_fee_guess = (
+            prediction.intent == "HOI_HOC_PHI"
+            and state.previous_intent != "HOI_HOC_PHI"
+            and not _FEE_CUE_TOKENS.intersection(normalized.split())
+        )
         if prediction.confidence >= 0.30 and prediction.margin >= 0.10 and not (
             prediction.intent == "OUT_OF_SCOPE" and fallback_intent
-        ):
+        ) and not unsupported_fee_guess:
             return prediction.intent, prediction.confidence, prediction.source
     if fallback_intent:
         return fallback_intent, (
@@ -3221,6 +3238,15 @@ def _classify_intent(
     return "OUT_OF_SCOPE", (
         prediction.confidence if prediction is not None else None
     ), "deterministic_fallback"
+
+
+_MAJOR_SWITCH_TOPIC_PREFIXES = {
+    "HOI_DIEM_TRUNG_TUYEN": "Điểm chuẩn",
+    "HOI_NGUONG_DAU_VAO": "Điểm sàn",
+    "HOI_HOC_PHI": "Học phí",
+    "HOI_HOC_BONG": "Học bổng",
+    "HOI_PHUONG_THUC_XET_TUYEN": "Phương thức xét tuyển",
+}
 
 
 def _is_school_switch_followup(normalized: str) -> bool:
@@ -3323,6 +3349,18 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
             expanded = ""
         if expanded:
             resolved = analyze_question(expanded, active_state, default_year=active_state.current_year)
+            return replace(resolved, question=original,
+                           entities={**resolved.entities, "contextual_question": expanded})
+    # ``Thế còn ngành Luật?`` after a per-major topic keeps that topic for the new major.
+    topic_prefix = _MAJOR_SWITCH_TOPIC_PREFIXES.get(active_state.previous_intent or "")
+    switch = re.fullmatch(
+        r"(?:(?:the|vay)\s+)?con\s+(?P<a>.+?)(?:\s+thi sao)?|(?P<b>.+?)\s+thi sao", normalized.strip(" ?.!")
+    )
+    rest = switch and (switch.group("a") or switch.group("b"))
+    if topic_prefix and rest and len(rest.split()) <= 6 and not {"gi", "nao", "khong", "ko"} & set(rest.split()):
+        expanded = f"{topic_prefix} {rest}"
+        resolved = analyze_question(expanded, active_state, default_year=active_state.current_year)
+        if resolved.entities.get("major_name") and resolved.intent == active_state.previous_intent:
             return replace(resolved, question=original,
                            entities={**resolved.entities, "contextual_question": expanded})
     detected_school = detect_target_school(normalized)
@@ -3669,6 +3707,9 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
         roles = (
             ("thu_tuc_va_quyen_loi_nhap_hoc", "co_so_va_kenh_lien_he")
             if "tu van vien" in normalized
+            # The school code ("Mã trường DHV") is stated only in the round-1 score notice.
+            else ("co_so_va_kenh_lien_he", "diem_trung_tuyen_dot_1")
+            if "ma truong" in normalized
             else ("co_so_va_kenh_lien_he",)
         )
     elif analysis.intent == "SCHOOL_INFO":
@@ -3680,7 +3721,7 @@ def _data_roles_for_route(analysis: QueryAnalysis) -> tuple[str, ...]:
             (
                 "moi_truong_hoc_tap_va_co_hoi_nghe_nghiep",
                 ("moi truong hoc tap", "co hoi nghe nghiep", "viec lam", "thuc tap", "kien tap",
-                 "ai pro", "cau lac bo", "doanh nghiep", "da van hoa"),
+                 "ai pro", "cau lac bo", "doanh nghiep", "da van hoa", "vuon uom", "khoi nghiep"),
             ),
             (
                 "hop_tac_quoc_te_va_doanh_nghiep",

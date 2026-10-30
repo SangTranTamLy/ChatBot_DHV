@@ -11,7 +11,7 @@ from langchain_core.documents import Document
 from pypdf import PdfReader
 
 from src.chatbot.query_analysis import ConversationState, analyze_question, route_question
-from src.chatbot.rag_chain import _ask_multi_issue, ask_chatbot
+from src.chatbot.rag_chain import _ask_chatbot_core, _ask_multi_issue, ask_chatbot
 from src.config.settings import settings
 from src.ingestion.loader import load_verified_documents
 from src.retrieval.retriever import topic_category
@@ -408,7 +408,7 @@ class Task09RoutingTests(unittest.TestCase):
                 raise AssertionError("missing unit website must not fall back to overview generation")
 
         retriever = OverviewOnlyRetriever()
-        result = ask_chatbot(
+        result = _ask_chatbot_core(
             "website Viện Đào tạo Sau đại học?",
             retriever=retriever,
             llm=NeverCalledLLM(),

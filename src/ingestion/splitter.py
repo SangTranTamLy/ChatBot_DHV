@@ -18,6 +18,13 @@ DEFAULT_TOKENIZER_MODEL = os.getenv("CHUNK_TOKENIZER_MODEL", "BAAI/bge-m3")
 LOGGER = logging.getLogger(__name__)
 
 
+def _hf_offline_forced() -> bool:
+    return any(
+        os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+        for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    )
+
+
 @lru_cache(maxsize=4)
 def _load_tokenizer(model_name: str):
     """Load the local tokenizer used to count chunk tokens."""
@@ -53,6 +60,16 @@ def _load_tokenizer(model_name: str):
                 use_fast=False,
             )
         except Exception as slow_exc:  # pragma: no cover - model cache failure
+            if not _hf_offline_forced():
+                # Máy mới clone: tokenizer chưa có trong cache → tải một lần.
+                try:
+                    return AutoTokenizer.from_pretrained(model_name, use_fast=True)
+                except Exception as download_exc:
+                    LOGGER.warning(
+                        "could not download tokenizer %s (%s)",
+                        model_name,
+                        type(download_exc).__name__,
+                    )
             raise RuntimeError(
                 f"Không tải được tokenizer cục bộ {model_name!r} "
                 "ở cả chế độ fast và slow. Tải/cache tokenizer trước hoặc "

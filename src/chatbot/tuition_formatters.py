@@ -402,7 +402,9 @@ def answer_fee_request(
             if english_fee is None:
                 answer = f"Tổng các khoản theo bảng phí học kỳ I năm {year} là {_money(base_total)}. Chi tiết: {details}."
             else:
-                breakdown = f" ({details})" if details else ""
+                # The base total excludes the optional English test, so its breakdown must too.
+                base_details = _fee_rows_text([row for row in rows if row[0] != label_by_key["english_test_fee"]])
+                breakdown = f" ({base_details})" if base_details else ""
                 answer = (
                     f"Tổng các khoản cơ bản học kỳ I năm {year} là {_money(base_total)}{breakdown}. "
                     f"Nếu thuộc diện kiểm tra năng lực Tiếng Anh, cộng thêm {_money(english_fee)}, "
@@ -489,19 +491,9 @@ def _evidence_tuition_answer(evidence: Any, analysis: QueryAnalysis | None = Non
     return _fee_request_answer(analysis, evidence) if analysis is not None else None
 
 
-def _evidence_fee_item_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    request = analyze_fee_request(analysis.normalized_question)
-    return _fee_request_answer(analysis, evidence) if "specific_fee" in request.topics else None
-
-
 def _evidence_tuition_total_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     request = analyze_fee_request(analysis.normalized_question)
     return _fee_request_answer(analysis, evidence) if "total" in request.topics else None
-
-
-def _evidence_tuition_per_credit_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    request = analyze_fee_request(analysis.normalized_question)
-    return _fee_request_answer(analysis, evidence) if request.scope == "per_credit" else None
 
 
 def _evidence_optional_english_fee_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
@@ -510,6 +502,3 @@ def _evidence_optional_english_fee_answer(analysis: QueryAnalysis, evidence: Any
         return None
     return _fee_request_answer(analysis, evidence)
 
-
-def _evidence_fee_breakdown_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
-    return _fee_request_answer(analysis, evidence)

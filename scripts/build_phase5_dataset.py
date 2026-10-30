@@ -16,6 +16,7 @@ DEFAULT_SOURCE = ROOT / "data" / "evaluation" / "raw" / "Nhóm 4_Thu_Thap_Q&A.xl
 DEFAULT_MASTER = ROOT / "data" / "evaluation" / "qa_master_500.jsonl"
 DEFAULT_LOCK = ROOT / "data" / "evaluation" / "qa_master_500.lock"
 DEFAULT_AUDIT = ROOT / "data" / "evaluation" / "qa_master_500.audit.json"
+DEFAULT_SUPPLEMENT = ROOT / "data" / "supplement" / "hoi_dap_bo_sung_2026.json"
 EXPECTED_ROWS = 500
 HEADERS = ("TT", "Câu hỏi", "Trả lời", "Nguồn")
 
@@ -151,6 +152,27 @@ def write_jsonl(path: Path, rows: list[dict[str, object]]) -> None:
     )
 
 
+def refresh_supplement(rows: list[dict[str, object]], path: Path = DEFAULT_SUPPLEMENT) -> None:
+    """Re-copy question/answer/source from the workbook rows into the supplement entries, by ID."""
+
+    if not path.exists():
+        return
+    data = json.loads(path.read_text(encoding="utf-8"))
+    by_id = {row["id"]: row for row in rows}
+    for entry in data.get("entries", []):
+        row = by_id.get(entry["id"])
+        if row is None:
+            raise ValueError(f"supplement entry {entry['id']} is not in the canonical dataset")
+        source = str(row["source"]).strip()
+        entry.update(
+            question=str(row["question"]).strip(),
+            answer=str(row["reference_answer"]).strip(),
+            source_url=source if source.startswith("https://") else "",
+            source_note=source,
+        )
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def build_dataset(
     *,
     source_path: Path = DEFAULT_SOURCE,
@@ -166,6 +188,7 @@ def build_dataset(
         )
 
     write_jsonl(master_path, rows)
+    refresh_supplement(rows)
     dataset_hash = hashlib.sha256(master_path.read_bytes()).hexdigest()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     lock_path.write_text(dataset_hash + "\n", encoding="utf-8")
@@ -204,4 +227,4 @@ if __name__ == "__main__":
     main()
 
 
-__all__ = ["audit_rows", "build_dataset", "main"]
+__all__ = ["audit_rows", "build_dataset", "main", "refresh_supplement"]

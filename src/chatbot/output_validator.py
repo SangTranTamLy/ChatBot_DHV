@@ -1393,12 +1393,16 @@ def _number_token(value: str) -> float | None:
 
 
 def _contains_numeric_literal(text: str, value: str) -> bool:
-    """Match a complete number, not a shorter value inside a larger one."""
+    """Match a complete number, not a shorter value inside a larger one.
+
+    A zero decimal is the same number ("20" matches "20,0"); at most two zeros so
+    "1.500" never matches inside "1.500.000".
+    """
 
     return bool(
         value
         and re.search(
-            rf"(?<![\d.,]){re.escape(value)}(?![\d.,])",
+            rf"(?<![\d.,]){re.escape(value)}(?:[.,]0{{1,2}})?(?![\d.,])",
             text,
         )
     )

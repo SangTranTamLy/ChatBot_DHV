@@ -1321,7 +1321,7 @@ body, [data-testid="stAppViewContainer"] {
 .st-key-conversation_layout { width:min(100%,900px); margin:1.6rem auto 0; }
 .st-key-conversation_pending_answer { width:min(100%,900px); margin:0 auto; }
 /* Streamlit retains old landing children until a slow rerun ends. Hide them as soon as chat replaces the landing. */
-[data-testid="stApp"]:not(:has(.st-key-chat_landing)) .st-key-landing_details { display:none !important; }
+[data-testid="stApp"]:has(.st-key-conversation_layout) .st-key-chat_landing_reference { display:none !important; }
 .st-key-conversation_layout [data-testid="stChatMessage"] { padding:.4rem 0; }
 .st-key-conversation_layout [data-testid="stChatMessageContent"] { max-width:min(100%,760px); }
 .st-key-chat_note { display:none !important; }

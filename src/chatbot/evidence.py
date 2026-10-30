@@ -8,7 +8,7 @@ import math
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Iterable, Mapping
 from urllib.parse import urlparse
 
 from langchain_core.documents import Document
@@ -542,43 +542,6 @@ def select_evidence_documents(
         documents=tuple(selected),
         candidates=tuple(candidate_audits),
         filtered=tuple(filtered_audits),
-    )
-
-
-def select_evidence(
-    documents: Iterable[Document],
-    **kwargs: Any,
-) -> EvidenceSelection:
-    """Tên gọi ngắn tương thích cho lớp Evidence Selection sau retrieval."""
-
-    return select_evidence_documents(documents, **kwargs)
-
-
-def select_candidate_documents(
-    documents: Iterable[Document],
-    candidates: Iterable[str] | None = None,
-) -> list[Document]:
-    """Chỉ giữ lại các chunk truy xuất có nhắc đến ứng viên được yêu cầu một cách rõ ràng.
-
-    Quá trình truy xuất tư vấn có thể trả về các dòng không liên quan từ một bảng danh mục rộng.
-    Việc lọc ứng viên diễn ra sau khi truy xuất; row view (nếu cần) chỉ là lát cắt
-    của chunk đã xác thực, không tạo fact mới hay thay thế provenance nguồn.
-    """
-
-    candidate_values = tuple(
-        str(candidate).strip()
-        for candidate in candidates or ()
-        if str(candidate).strip()
-    )
-    materialized = list(documents)
-    if not candidate_values:
-        return materialized
-    return list(
-        select_evidence_documents(
-            materialized,
-            candidates=candidate_values,
-            target_year=settings.target_year,
-        ).documents
     )
 
 
@@ -1175,8 +1138,6 @@ __all__ = [
     "EvidenceChunk",
     "EvidenceSelection",
     "build_evidence",
-    "select_candidate_documents",
-    "select_evidence",
     "select_evidence_documents",
     "merge_evidence_bundles",
     "select_program_relations",

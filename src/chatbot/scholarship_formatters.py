@@ -239,89 +239,6 @@ def _prioritize_scholarship_catalog_documents(documents: list[Any]) -> list[Any]
     return [item[3] for item in sorted(eligible, key=lambda item: item[:3])]
 
 
-def _prioritize_admission_scholarship_conditions_documents(
-    documents: list[Any],
-) -> tuple[list[Any], bool]:
-    """Keep the complete, verified admission-scholarship section inside evidence limits."""
-
-    eligible: list[tuple[int, Any, Mapping[str, object]]] = []
-    for position, document in enumerate(documents):
-        metadata = getattr(document, "metadata", {}) or {}
-        if (
-            metadata.get("record_type") != "page_text"
-            or str(metadata.get("category") or "") != "phuong_thuc_xet_tuyen"
-            or str(metadata.get("status") or "").casefold() != "verified"
-            or str(metadata.get("school_code") or "").upper() != "DHV"
-            or not _is_official_dhv_source(metadata.get("source_url"))
-        ):
-            continue
-        eligible.append((position, document, metadata))
-
-    anchor = next(
-        (
-            (document, metadata)
-            for _, document, metadata in eligible
-            if "1 trong 4 phuong thuc xet hoc bong" in normalize_question(
-                str(getattr(document, "page_content", "") or "")
-            )
-        ),
-        None,
-    )
-    if anchor is None:
-        return documents, False
-
-    anchor_document, anchor_metadata = anchor
-    structured_id = str(
-        anchor_metadata.get("structured_document_id")
-        or anchor_metadata.get("document_id")
-        or ""
-    )
-    try:
-        anchor_page = int(anchor_metadata.get("page"))
-    except (TypeError, ValueError, OverflowError):
-        return documents, False
-    if not structured_id:
-        return documents, False
-
-    continuation = [
-        (position, document, metadata)
-        for position, document, metadata in eligible
-        if str(
-            metadata.get("structured_document_id") or metadata.get("document_id") or ""
-        ) == structured_id
-        and _metadata_page(metadata) >= anchor_page
-    ]
-    continuation.sort(
-        key=lambda item: (
-            _metadata_page(item[2]),
-            _metadata_chunk_index(item[2], item[0]),
-            item[0],
-        )
-    )
-    section_documents: list[Any] = []
-    section_ended = False
-    last_page = anchor_page
-    for _, document, metadata in continuation:
-        page = _metadata_page(metadata)
-        if page > last_page + 1:
-            break
-        last_page = max(last_page, page)
-        section_documents.append(document)
-        if re.search(
-            r"(?m)^\s*1\.5\.\s*Học bổng\b",
-            str(getattr(document, "page_content", "") or ""),
-            re.IGNORECASE,
-        ):
-            section_ended = True
-            break
-
-    if not section_ended or anchor_document not in section_documents:
-        return documents, False
-    section_ids = {id(document) for document in section_documents}
-    remaining = [document for document in documents if id(document) not in section_ids]
-    return [*section_documents, *remaining], True
-
-
 def _evidence_scholarship_catalog_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     """List named scholarship headings once, using verified school policy pages."""
 
@@ -628,6 +545,10 @@ def _evidence_scholarship_overview_answer(analysis: QueryAnalysis, evidence: Any
 
     if not _is_scholarship_overview_question(analysis):
         return None
+    return _scholarship_overview_summary(analysis, evidence)
+
+
+def _scholarship_overview_summary(analysis: QueryAnalysis, evidence: Any) -> str | None:
     target_year = int(analysis.entities.get("year") or settings.target_year)
     sections = _scholarship_policy_sections(evidence, target_year)
     if not set(_SCHOLARSHIP_POLICY_HEADINGS).issubset(sections):
@@ -835,6 +756,10 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         return f"Theo dữ liệu tuyển sinh DHV, hiện có {count} loại/chính sách học bổng:\n" + "\n".join(
             f"- {line}" for line in selected_lines
         )
+    # With the full policy page in evidence, the stitched lines below are page fragments.
+    summary = _scholarship_overview_summary(analysis, evidence)
+    if summary:
+        return summary
     return f"Các chính sách và điều kiện học bổng DHV {target_year} gồm:\n" + "\n".join(
         f"- {line}" for line in selected_lines
     )

@@ -194,8 +194,6 @@ def _advisory_evidence_clarification(
 
     for program in candidate_programs:
         program_text = str(program).strip()
-        if program_text == preferred_program:
-            continue
         matches = [
             str(relation.get("parent_major"))
             for relation in relations
@@ -296,10 +294,35 @@ def _major_rows_from_evidence(evidence: Any) -> list[tuple[str, str]]:
     return rows
 
 
+def _majors_without_programs_answer(analysis: QueryAnalysis) -> dict[str, object] | None:
+    """Trả lời "chưa chia chuyên ngành" khi danh mục đã xác minh ghi ``program_count == 0``."""
+
+    requested = list(analysis.entities.get("candidate_majors") or ()) or [analysis.entities.get("major_name")]
+    wanted = [str(name) for name in requested if name]
+    catalog = _verified_major_catalog(settings.target_year)
+    if not wanted or catalog is None:
+        return None
+    rows, source, majors = catalog
+    codes = {normalize_question(name): (name, code) for name, code in rows}
+    without_programs = {normalize_question(str(m.get("major_name") or "")) for m in majors if m.get("program_count") == 0}
+    # Every asked major must be confirmed empty in the catalog, otherwise the generic flow answers.
+    if any(normalize_question(name) not in without_programs for name in wanted):
+        return None
+    majors = ", ".join("{} (mã ngành {})".format(*codes[normalize_question(name)]) for name in wanted)
+    return {
+        "answer": (
+            f"Theo danh mục ngành DHV {settings.target_year}, ngành {majors} hiện được đào tạo "
+            "theo ngành chung, chưa chia thành chuyên ngành hay chương trình đào tạo riêng."
+        ),
+        "sources": [source],
+        "status": "ok",
+    }
+
+
 def _verified_major_catalog(
     target_year: object,
-) -> tuple[list[tuple[str, str]], dict[str, str]] | None:
-    """Load the complete, verified major list from its one owning source file."""
+) -> tuple[list[tuple[str, str]], dict[str, str], tuple[dict[str, Any], ...]] | None:
+    """Load the verified major list, its source and the full major records from the owning file."""
 
     try:
         year = int(target_year)
@@ -365,7 +388,7 @@ def _verified_major_catalog(
             continue
 
         url = str(source.get("source_url") or "").strip()
-        return rows, {"title": str(document.get("title") or "Danh mục ngành DHV"), "url": url}
+        return rows, {"title": str(document.get("title") or "Danh mục ngành DHV"), "url": url}, tuple(majors)
     return None
 
 
@@ -643,6 +666,8 @@ def _evidence_catalog_answer(
 ) -> dict[str, object] | None:
     """Định dạng các câu trả lời danh mục từ bằng chứng có cấu trúc, không phải từ văn xuôi của model."""
 
+    if analysis.intent == "HOI_NGANH":
+        return _catalog_existence_answer(analysis)
     if analysis.intent == "DANH_SACH_NGANH":
         try:
             target_year = int(analysis.entities.get("year") or settings.target_year)
@@ -652,7 +677,7 @@ def _evidence_catalog_answer(
             target_year
         )
         if verified_catalog is not None:
-            major_rows, catalog_source = verified_catalog
+            major_rows, catalog_source, _ = verified_catalog
             catalog_sources = [catalog_source]
         else:
             major_rows = _major_rows_from_evidence(evidence)
@@ -794,7 +819,7 @@ def _evidence_catalog_answer(
             parent_major=requested_major,
         )
         if not program_rows:
-            return None
+            return _majors_without_programs_answer(analysis)
         scope = requested_major or "toàn bộ danh mục"
         count = len(program_rows)
         lines = []
@@ -910,6 +935,44 @@ def _evidence_catalog_answer(
             "status": "ok",
         }
     return None
+
+
+def _catalog_existence_answer(analysis: QueryAnalysis) -> dict[str, object] | None:
+    """Answer "DHV có (đào tạo) ngành/chuyên ngành X không?" from the verified catalog.
+
+    Only a match produces an answer; a name missing from the catalog is not proof that
+    DHV does not teach it, so that case stays with the normal flow.
+    """
+
+    question = re.sub(r"\([^)]*\)", " ", normalize_question(analysis.normalized_question.partition("intent:")[0]))
+    match = re.search(r"\bco\s+(?:dao tao\s+)?(?:nganh|chuyen nganh|chuong trinh)\s+(?:ve\s+)?(.+?)(?:\s+(?:o|tai|cua)\s+(?:truong\s+)?(?:dhv|truong))?\s+khong\b", question)
+    catalog = _verified_major_catalog(int(analysis.entities.get("year") or settings.target_year))
+    if not match or catalog is None:
+        return None
+
+    def key(value: object) -> str:
+        return " " + re.sub(r"[^a-z0-9]+", " ", normalize_question(str(value or ""))).strip() + " "
+
+    term = key(match.group(1))
+    if not term.strip():
+        return None
+    _, source, majors = catalog
+    lines: list[str] = []
+    for major in majors:
+        name, code = str(major.get("major_name") or ""), str(major.get("major_code") or "")
+        programs = [str(program.get("program_name") or "") for program in major.get("programs") or ()]
+        # One-way only: ``Ngôn ngữ Đức`` must not match the shorter ``Ngôn ngữ``.
+        if term in key(name):
+            detail = f" với các chuyên ngành: {', '.join(programs)}" if programs else ""
+            lines.append(f"DHV có ngành {name} (mã ngành {code}){detail}.")
+        lines.extend(
+            f"{program} là chuyên ngành thuộc ngành {name} (mã ngành {code})."
+            for program in programs
+            if term in key(program) and key(program) != key(name)
+        )
+    if not lines:
+        return None
+    return {"answer": "Có. " + " ".join(lines), "sources": [source], "status": "ok"}
 
 
 _PROGRAM_RELATION_MARKERS = (

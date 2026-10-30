@@ -16,9 +16,40 @@ DEFAULT_SENTENCE_TRANSFORMER_MODEL = (
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 )
 
-# Prevent HuggingFace Hub from making unauthenticated network checks on every load
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+# Không ép HF_HUB_OFFLINE=1 toàn cục nữa: làm vậy khiến máy mới clone dự án
+# KHÔNG thể tải model lần đầu (nhánh fallback bên dưới cũng bị chặn mạng).
+# Thay vào đó luôn thử ``local_files_only=True`` trước (không gọi mạng), chỉ tải
+# khi cache chưa có. Người dùng vẫn có thể tự đặt HF_HUB_OFFLINE=1 để chặn hẳn.
+
+
+def hf_offline_forced() -> bool:
+    """True khi người dùng chủ động bật chế độ offline của Hugging Face."""
+
+    return any(
+        os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+        for name in ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    )
+
+
+def resolve_sentence_transformer_model(explicit: str | None = None) -> str:
+    """Chọn tên model Sentence Transformers theo một thứ tự thống nhất.
+
+    Thứ tự: tham số truyền vào → ``SENTENCE_TRANSFORMER_MODEL`` →
+    ``EMBEDDING_MODEL`` (khi là id Hugging Face dạng ``org/name``) → mặc định.
+    Trước đây retriever bỏ qua ``EMBEDDING_MODEL``, nên đổi model trong ``.env``
+    có thể làm index và truy vấn dùng hai model khác nhau.
+    """
+
+    if explicit and explicit.strip():
+        return explicit.strip()
+    env_value = os.getenv("SENTENCE_TRANSFORMER_MODEL", "").strip()
+    if env_value:
+        return env_value
+    configured = (settings.embedding_model or "").strip()
+    # Under another backend EMBEDDING_MODEL names that backend's model, not the one the index used.
+    if settings.embedding_backend != "ollama" and "/" in configured:
+        return configured
+    return DEFAULT_SENTENCE_TRANSFORMER_MODEL
 
 
 _SENTENCE_TRANSFORMER_CACHE: dict[str, Any] = {}
@@ -47,7 +78,12 @@ class SentenceTransformerEmbeddings(Embeddings):
                             model_name,
                             local_files_only=True,
                         )
-                    except Exception:
+                    except Exception as local_exc:
+                        if hf_offline_forced():
+                            raise RuntimeError(
+                                f"Model embedding {model_name!r} chưa có trong cache và "
+                                "HF_HUB_OFFLINE đang bật. Tắt biến này một lần để tải model."
+                            ) from local_exc
                         _SENTENCE_TRANSFORMER_CACHE[model_name] = SentenceTransformer(model_name)
         self._model = _SENTENCE_TRANSFORMER_CACHE[model_name]
 
@@ -64,6 +100,13 @@ class SentenceTransformerEmbeddings(Embeddings):
 
     def embed_query(self, text: str) -> list[float]:
         return self._encode([text])[0]
+
+    @property
+    def max_seq_length(self) -> int | None:
+        """Số token tối đa model đọc được; phần dư của chunk bị cắt khi embed."""
+
+        value = getattr(self._model, "max_seq_length", None)
+        return int(value) if isinstance(value, int) and value > 0 else None
 
 
 def create_ollama_embeddings(
@@ -94,10 +137,7 @@ def create_embeddings(
             base_url=ollama_base_url,
         )
     if selected_backend in {"sentence-transformers", "sentence_transformers", "st"}:
-        model_name = sentence_transformer_model or os.getenv(
-            "SENTENCE_TRANSFORMER_MODEL",
-            DEFAULT_SENTENCE_TRANSFORMER_MODEL,
-        )
+        model_name = resolve_sentence_transformer_model(sentence_transformer_model)
         if model_name not in _EMBEDDINGS_INSTANCE_CACHE:
             with _MODEL_LOAD_LOCK:
                 if model_name not in _EMBEDDINGS_INSTANCE_CACHE:
@@ -114,4 +154,6 @@ __all__ = [
     "SentenceTransformerEmbeddings",
     "create_embeddings",
     "create_ollama_embeddings",
+    "hf_offline_forced",
+    "resolve_sentence_transformer_model",
 ]

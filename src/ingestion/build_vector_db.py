@@ -23,7 +23,7 @@ from langchain_chroma import Chroma
 
 from src.config.settings import settings
 
-from .embeddings import DEFAULT_SENTENCE_TRANSFORMER_MODEL, create_embeddings
+from .embeddings import create_embeddings, resolve_sentence_transformer_model
 from .chroma_lifecycle import close_chroma_store
 from .loader import LoadResult, load_verified_documents
 from .splitter import (
@@ -60,6 +60,57 @@ class BuildStats:
         return asdict(self)
 
 
+# Chừa chỗ cho token đặc biệt [CLS]/[SEP] mà model embedding tự thêm vào.
+_SPECIAL_TOKEN_MARGIN = 2
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def embedding_token_limit(embedding_function: Any) -> int | None:
+    """Trả về số token tối đa model embedding đọc được (``None`` nếu không rõ)."""
+
+    value = getattr(embedding_function, "max_seq_length", None)
+    return int(value) if isinstance(value, int) and value > 0 else None
+
+
+def resolve_chunk_window(
+    chunk_size: int,
+    chunk_overlap: int,
+    token_limit: int | None,
+    *,
+    align: bool,
+) -> tuple[int, int]:
+    """Kiểm tra chunk có vừa cửa sổ của model embedding hay không.
+
+    Khi chunk dài hơn cửa sổ, phần đuôi chunk bị cắt lúc embed nên vector chỉ
+    đại diện cho phần đầu. ``align=True`` thu nhỏ chunk cho vừa; ``align=False``
+    giữ nguyên (để không đổi index đang dùng) nhưng ghi cảnh báo rõ ràng.
+    """
+
+    if token_limit is None:
+        return chunk_size, chunk_overlap
+    usable = max(16, token_limit - _SPECIAL_TOKEN_MARGIN)
+    if chunk_size <= usable:
+        return chunk_size, chunk_overlap
+    if not align:
+        LOGGER.warning(
+            "chunk_size=%d token vượt giới hạn %d token của model embedding: phần "
+            "cuối mỗi chunk dài sẽ KHÔNG được embed. Chạy lại với "
+            "--align-chunks-to-embedding (hoặc CHUNK_ALIGN_TO_EMBEDDING=1) để sửa.",
+            chunk_size,
+            token_limit,
+        )
+        return chunk_size, chunk_overlap
+    aligned_overlap = min(chunk_overlap, usable // 5)
+    LOGGER.info(
+        "aligning chunk_size %d -> %d tokens (overlap %d -> %d) to the embedding window",
+        chunk_size, usable, chunk_overlap, aligned_overlap,
+    )
+    return usable, aligned_overlap
+
+
 def _reset_persist_directory(persist_directory: Path) -> None:
     """Chỉ xóa thư mục vector-store đã được cấu hình rõ ràng."""
 
@@ -86,8 +137,13 @@ def build_vector_db(
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
     tokenizer_model: str = DEFAULT_TOKENIZER_MODEL,
     reset: bool = False,
+    align_chunks_to_embedding: bool | None = None,
 ) -> BuildStats:
-    """Tải, chia đoạn, nhúng (embed) và lưu trữ corpus DHV đã xác thực."""
+    """Tải, chia đoạn, nhúng (embed) và lưu trữ corpus DHV đã xác thực.
+
+    ``align_chunks_to_embedding`` (mặc định đọc ``CHUNK_ALIGN_TO_EMBEDDING``)
+    thu nhỏ chunk cho vừa cửa sổ token của model embedding.
+    """
 
     load_result = load_verified_documents(data_directory, target_year=target_year)
     if not load_result.documents:
@@ -96,15 +152,6 @@ def build_vector_db(
             "no verified structured documents found in "
             f"{data_directory}; load stats: {stats}"
         )
-
-    chunks = split_documents(
-        load_result.documents,
-        chunk_size=chunk_size,
-        chunk_overlap=chunk_overlap,
-        tokenizer_model=tokenizer_model,
-    )
-    if not chunks:
-        raise RuntimeError("verified documents produced zero chunks")
 
     if embeddings is not None:
         embedding_function = embeddings
@@ -117,9 +164,8 @@ def build_vector_db(
         if resolved_backend == "ollama":
             resolved_model = embedding_model or settings.embedding_model
         else:
-            resolved_model = sentence_transformer_model or os.getenv(
-                "SENTENCE_TRANSFORMER_MODEL",
-                DEFAULT_SENTENCE_TRANSFORMER_MODEL,
+            resolved_model = resolve_sentence_transformer_model(
+                sentence_transformer_model
             )
         embedding_function = create_embeddings(
             backend=resolved_backend,
@@ -127,6 +173,27 @@ def build_vector_db(
             ollama_base_url=ollama_base_url,
             sentence_transformer_model=sentence_transformer_model,
         )
+
+    align = (
+        _env_flag("CHUNK_ALIGN_TO_EMBEDDING")
+        if align_chunks_to_embedding is None
+        else align_chunks_to_embedding
+    )
+    chunk_size, chunk_overlap = resolve_chunk_window(
+        chunk_size,
+        chunk_overlap,
+        embedding_token_limit(embedding_function),
+        align=align,
+    )
+
+    chunks = split_documents(
+        load_result.documents,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        tokenizer_model=tokenizer_model,
+    )
+    if not chunks:
+        raise RuntimeError("verified documents produced zero chunks")
 
     persist_path = Path(persist_directory)
     if reset:
@@ -214,11 +281,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sentence-transformer-model",
-        default=os.getenv(
-            "SENTENCE_TRANSFORMER_MODEL",
-            DEFAULT_SENTENCE_TRANSFORMER_MODEL,
+        default=None,
+        help=(
+            "Sentence Transformers model name or local path "
+            "(default: SENTENCE_TRANSFORMER_MODEL, then EMBEDDING_MODEL)"
         ),
-        help="Sentence Transformers model name or local path",
     )
     parser.add_argument(
         "--ollama-base-url",
@@ -228,6 +295,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE)
     parser.add_argument("--chunk-overlap", type=int, default=DEFAULT_CHUNK_OVERLAP)
     parser.add_argument("--tokenizer-model", default=DEFAULT_TOKENIZER_MODEL)
+    parser.add_argument(
+        "--align-chunks-to-embedding",
+        action="store_true",
+        default=None,
+        help="shrink chunks so they fit the embedding model's token window",
+    )
     parser.add_argument(
         "--reset",
         action="store_true",
@@ -268,6 +341,7 @@ def main() -> int:
             chunk_overlap=args.chunk_overlap,
             tokenizer_model=args.tokenizer_model,
             reset=args.reset,
+            align_chunks_to_embedding=args.align_chunks_to_embedding,
         )
     except Exception as exc:  # external embedding/vector-store services
         LOGGER.error("vector database build failed: %s", exc)
@@ -281,4 +355,10 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["BuildStats", "build_vector_db", "main"]
+__all__ = [
+    "BuildStats",
+    "build_vector_db",
+    "embedding_token_limit",
+    "main",
+    "resolve_chunk_window",
+]

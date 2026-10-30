@@ -175,13 +175,6 @@ def put(
             _store.popitem(last=False)
 
 
-def evict_question(question: str, *, settings_obj: Settings = settings) -> None:
-    """Drops a cached answer."""
-    key = make_key(question, settings_obj=settings_obj)
-    with _lock:
-        _store.pop(key, None)
-
-
 def clear() -> None:
     with _lock:
         _store.clear()

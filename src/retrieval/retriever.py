@@ -973,12 +973,6 @@ class DHVRetriever:
         ]
 
 
-def retrieve_documents(question: str) -> list[Document]:
-    """Hàm tiện ích cho các nơi gọi sử dụng cài đặt mặc định."""
-
-    return DHVRetriever().retrieve(question)
-
-
 __all__ = [
     "DHVRetriever",
     "RetrievalAudit",
@@ -988,5 +982,4 @@ __all__ = [
     "VectorDatabaseError",
     "requested_year",
     "topic_category",
-    "retrieve_documents",
 ]

@@ -67,6 +67,8 @@ ADMISSIONS_KEYWORDS = frozenset(
         "lien he",
         "hotline",
         "dia chi",
+        "truong o dau",
+        "truong nam o dau",
         "so dien thoai",
         "dien thoai",
         "email",
@@ -717,18 +719,6 @@ def _is_tuition_unit_question(normalized: str) -> bool:
     return has_unit and asks_price
 
 
-def is_foreign_institution_question(question: str) -> bool:
-    """Nhận diện yêu cầu nhắm tới trường khác DHV.
-
-    ĐHQG-HCM là nguồn của kỳ thi ĐGNL mà DHV có thể dùng để xét tuyển, nên
-    cụm này chỉ bị chặn khi nó được hỏi như một trường hoặc không nằm trong
-    ngữ cảnh kỳ thi ĐGNL.
-    """
-
-    target = detect_target_school(question)["target_school"]
-    return target in {TARGET_SCHOOL_OTHER, TARGET_SCHOOL_MIXED}
-
-
 def scope_reason(
     question: str,
     *,
@@ -826,7 +816,6 @@ __all__ = [
     "TARGET_SCHOOL_UNSPECIFIED",
     "detect_target_school",
     "has_foreign_domain_signal",
-    "is_foreign_institution_question",
     "is_in_scope",
     "is_personal_life_advice",
     "normalize_scope_text",

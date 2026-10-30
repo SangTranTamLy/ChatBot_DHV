@@ -6,6 +6,13 @@ from typing import Any
 
 from src.config.settings import Settings, settings
 
+try:  # httpx là phụ thuộc của ollama; import một lần thay vì trong khối except.
+    from httpx import TimeoutException as _HttpxTimeout
+except ImportError:  # pragma: no cover - chỉ xảy ra khi môi trường thiếu ollama
+    _HttpxTimeout = TimeoutError
+
+_TIMEOUT_ERRORS: tuple[type[BaseException], ...] = (_HttpxTimeout, TimeoutError)
+
 
 class OllamaError(RuntimeError):
     """Lỗi cơ sở khi phản hồi từ Ollama bị thất bại hoặc sai định dạng."""
@@ -36,6 +43,7 @@ class LocalLLM:
         self.model = settings_obj.ollama_model
         self.base_url = settings_obj.ollama_base_url
         self.timeout_seconds = settings_obj.ollama_timeout_seconds
+        self.num_ctx = int(getattr(settings_obj, "ollama_num_ctx", 12288))
         if client is not None:
             self._client = client
             return
@@ -54,7 +62,19 @@ class LocalLLM:
             raise OllamaUnavailableError("Ollama client is unavailable") from exc
 
     def generate(self, prompt: str) -> str:
-        """Trả về văn bản của model hoặc một lỗi Ollama an toàn, đã được phân loại."""
+        """Sinh câu trả lời cho một prompt RAG hoàn chỉnh.
+
+        Args:
+            prompt: Prompt tiếng Việt đã chứa quy tắc, context và câu hỏi.
+
+        Returns:
+            Văn bản trả lời đã ``strip()``.
+
+        Raises:
+            OllamaError: prompt rỗng hoặc model trả về rỗng.
+            OllamaTimeoutError: quá ``OLLAMA_TIMEOUT_SECONDS``.
+            OllamaUnavailableError: Ollama offline hoặc thiếu model.
+        """
 
         if not isinstance(prompt, str) or not prompt.strip():
             raise OllamaError("prompt must not be empty")
@@ -62,11 +82,10 @@ class LocalLLM:
             response = self._client.chat(
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
-                options={"temperature": 0},
+                options={"temperature": 0, "num_ctx": self.num_ctx},
             )
         except Exception as exc:
-            from httpx import TimeoutException
-            if isinstance(exc, (TimeoutException, TimeoutError)):
+            if isinstance(exc, _TIMEOUT_ERRORS):
                 raise OllamaTimeoutError("Ollama request timed out") from exc
             raise OllamaUnavailableError("Ollama request failed") from exc
 

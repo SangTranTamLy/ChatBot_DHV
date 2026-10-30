@@ -48,6 +48,10 @@ class FeeRequestAnalysisTests(unittest.TestCase):
     def test_independent_school_term_question_is_not_a_fee_request(self) -> None:
         self.assertFalse(analyze_fee_request("Học kỳ I có bao nhiêu học phần?").is_fee_request)
 
+    def test_semester_count_question_is_not_routed_to_the_fee_table(self) -> None:
+        self.assertNotEqual(analyze_question("1 năm có bao nhiêu kì").intent, "HOI_HOC_PHI")
+        self.assertEqual(analyze_question("Chi phí học kỳ 1 là bao nhiêu?").intent, "HOI_HOC_PHI")
+
     def test_generic_scholarship_request_is_marked_ambiguous(self) -> None:
         request = analyze_fee_request("Học phí CNTT bao nhiêu, có học bổng không?")
         self.assertIn("scholarship", request.topics)

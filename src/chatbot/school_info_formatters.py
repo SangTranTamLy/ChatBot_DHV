@@ -445,6 +445,8 @@ def _evidence_school_info_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         if not candidates:
             candidates = matching("truong dai hoc hung vuong thanh pho ho chi minh la")
 
+    # A heading such as "... và Ngày truyền thống DHV:" names the topic but is not the fact.
+    candidates = [candidate for candidate in candidates if not candidate.endswith(":")] or candidates
     if not candidates:
         return None
 

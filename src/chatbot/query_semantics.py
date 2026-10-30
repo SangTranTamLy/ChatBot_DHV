@@ -53,6 +53,8 @@ def enrollment_request(question: str) -> str:
         return ""
     if "xet tuyen" in text and "nhap hoc" not in text:
         return ""
+    if "nhap hoc chinh thuc" in text:
+        return "official_enrollment"
     if "xac nhan" in text:
         return ""
     if any(x in text for x in ("khung gio", "may gio", "gio nao", "luc nao trong ngay", "gio lam viec", "gio tiep nhan", "gio nhan", "thu bay", "chu nhat", "ngay le")):
@@ -330,6 +332,7 @@ _DOMAIN_PHRASES = {
     "tuyen sinh": ("tuyển sinh", 1),
     "chuyen nganh": ("chuyên ngành", 1),
     "trung tuyen": ("trúng tuyển", 1),
+    "hoc phi": ("học phí", 1),
 }
 _VOWELS = "aeiouy"
 
@@ -376,7 +379,8 @@ def _match_domain_phrase(first: str, second: str) -> str | None:
 
 def correct_domain_typos(question: str) -> str:
     """Sửa lỗi gõ ở các cụm tuyển sinh để bộ tách ý nhận ra đủ các vế câu hỏi."""
-    words = (question or "").split(" ")
+    # ``hp`` là viết tắt phổ biến của ``học phí`` (``hp bn?``).
+    words = re.sub(r"(?<!\w)hp(?!\w)", "học phí", question or "", flags=re.IGNORECASE).split(" ")
     corrected: list[str] = []
     index = 0
     while index < len(words):

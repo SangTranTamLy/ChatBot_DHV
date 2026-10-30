@@ -124,7 +124,11 @@ def _selected_evidence_count(result: Mapping[str, object]) -> int:
     return len(selected) if isinstance(selected, list) else 0
 
 
-def evaluate_row(row: Mapping[str, object], retriever: DHVRetriever, llm: EvidenceEchoLLM) -> dict[str, object]:
+def evaluate_row(
+    row: Mapping[str, object],
+    retriever: DHVRetriever | None,
+    llm: EvidenceEchoLLM | None,
+) -> dict[str, object]:
     question = str(row.get("question") or "")
     reference = str(row.get("reference_answer") or "")
     reference_tokens = set(fold(reference).split())
@@ -148,6 +152,7 @@ def evaluate_row(row: Mapping[str, object], retriever: DHVRetriever, llm: Eviden
             "answer_nonempty": bool(answer.strip()),
             "selected_evidence_count": _selected_evidence_count(result),
             "validator_status": validator_status,
+            "supplement_id": (result.get("trace") or {}).get("supplement", {}).get("id", ""),
             "reference_token_recall": round(len(matched_tokens) / len(reference_tokens), 4) if reference_tokens else 0.0,
             "reference_number_recall": round(len(number_hits) / len(reference_numbers), 4) if reference_numbers else 1.0,
             "reference_numbers": sorted(reference_numbers),
@@ -195,6 +200,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--split", choices=("canonical", "all"), default="canonical")
     parser.add_argument("--skip-e2e", action="store_true", help="only validate the canonical dataset")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="use the app's Chroma index and Ollama model instead of the offline evidence-echo double",
+    )
     args = parser.parse_args()
 
     rows = load_rows()
@@ -205,8 +215,12 @@ def main() -> None:
     results: list[dict[str, object]] = []
     runtime_stats: dict[str, object] = {}
     if not args.skip_e2e:
-        retriever, runtime_stats = setup_runtime()
-        llm = EvidenceEchoLLM()
+        if args.live:
+            # None makes ask_chatbot use the production retriever and LLM, exactly as the app does.
+            retriever, llm, runtime_stats = None, None, {"runtime": "live_chroma_ollama"}
+        else:
+            retriever, runtime_stats = setup_runtime()
+            llm = EvidenceEchoLLM()
         results = [evaluate_row(row, retriever, llm) for row in rows]
 
     status_counts = Counter(str(row.get("status") or "") for row in results)
@@ -219,7 +233,9 @@ def main() -> None:
         "reference_token_recall": round(mean(float(row.get("reference_token_recall", 0.0)) for row in results), 4) if results else None,
         "reference_number_recall": round(mean(float(row.get("reference_number_recall", 0.0)) for row in results), 4) if results else None,
         "evidence_selected_rate": round(mean(bool(row.get("selected_evidence_count")) for row in results), 4) if results else None,
-        "evaluation_status": "DATASET_VALIDATED" if args.skip_e2e else "EVALUATED",
+        # These answers are copies of the reference rows, so they inflate the recall metrics above.
+        "supplement_answered": sum(bool(row.get("supplement_id")) for row in results),
+        "evaluation_status": "DATASET_VALIDATED" if args.skip_e2e else "EVALUATED_LIVE" if args.live else "EVALUATED",
         "reference_answer_policy": "reference_answer is copied from the workbook; no generated answer replaces it",
     }
     REPORT_DIR.mkdir(parents=True, exist_ok=True)

@@ -69,7 +69,7 @@ class TaskGIntentTests(unittest.TestCase):
 
         with patch(
             "src.chatbot.catalog_formatters._verified_major_catalog",
-            return_value=(rows, {"title": "Verified catalog", "url": "https://tuyensinh.dhv.edu.vn/"}),
+            return_value=(rows, {"title": "Verified catalog", "url": "https://tuyensinh.dhv.edu.vn/"}, ()),
         ):
             result = _evidence_catalog_answer(
                 analyze_question("DHV có những ngành đào tạo nào?"),

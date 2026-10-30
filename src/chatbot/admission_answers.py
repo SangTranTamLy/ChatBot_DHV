@@ -317,9 +317,16 @@ def _verified_admission_conditions_section(evidence: Any, *, target_year: int) -
         if start is None:
             continue
         section_lines: list[str] = []
+        bullet_number = 0
         for line in lines[start + 1 :]:
-            if re.match(r"^\d+\.\d+(?:\.\d+)*\.?\s", normalize_question(line)):
+            # A sub-heading ("1.2 ...") or a bare section number ("2") starts the next section.
+            if re.match(r"^\d+\.\d+(?:\.\d+)*\.?\s", normalize_question(line)) or re.fullmatch(r"\d+", line):
                 break
+            # PDF bullets ("• ...") are the same list items as "1. ..." in other sources.
+            bullet = re.match(r"^[•●▪]\s*(.+)", line)
+            if bullet:
+                bullet_number += 1
+                line = f"{bullet_number}. {bullet.group(1)}"
             section_lines.append(line)
         blocks: list[str] = []
         current = ""
@@ -887,6 +894,18 @@ def _evidence_enrollment_answer(analysis: QueryAnalysis, evidence: Any) -> str |
     def metadata_for(chunk: Any) -> Mapping[str, object]:
         value = getattr(chunk, "metadata", {}) or {}
         return value if isinstance(value, Mapping) else {}
+
+    if request == "official_enrollment":
+        source_text = " ".join(" ".join(text_for(chunk).split()) for chunk in chunks)
+        sentence = next(
+            (
+                item.strip()
+                for item in re.split(r"(?<=[.!?])\s+", source_text)
+                if "nhap hoc chinh thuc" in normalize_question(item)
+            ),
+            None,
+        )
+        return f"Theo hướng dẫn nhập học DHV {target_year}: {sentence}" if sentence else None
 
     if request == "enrollment_benefits":
         requested_year = target_year

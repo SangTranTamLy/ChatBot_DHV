@@ -22,6 +22,16 @@ gốc được giữ nguyên. Pipeline chỉ chuyển từng dòng sang JSONL đ
 - `reference_answer` được sao nguyên từ cột `Trả lời`; `source` được sao nguyên từ cột `Nguồn`.
 - Dataset này dùng cho regression/evaluation, không dùng để fine-tune Qwen.
 
+## Dữ liệu hỏi đáp bổ sung
+
+`data/supplement/hoi_dap_bo_sung_2026.json` chứa các dòng của workbook mà corpus
+`data/processed` chưa có dữ liệu. Chatbot chỉ dùng file này khi pipeline chính trả
+`no_data`/`out_of_scope`. `build_phase5_dataset.py` tự chép lại câu hỏi, đáp án,
+nguồn của các ID trong file này từ workbook. Sau khi sửa file cần khởi động lại app
+(file được đọc một lần, và cache câu trả lời giữ tối đa 6 giờ). Trong report,
+`supplement_answered` là số câu trả lời lấy từ file này: các câu đó trùng đáp án
+mẫu nên không phản ánh chất lượng truy xuất.
+
 ## Tạo lại dataset active
 
 ```powershell
@@ -41,6 +51,15 @@ Chạy thêm chatbot trên toàn bộ 500 câu:
 ```powershell
 python scripts/evaluate_phase5.py --split canonical
 ```
+
+Chạy giống hệt app (Chroma + Ollama, cần Ollama đang chạy, khoảng 1 giờ):
+
+```powershell
+python scripts/evaluate_phase5.py --live
+```
+
+Chế độ mặc định dùng `EvidenceEchoLLM` (chép lại evidence) nên câu đi qua LLM hầu
+như luôn `ok`; chỉ `--live` cho biết Qwen thật có bị validator từ chối hay không.
 
 Các chỉ số lexical/numeric trong report là proxy để sàng lọc. Semantic
 correctness của câu trả lời canonical vẫn cần review nội dung.

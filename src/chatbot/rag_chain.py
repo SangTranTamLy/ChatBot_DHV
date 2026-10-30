@@ -62,6 +62,7 @@ from .evidence import build_evidence, select_evidence_documents
 from .generation_guards import _combination_is_verified, _validated_generation
 from .multi_issue import _ask_multi_issue
 from .official_links import _official_links_answer
+from .supplement_faq import lookup_supplement
 from .output_validator import (
     ERROR_ANSWER,
     FALLBACK_ANSWER,
@@ -221,7 +222,7 @@ def _is_dhv_related_unsupported(analysis: Any, query: str) -> bool:
     )
 
 
-def ask_chatbot(
+def _ask_chatbot_core(
     question: str,
     *,
     retriever: Any | None = None,
@@ -236,6 +237,9 @@ def ask_chatbot(
     state = ConversationState.from_value(conversation_state, default_year=settings_obj.target_year)
     fee_request = analyze_fee_request(query)
     analysis = analyze_question(query, state, default_year=settings_obj.target_year)
+    if not fee_request.is_fee_request and analysis.entities.get("contextual_question"):
+        # ``Thế còn ngành Luật?`` after a fee turn carries its fee topic only in the expansion.
+        fee_request = analyze_fee_request(str(analysis.entities["contextual_question"]))
     if fee_request.is_fee_request and analysis.intent in {"HOI_CHUONG_TRINH", "HOI_NGANH"}:
         # A school-term phrase can otherwise win over the amount the user asks
         # to pay (for example, "HKI đóng bao nhiêu?"). Route using the shared
@@ -1324,6 +1328,46 @@ def ask_chatbot(
     trace["answer_plan"] = final_answer_plan.to_dict()
     trace["planner_mode"] = final_answer_plan.mode
     return finish(result, final_answer_plan)
+
+
+def ask_chatbot(
+    question: str,
+    *,
+    retriever: Any | None = None,
+    llm: Any | None = None,
+    query_planner: Any | None = None,
+    settings_obj: Settings = settings,
+    conversation_state: ConversationState | Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Trả lời một lượt hỏi; chủ đề corpus chưa có thì thử dữ liệu hỏi đáp bổ sung."""
+
+    result = _ask_chatbot_core(
+        question,
+        retriever=retriever,
+        llm=llm,
+        query_planner=query_planner,
+        settings_obj=settings_obj,
+        conversation_state=conversation_state,
+    )
+    # Supplement data is DHV-only and single-year: other/mixed schools keep their refusal,
+    # and a relative or other year must not be answered with the data year's facts.
+    text = question if isinstance(question, str) else ""
+    state = result.get("state") if isinstance(result.get("state"), Mapping) else {}
+    if (
+        result.get("status") not in {"no_data", "out_of_scope"}
+        or result.get("target_school") not in {None, "UNSPECIFIED", "DHV"}
+        or state.get("current_year", settings_obj.target_year) != settings_obj.target_year
+        or re.search(r"\bnam (?:ngoai|truoc|sau|toi|kia)\b", normalize_question(text))
+    ):
+        return result
+    supplement = lookup_supplement(text)
+    if supplement is None or supplement["supplement"].get("year") != settings_obj.target_year:
+        return result
+    trace = result.get("trace") if isinstance(result.get("trace"), dict) else {}
+    trace["supplement"] = {**supplement.pop("supplement"), "replaced_status": result.get("status")}
+    result.update(supplement, trace=trace)
+    result.pop("scope_reason", None)
+    return result
 
 
 __all__ = ["ask_chatbot"]

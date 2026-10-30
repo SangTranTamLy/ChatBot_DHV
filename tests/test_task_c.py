@@ -591,7 +591,8 @@ class TaskCTests(unittest.TestCase):
 
         self.assertIn("1.250.000", answer)
         self.assertEqual(client.kwargs["model"], "qwen2.5:3b")
-        self.assertEqual(client.kwargs["options"], {"temperature": 0})
+        self.assertEqual(client.kwargs["options"]["temperature"], 0)
+        self.assertGreaterEqual(client.kwargs["options"]["num_ctx"], 8192)
 
     def test_prompt_requires_context_only_and_no_urls(self) -> None:
         prompt = build_rag_prompt("Học phí DHV 2026", "Học phí là 1.250.000 đồng/tín chỉ.")

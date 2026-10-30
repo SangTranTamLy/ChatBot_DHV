@@ -18,7 +18,7 @@ LAW_INTERNSHIP = (
 )
 LAW_PARTNERS = "Khoa Luật DHV hợp tác với những đơn vị nào?"
 DORMITORY = "DHV có ký túc xá không?"
-CAMPUS_EVENT = "UniHackfest Unitour × DHV năm 2026 diễn ra vào ngày nào?"
+CAMPUS_EVENT = "Hội chợ việc làm DHV năm 2026 diễn ra vào ngày nào?"
 WEATHER = "Thời tiết hôm nay thế nào?"
 
 

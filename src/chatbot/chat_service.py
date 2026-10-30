@@ -29,6 +29,35 @@ from .history_context import bounded_history, resolve_history_question
 
 logger = logging.getLogger(__name__)
 
+# Câu hỏi tuyển sinh thật hiếm khi quá vài trăm ký tự. Giới hạn này chặn việc dán
+# cả tài liệu vào ô chat làm phình prompt vượt cửa sổ context của LLM.
+MAX_QUESTION_CHARS = 2000
+EMPTY_QUESTION_ANSWER = (
+    "Bạn hãy nhập câu hỏi về tuyển sinh DHV, ví dụ: "
+    "\"Học phí ngành Công nghệ thông tin năm 2026 là bao nhiêu?\""
+)
+TOO_LONG_QUESTION_ANSWER = (
+    f"Câu hỏi hơi dài (tối đa {MAX_QUESTION_CHARS} ký tự). Bạn rút gọn lại "
+    "hoặc tách thành vài câu hỏi ngắn để mình trả lời chính xác hơn nhé."
+)
+
+
+def _input_guard_response(norm_q: str, state_dict: dict[str, object]) -> Optional[Dict[str, Any]]:
+    """Trả về phản hồi làm rõ cho input rỗng/quá dài, hoặc ``None`` nếu hợp lệ."""
+
+    if norm_q and len(norm_q) <= MAX_QUESTION_CHARS:
+        return None
+    return {
+        "answer": EMPTY_QUESTION_ANSWER if not norm_q else TOO_LONG_QUESTION_ANSWER,
+        "status": "clarification",
+        "sources": [],
+        "state": state_dict,
+        "conversation_state": state_dict,
+        "cache_hit": False,
+        "trace": {"input_guard": "empty" if not norm_q else "too_long"},
+        "latency_ms": 0.0,
+    }
+
 
 def answer_smalltalk(question: str, has_history: bool = False) -> Optional[Dict[str, Any]]:
     """Instant UI response for greetings/thanks/identity, or None for real questions.
@@ -76,10 +105,23 @@ class ChatService:
         bypass_cache: bool = False,
         conversation_history: object = None,
     ) -> dict[str, object]:
-        """Executes RAG inference and maps output to clean UI response schema."""
+        """Trả lời một câu hỏi và trả về payload chuẩn cho giao diện.
+
+        Args:
+            question: Câu hỏi thô của người dùng.
+            conversation_state: Slot hội thoại của lượt trước.
+            bypass_cache: Bỏ qua cache câu trả lời.
+            conversation_history: Lịch sử tin nhắn để giải nghĩa câu hỏi nối tiếp.
+
+        Returns:
+            Dict có tối thiểu ``answer``, ``status``, ``sources``, ``state``.
+        """
         t0 = time.perf_counter()
-        norm_q = unicodedata.normalize("NFC", question or "").strip()
+        norm_q = unicodedata.normalize("NFC", question if isinstance(question, str) else "").strip()
         state = ConversationState.from_value(conversation_state, default_year=self.settings.target_year)
+        guarded = _input_guard_response(norm_q, state.to_dict())
+        if guarded is not None:
+            return guarded
         history = bounded_history(conversation_history, norm_q)
         initial_state = ConversationState.from_value(None, default_year=self.settings.target_year)
         has_history = bool(history or state != initial_state)
