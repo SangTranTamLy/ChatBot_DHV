@@ -1155,8 +1155,11 @@ def _render_simple_chat_history() -> None:
 
 def _render_clean_conversation() -> None:
     """Render a compact chat-first landing before the first message."""
+    # Separate slots: sharing one slot let Streamlit keep the landing's children
+    # (faded/stale) inside the conversation block until the answer finished.
+    landing_slot, conversation_slot = st.empty(), st.empty()
     if not st.session_state.messages:
-        with st.container(key="chat_landing_reference"):
+        with landing_slot.container(key="chat_landing_reference"):
             st.html(
                 '<div class="dhv-reference-breadcrumb">'
                 '<span class="material-symbols-rounded">home</span>'
@@ -1252,7 +1255,7 @@ def _render_clean_conversation() -> None:
             )
 
     else:
-        with st.container(key="conversation_layout"):
+        with conversation_slot.container(key="conversation_layout"):
             _render_simple_chat_history()
 
 

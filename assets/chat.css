@@ -4226,3 +4226,27 @@ body, [data-testid="stAppViewContainer"] {
         padding-right:.9rem !important;
     }
 }
+
+/* Gentle entrance motion: only opacity/translate, so layout and colors stay unchanged. */
+@keyframes dhv-rise-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes dhv-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.st-key-chat_landing_reference,
+.st-key-profile_workspace { animation: dhv-fade-in .35s ease-out backwards; }
+[data-testid="stChatMessage"],
+[data-testid="stChatMessage"] [data-testid="stSpinner"] { animation: dhv-rise-in .3s cubic-bezier(.2, .7, .3, 1) backwards; }
+[role="dialog"]:has(.st-key-auth_panel) { animation: dhv-rise-in .28s cubic-bezier(.2, .7, .3, 1) backwards; }
+.st-key-auth_panel [data-testid="stForm"] { animation: dhv-fade-in .25s ease-out backwards; }
+@media (prefers-reduced-motion: reduce) {
+    .st-key-chat_landing_reference,
+    .st-key-profile_workspace,
+    [data-testid="stChatMessage"],
+    [data-testid="stChatMessage"] [data-testid="stSpinner"],
+    [role="dialog"]:has(.st-key-auth_panel),
+    .st-key-auth_panel [data-testid="stForm"] { animation: none; }
+}
