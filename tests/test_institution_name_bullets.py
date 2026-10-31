@@ -25,6 +25,11 @@ class InstitutionNameBulletTests(unittest.TestCase):
         answer = "Năm 2026, Trường Đại học\n- Hùng Vương TP. Hồ Chí Minh (DHV) triển khai quỹ học bổng."
         self.assertEqual(_target_institution_failure(answer, EVIDENCE), "")
 
+    def test_dhv_abbreviation_without_city_is_trusted(self) -> None:
+        answer = "Mùa tuyển sinh 2026, Trường Đại học Hùng Vương (DHV) áp dụng nhiều phương thức xét tuyển."
+        self.assertEqual(_target_institution_failure(answer, EVIDENCE), "")
+        self.assertEqual(_target_institution_failure("Trường Đại học Hùng Vương Phú Thọ có học bổng.", EVIDENCE), "institution_mismatch")
+
     def test_named_entity_guard_also_trusts_the_split_dhv_name(self) -> None:
         answer = "Năm 2026, Trường Đại học\n- Hùng Vương TP. Hồ Chí Minh (DHV) triển khai quỹ học bổng."
         self.assertFalse(_has_unsupported_named_entity(answer, EVIDENCE, None))

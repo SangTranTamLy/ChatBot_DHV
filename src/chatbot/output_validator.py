@@ -146,6 +146,9 @@ _TRUSTED_SCHOOL_NAMES = frozenset(
         "dai hoc hung vuong tphcm",
         "dai hoc hung vuong tp hcm",
         "dai hoc hung vuong tp",
+        # "(DHV)" pins the HCMC school; bare "Đại học Hùng Vương" may be the Phú Thọ one.
+        "truong dai hoc hung vuong (dhv)",
+        "dai hoc hung vuong (dhv)",
     }
 )
 _SCORE_TYPE_MARKERS = {
@@ -660,13 +663,9 @@ def _has_unsupported_named_entity(
     sau khi chuẩn hóa.
     """
 
+    if _target_institution_failure(answer, evidence):
+        return True
     evidence_text = _fold_text(" ".join(chunk.text for chunk in evidence.chunks))
-    for match in _ORGANIZATION_RE.finditer(_fold_text(answer)):
-        organization = match.group(0)
-        if organization in _TRUSTED_SCHOOL_NAMES or _unbulleted(organization) in _TRUSTED_SCHOOL_NAMES:
-            continue
-        if organization not in evidence_text:
-            return True
 
     entities = _analysis_entities(analysis)
     intent = str(analysis.get("intent")) if isinstance(analysis, Mapping) else str(getattr(analysis, "intent", ""))
