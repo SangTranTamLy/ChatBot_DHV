@@ -379,8 +379,11 @@ def _match_domain_phrase(first: str, second: str) -> str | None:
 
 def correct_domain_typos(question: str) -> str:
     """Sửa lỗi gõ ở các cụm tuyển sinh để bộ tách ý nhận ra đủ các vế câu hỏi."""
-    # ``hp`` là viết tắt phổ biến của ``học phí`` (``hp bn?``).
-    words = re.sub(r"(?<!\w)hp(?!\w)", "học phí", question or "", flags=re.IGNORECASE).split(" ")
+    # ``hp`` là viết tắt phổ biến của ``học phí`` (``hp bn?``), trừ khi là tên hãng (``Laptop HP``).
+    question = question or ""
+    if not re.search(r"\b(?:laptop|may tinh|may in|mua)\b", normalize_semantic_text(question)):
+        question = re.sub(r"(?<!\w)hp(?!\w)", "học phí", question, flags=re.IGNORECASE)
+    words = question.split(" ")
     corrected: list[str] = []
     index = 0
     while index < len(words):

@@ -26,7 +26,8 @@ gốc được giữ nguyên. Pipeline chỉ chuyển từng dòng sang JSONL đ
 
 `data/supplement/hoi_dap_bo_sung_2026.json` chứa các dòng của workbook mà corpus
 `data/processed` chưa có dữ liệu. Chatbot chỉ dùng file này khi pipeline chính trả
-`no_data`/`out_of_scope`. `build_phase5_dataset.py` tự chép lại câu hỏi, đáp án,
+`no_data`/`out_of_scope`, và chỉ dùng mục có `source_url` chính thức của DHV (mục
+không có nguồn bị bỏ qua). `build_phase5_dataset.py` tự chép lại câu hỏi, đáp án,
 nguồn của các ID trong file này từ workbook. Sau khi sửa file cần khởi động lại app
 (file được đọc một lần, và cache câu trả lời giữ tối đa 6 giờ). Trong report,
 `supplement_answered` là số câu trả lời lấy từ file này: các câu đó trùng đáp án

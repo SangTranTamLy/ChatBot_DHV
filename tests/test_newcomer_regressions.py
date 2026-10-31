@@ -48,8 +48,22 @@ class TeencodeTests(unittest.TestCase):
         )
         self.assertEqual(analyze_question("học phí 12.500.000đ đúng không").entities.get("student_scores"), {})
 
+    def test_money_with_d_suffix_stays_a_tuition_question(self) -> None:
+        for question in (
+            "Học phí 500.000đ một tín chỉ đúng không?",
+            "Học phí ngành CNTT là 15000000đ một năm đúng không?",
+            "Học phí 950.000 đ/tín chỉ phải không?",
+        ):
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                self.assertEqual(analysis.intent, "HOI_HOC_PHI")
+                self.assertFalse(analysis.entities.get("student_scores"))
+
+    def test_hp_brand_is_not_tuition(self) -> None:
+        self.assertNotEqual(analyze_question("Laptop HP có dùng được không?").intent, "HOI_HOC_PHI")
+
     def test_hp_and_misspelled_tuition_are_tuition_questions(self) -> None:
-        for question in ("hp?", "hp bn", "hok phí ngàng marketting bn v ạ"):
+        for question in ("hp?", "hp bn", "hp cntt", "hok phí ngàng marketting bn v ạ"):
             with self.subTest(question=question):
                 self.assertEqual(analyze_question(question).intent, "HOI_HOC_PHI")
 
@@ -106,6 +120,15 @@ class CatalogExistenceTests(unittest.TestCase):
             with self.subTest(question=question):
                 self.assertIsNone(_catalog_existence_answer(analyze_question(question)))
 
+    def test_partial_name_is_not_an_existence_match(self) -> None:
+        for question in ("DHV có ngành Y không?", "DHV có ngành Kinh tế không?"):
+            with self.subTest(question=question):
+                self.assertIsNone(_catalog_existence_answer(analyze_question(question)))
+        for question in ("DHV có ngành CNTT không?", "DHV có ngành An ninh mạng không?"):
+            with self.subTest(question=question):
+                answer = _catalog_existence_answer(analyze_question(question))
+                self.assertIn("7480201", str(answer and answer["answer"]))
+
     def test_known_major_still_matches(self) -> None:
         for question in ("DHV có ngành Luật kinh tế không?", "có ngành luật kinh tế ở dhv không", "có ngành luật kinh tế tại trường không"):
             with self.subTest(question=question):
@@ -122,18 +145,13 @@ class SupplementGuardTests(unittest.TestCase):
             with self.subTest(question=question):
                 self.assertIsNone(lookup_supplement(question))
 
-    def test_unsourced_entries_with_figures_are_not_served(self) -> None:
-        import re
-
+    def test_unsourced_entries_are_not_served(self) -> None:
         from src.ingestion.structured_json import is_official_dhv_url
 
         entries, _, year = _entries()
         self.assertEqual(year, 2026)
-        for _, entry in entries:
-            self.assertTrue(
-                is_official_dhv_url(str(entry.get("source_url") or "")) or not re.search(r"\d", str(entry["answer"])),
-                entry["id"],
-            )
+        for _, _, entry in entries:
+            self.assertTrue(is_official_dhv_url(str(entry.get("source_url") or "")), entry["id"])
 
     def _wrapped(self, question: str, core: dict[str, object]) -> dict[str, object]:
         fake = {"answer": "x", "sources": [], "status": "ok", "supplement": {"id": "T", "score": 1.0, "year": 2026}}

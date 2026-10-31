@@ -102,7 +102,11 @@ ENROLLMENT_CATEGORIES = ("ho_so", "nhap_hoc")
 _YEAR_RE = re.compile(r"\b(20\d{2})\b")
 _CODE_RE = re.compile(r"\b(\d{7})\b")
 _DECIMAL_RE = r"\d+(?:[.,]\d+)?"
-_SCORE_RE = re.compile(rf"(?<![\w.,])({_DECIMAL_RE})\s*(?:điểm|diem|đ|d)\b", re.IGNORECASE)
+# "22đ" is slang for 22 điểm; money ("500.000đ", "15000000đ") never matches the đ branch.
+_SCORE_RE = re.compile(
+    rf"(?<![\w.,])(?:({_DECIMAL_RE})\s*(?:điểm|diem)|(\d{{1,2}}(?:[.,]\d+)?)\s*(?:đ|d))\b",
+    re.IGNORECASE,
+)
 _SUBJECT_SCORE_RE = re.compile(
     rf"\b(toán|toan|văn|van|ngữ văn|ngu van|anh|tiếng anh|tieng anh)\s*[:=]?\s*({_DECIMAL_RE})",
     re.IGNORECASE,
@@ -622,9 +626,10 @@ def _extract_scores(normalized: str) -> tuple[dict[str, object], dict[str, objec
         scores["dgnl"] = _number(dgnl_before.group(1))
 
     standalone = [
-        _number(match.group(1))
+        _number(match.group(1) or match.group(2))
         for match in _SCORE_RE.finditer(normalized)
         if not (match.start() > 0 and normalized[match.start() - 1].isalnum())
+        and (match.group(1) or _number(match.group(2)) <= 30)
     ]
     if standalone and not subjects and "dgnl" not in scores:
         scores["unspecified"] = standalone[0]

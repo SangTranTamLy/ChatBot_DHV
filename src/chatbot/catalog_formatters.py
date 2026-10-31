@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from src.config.settings import settings
 from src.ingestion.structured_json import is_official_dhv_url, load_structured_json
 from .evidence import select_program_relations
-from .query_analysis import ConversationState, QueryAnalysis, normalize_question
+from .query_analysis import _MAJOR_ALIASES, _PROGRAM_ALIASES, ConversationState, QueryAnalysis, normalize_question
 
 
 def _candidate_values(analysis: QueryAnalysis) -> tuple[str, ...]:
@@ -945,7 +945,7 @@ def _catalog_existence_answer(analysis: QueryAnalysis) -> dict[str, object] | No
     """
 
     question = re.sub(r"\([^)]*\)", " ", normalize_question(analysis.normalized_question.partition("intent:")[0]))
-    match = re.search(r"\bco\s+(?:dao tao\s+)?(?:nganh|chuyen nganh|chuong trinh)\s+(?:ve\s+)?(.+?)(?:\s+(?:o|tai|cua)\s+(?:truong\s+)?(?:dhv|truong))?\s+khong\b", question)
+    match = re.search(r"\bco\s+(?:dao tao\s+)?(?:nganh|chuyen nganh|chuong trinh)\s+(ve\s+)?(.+?)(?:\s+(?:o|tai|cua)\s+(?:truong\s+)?(?:dhv|truong))?\s+khong\b", question)
     catalog = _verified_major_catalog(int(analysis.entities.get("year") or settings.target_year))
     if not match or catalog is None:
         return None
@@ -953,22 +953,32 @@ def _catalog_existence_answer(analysis: QueryAnalysis) -> dict[str, object] | No
     def key(value: object) -> str:
         return " " + re.sub(r"[^a-z0-9]+", " ", normalize_question(str(value or ""))).strip() + " "
 
-    term = key(match.group(1))
+    term = key(match.group(2))
     if not term.strip():
         return None
+    terms = {term} | {key(canonical) for alias, canonical in (*_MAJOR_ALIASES, *_PROGRAM_ALIASES) if key(alias) == term}
+
+    # "ngành về X" asks for a topic, so any name containing X counts. Otherwise a major
+    # needs its exact name or alias ("ngành Kinh tế" is not "Kinh tế quốc tế") and a
+    # programme may only be shortened by a multi-word name ("An ninh mạng"), never "Y".
+    # One-way only: ``Ngôn ngữ Đức`` must not match the shorter ``Ngôn ngữ``.
+    def matches(value: str, programme: bool = False) -> bool:
+        if match.group(1) or (programme and len(term.split()) > 1):
+            return term in key(value)
+        return key(value) in terms
+
     _, source, majors = catalog
     lines: list[str] = []
     for major in majors:
         name, code = str(major.get("major_name") or ""), str(major.get("major_code") or "")
         programs = [str(program.get("program_name") or "") for program in major.get("programs") or ()]
-        # One-way only: ``Ngôn ngữ Đức`` must not match the shorter ``Ngôn ngữ``.
-        if term in key(name):
+        if matches(name):
             detail = f" với các chuyên ngành: {', '.join(programs)}" if programs else ""
             lines.append(f"DHV có ngành {name} (mã ngành {code}){detail}.")
         lines.extend(
             f"{program} là chuyên ngành thuộc ngành {name} (mã ngành {code})."
             for program in programs
-            if term in key(program) and key(program) != key(name)
+            if matches(program, programme=True) and key(program) != key(name)
         )
     if not lines:
         return None

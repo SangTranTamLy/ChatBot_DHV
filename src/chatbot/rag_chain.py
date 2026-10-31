@@ -1352,15 +1352,18 @@ def ask_chatbot(
     # Supplement data is DHV-only and single-year: other/mixed schools keep their refusal,
     # and a relative or other year must not be answered with the data year's facts.
     text = question if isinstance(question, str) else ""
-    state = result.get("state") if isinstance(result.get("state"), Mapping) else {}
+    # Check the incoming state too: the core may reset a follow-up's year to the default,
+    # while result["state"] carries a year named in this question ("năm 2025").
+    state = ConversationState.from_value(conversation_state, default_year=settings_obj.target_year)
+    result_state = result.get("state") if isinstance(result.get("state"), Mapping) else {}
     if (
         result.get("status") not in {"no_data", "out_of_scope"}
         or result.get("target_school") not in {None, "UNSPECIFIED", "DHV"}
-        or state.get("current_year", settings_obj.target_year) != settings_obj.target_year
-        or re.search(r"\bnam (?:ngoai|truoc|sau|toi|kia)\b", normalize_question(text))
+        or {state.current_year, result_state.get("current_year", settings_obj.target_year)} != {settings_obj.target_year}
+        or re.search(r"\bnam (?:hoc )?(?:ngoai|truoc|sau|toi|kia|do|ay)\b", normalize_question(text))
     ):
         return result
-    supplement = lookup_supplement(text)
+    supplement = lookup_supplement(text, state.current_major)
     if supplement is None or supplement["supplement"].get("year") != settings_obj.target_year:
         return result
     trace = result.get("trace") if isinstance(result.get("trace"), dict) else {}
