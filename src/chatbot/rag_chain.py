@@ -212,6 +212,41 @@ def _major_admission_score_lines(analysis: Any, evidence: Any) -> list[str]:
     return lines
 
 
+def _major_threshold_exception_lines(analysis: Any, evidence: Any) -> list[str]:
+    """For "18 điểm học được ngành nào?", name the majors whose own floor differs from the school-wide one."""
+
+    student_scores = analysis.entities.get("student_scores") or {}
+    if (
+        analysis.entities.get("major_name")
+        or not isinstance(student_scores, Mapping)
+        or not re.search(r"\bnganh (?:nao|gi)\b", normalize_question(analysis.normalized_question))
+    ):
+        return []
+    lines: list[str] = []
+    for method, score in student_scores.items():
+        exceptions = [
+            fact for fact in getattr(evidence, "score_facts", ()) or ()
+            if isinstance(fact, Mapping)
+            and fact.get("score_type") == "application_threshold"
+            and str(fact.get("method") or "") == method
+            and str(fact.get("major_name") or "").strip()
+            and (fact.get("status") == "verified" or fact.get("source_status") == "verified")
+            and isinstance(fact.get("value"), (int, float))
+        ]
+        if not exceptions or not isinstance(score, (int, float)):
+            continue
+        parts = [
+            f"{fact['major_name']} {fact['raw_value']} ({'đạt' if score >= fact['value'] else 'chưa đạt'})"
+            for fact in exceptions
+        ]
+        lines.append(
+            f"Các ngành còn lại áp dụng ngưỡng chung; riêng ngưỡng {_method_label(method)}: " + ", ".join(parts) + "."
+        )
+    if lines:
+        lines.append("Bạn cho mình biết ngành quan tâm để so với điểm trúng tuyển đợt 1 của ngành đó nhé.")
+    return lines
+
+
 def _is_dhv_related_unsupported(analysis: Any, query: str) -> bool:
     """True for an unsupported topic that is still about DHV, not a foreign domain."""
 
@@ -452,7 +487,10 @@ def _ask_chatbot_core(
             )
     retrieval_audit = None
     try:
-        documents, retrieval_audit = _retrieve(active_retriever, query, plan)
+        # A resumed short reply ("thpt") retrieves with the question it stands for.
+        documents, retrieval_audit = _retrieve(
+            active_retriever, str(analysis.entities.get("contextual_question") or query), plan
+        )
     except RetrieverEmbeddingError:
         return _planned_boundary_result(
             answer=OLLAMA_OFFLINE_ANSWER,
@@ -1143,6 +1181,7 @@ def _ask_chatbot_core(
                 f"{relation_word} ngưỡng nhận hồ sơ {comparison.get('threshold_value')}."
             )
         comparison_lines.extend(_major_admission_score_lines(analysis, evidence))
+        comparison_lines.extend(_major_threshold_exception_lines(analysis, evidence))
         comparison_lines.append(
             "Đây chỉ là phép so sánh với ngưỡng nhận hồ sơ, không phải kết luận trúng tuyển."
         )

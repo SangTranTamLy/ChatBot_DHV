@@ -1491,7 +1491,11 @@ def _evidence_admission_method_presence_answer(
         ),
     }
     key = next((candidate for candidate in method_markers if candidate in method), None)
-    if key is None:
+    normalized = normalize_question(analysis.normalized_question)
+    # "Có." only answers a yes/no "có xét học bạ không?"; "phương thức nào…", "24 có đủ…" ask something else.
+    if key is None or not re.search(r"\b(?:khong|ko|k|hong|chua|thi sao)\W*$", normalized) or re.search(
+        r"\b(?:nao|gi|bao nhieu|du|dieu kien|nguong)\b", normalized
+    ):
         return None
     for chunk in getattr(evidence, "chunks", ()) or ():
         metadata = getattr(chunk, "metadata", {}) or {}

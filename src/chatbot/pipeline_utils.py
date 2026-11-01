@@ -389,7 +389,11 @@ def _retrieve(
             expanded_score_top_k = max(expanded_score_top_k or 0, 64)
         if (
             getattr(plan, "intent", "") == "HOI_NGUONG_DAU_VAO"
-            and "phuong_thuc_xet_tuyen" in tuple(getattr(plan, "categories", ()) or ())
+            and (
+                "phuong_thuc_xet_tuyen" in tuple(getattr(plan, "categories", ()) or ())
+                # "18đ … phù hợp ngành nào" needs the school-wide floor, not just 4 page chunks.
+                or "personal_score_comparison" in str(getattr(plan, "retrieval_query", ""))
+            )
             and entity_filters.get("admission_method") in {"dgnl", "h_sca", "thpt", "hoc_ba"}
         ):
             expanded_score_top_k = max(expanded_score_top_k or 0, 32)

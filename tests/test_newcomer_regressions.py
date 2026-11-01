@@ -21,6 +21,11 @@ class _NeverCalledLLM:
         raise AssertionError("these answers must come from verified evidence")
 
 
+class _EchoLLM:
+    def generate(self, prompt: str) -> str:
+        return "LLM"
+
+
 class MajorSwitchFollowUpTests(unittest.TestCase):
     def test_short_major_switch_keeps_previous_topic(self) -> None:
         for previous_intent in ("HOI_DIEM_TRUNG_TUYEN", "HOI_HOC_PHI"):
@@ -67,6 +72,11 @@ class TeencodeTests(unittest.TestCase):
             with self.subTest(question=question):
                 self.assertEqual(analyze_question(question).intent, "HOI_HOC_PHI")
 
+    def test_full_words_thpt_score_is_not_tuition(self) -> None:
+        analysis = analyze_question("tôi thi 18đ trung học phổ thông quốc gia với toán văn anh thì phù hợp với ngành nào")
+        self.assertEqual(analysis.entities.get("student_scores"), {"thpt": 18})
+        self.assertNotIn("HOI_HOC_PHI", analysis.entities.get("issue_intents") or [])
+
     def test_where_is_the_school_is_in_scope(self) -> None:
         for question in ("trường ở đâu", "truong nam o dau vay"):
             with self.subTest(question=question):
@@ -109,6 +119,32 @@ class VerifiedAnswerTests(unittest.TestCase):
         self.assertIn("cách tính: Tổng điểm", answer)
         analysis = analyze_question("Phương thức nào không cần thi?")
         self.assertIsNone(rag_chain._evidence_admission_method_list_answer(analysis, None))
+
+    def test_method_reply_resumes_pending_score_question(self) -> None:
+        first = ask_chatbot("tôi được 18 điểm thì phù hợp với ngành nào", retriever=self.retriever, llm=_NeverCalledLLM())
+        self.assertEqual(first["status"], "clarification")
+        for reply in ("thi tốt nghiệp", "thpt"):
+            with self.subTest(reply=reply):
+                answer = str(self._ask(reply, first["state"])["answer"])
+                self.assertIn("18", answer)
+                self.assertNotIn("Có. DHV có phương thức", answer)
+
+    def test_score_which_major_uses_school_floor_and_names_exceptions(self) -> None:
+        for question in (
+            "tôi thi 18đ trung học phổ thông quốc gia với toán văn anh thì phù hợp với ngành nào",
+            "em thi thpt 18 điểm học được ngành nào",
+        ):
+            with self.subTest(question=question):
+                answer = str(self._ask(question)["answer"])
+                self.assertIn("ngưỡng nhận hồ sơ 15", answer)
+                self.assertIn("Luật 18", answer)
+
+    def test_method_presence_yes_only_answers_yes_no_questions(self) -> None:
+        self.assertTrue(str(self._ask("DHV có xét học bạ không?")["answer"]).startswith("Có."))
+        for question in ("Phương thức nào xét điểm học bạ?", "điểm học bạ 24 có đủ nộp hồ sơ không"):
+            with self.subTest(question=question):
+                result = ask_chatbot(question, retriever=self.retriever, llm=_EchoLLM())
+                self.assertFalse(str(result["answer"]).startswith("Có. DHV có phương thức"))
 
     def test_base_total_breakdown_excludes_optional_english_test(self) -> None:
         answer = str(self._ask("tổng chi phí học kỳ 1")["answer"])

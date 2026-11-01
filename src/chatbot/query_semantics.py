@@ -364,7 +364,8 @@ def _match_domain_phrase(first: str, second: str) -> str | None:
     # relation question (for example, ``Tiếng Trung hành chính văn phòng
     # thuộc ngành nào?``). Its edit distance is close enough to ``phương
     # thức`` that fuzzy correction otherwise destroys the programme name.
-    if key == "phong thuoc":
+    # ``học phổ (thông)`` is likewise one edit away from ``học phí``.
+    if key in {"phong thuoc", "hoc pho"}:
         return None
     for folded, (canonical, allowed) in _DOMAIN_PHRASES.items():
         if key == folded:

@@ -242,7 +242,8 @@ _METHOD_PATTERNS = (
     (
         "thpt",
         re.compile(
-            r"\b(?:thi\s+tot\s+nghiep(?!\s+xong\b)(?:\s+thpt)?|thi\s+thpt|"
+            r"\b(?:thi\s+tot\s+nghiep(?!\s+xong\b)(?:\s+thpt)?|thi\s+thpt|thpt\s+quoc\s+gia|"
+            r"(?:thi\s+)?trung\s+hoc\s+pho\s+thong\s+quoc\s+gia|thi\s+trung\s+hoc\s+pho\s+thong|thi\s+dai\s+hoc|"
             r"phuong\s+thuc(?:\s+xet\s+tuyen)?(?:\s+ket\s+qua\s+ky\s+thi)?\s+tot\s+nghiep\s+thpt)\b"
         ),
     ),
@@ -3356,6 +3357,25 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
             resolved = analyze_question(expanded, active_state, default_year=active_state.current_year)
             return replace(resolved, question=original,
                            entities={**resolved.entities, "contextual_question": expanded})
+    # Answering "điểm này theo phương thức nào?" with just a method resumes the pending score question.
+    if set(active_state.student_scores) == {"unspecified"}:
+        reply = re.sub(
+            r"\b(?:theo|phuong thuc|xet|bang|ket qua|ky|diem|cua|la|minh|em|toi|a|nhe|nha|qg|quoc gia|dhqg|tp|hcm)\b",
+            " ", normalized,
+        )
+        reply = re.sub(r"[\s?.!,]+", " ", reply).strip()
+        method = {"thpt": "thpt", "tot nghiep": "thpt", "hb": "hoc_ba"}.get(reply) or next(
+            (name for name, pattern in _METHOD_PATTERNS if pattern.fullmatch(reply)), None
+        )
+        if method:
+            label = {"thpt": "thi tốt nghiệp THPT", "hoc_ba": "xét học bạ", "dgnl": "thi ĐGNL",
+                     "h_sca": "thi H-SCA", "trung_cap": "tốt nghiệp trung cấp"}[method]
+            expanded = f"Tôi {label} được {active_state.student_scores['unspecified']} điểm"
+            expanded += (f" thì đậu ngành {active_state.current_major} không" if active_state.current_major
+                         else " thì học được ngành nào")
+            resolved = analyze_question(expanded, active_state, default_year=active_state.current_year)
+            return replace(resolved, question=original,
+                           entities={**resolved.entities, "contextual_question": expanded})
     # ``Thế còn ngành Luật?`` after a per-major topic keeps that topic for the new major.
     topic_prefix = _MAJOR_SWITCH_TOPIC_PREFIXES.get(active_state.previous_intent or "")
     switch = re.fullmatch(
@@ -4313,6 +4333,14 @@ def deterministic_score_comparisons(
         ]
         if not candidates:
             continue
+        if not analysis.entities.get("major_name"):
+            # A "riêng ngành Luật: 18" rule is an exception, never the floor for an unnamed major.
+            candidates = [
+                fact for fact in candidates
+                if not (fact.get("major_name") and fact.get("category") == "nguong_dau_vao")
+            ]
+            if not candidates:
+                continue
         threshold = candidates[0]["value"]
         comparisons.append(
             {
