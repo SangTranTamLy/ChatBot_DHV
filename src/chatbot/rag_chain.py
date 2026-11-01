@@ -10,7 +10,7 @@ from src.config.settings import Settings, settings
 from src.models.local_llm import LocalLLM, OllamaError, OllamaUnavailableError, OllamaTimeoutError
 from src.prompts.rag_prompt import build_rag_prompt
 from src.retrieval.retriever import RetrieverEmbeddingError, VectorDatabaseError, requested_year
-from .year_semantics import current_admission_window_answer
+from .year_semantics import current_admission_window_answer, schedule_milestone_answer
 
 from .admission_answers import (
     _application_documents_missing_evidence,
@@ -54,6 +54,7 @@ from .catalog_formatters import (
     _evidence_catalog_answer,
     _evidence_program_relation_answer,
     _has_verified_advisory_fit_evidence,
+    _listed_major_rows,
     _major_rows_from_evidence,
     _program_detail_missing_evidence,
     _program_rows_from_evidence,
@@ -578,7 +579,7 @@ def _ask_chatbot_core(
     listed_program_parents = None
     listed_methods = None
     if analysis.intent == "DANH_SACH_NGANH":
-        listed_majors = [major for major, _ in _major_rows_from_evidence(evidence)]
+        listed_majors = [major for major, _ in _listed_major_rows(analysis, evidence)[0]]
     elif analysis.intent == "DANH_SACH_CHUONG_TRINH":
         major_rows = _major_rows_from_evidence(evidence)
         program_rows = _program_rows_from_evidence(
@@ -644,7 +645,9 @@ def _ask_chatbot_core(
             plan_answer(analysis, evidence=evidence, status="no_data"),
         )
 
-    temporal_result = current_admission_window_answer(analysis.question, evidence)
+    temporal_result = current_admission_window_answer(analysis.question, evidence) or schedule_milestone_answer(
+        str(analysis.entities.get("contextual_question") or analysis.question), target_year=settings_obj.target_year
+    )
     if temporal_result is not None:
         trace["temporal_checked"] = True
         return finish(temporal_result, plan_answer(

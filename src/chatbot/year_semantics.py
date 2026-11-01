@@ -22,6 +22,8 @@ _ADMISSION_YEAR_RE = re.compile(
     r"\b[^.!?;\n]{0,48}?\b"
     r")(20\d{2})\b"
 )
+# Past only: "học phí năm sau có tăng không" is still answered from this year's commitment.
+_RELATIVE_YEAR_RE = re.compile(r"(?<!\d )\bnam (?:ngoai|truoc|roi|qua)\b")
 _GRADUATION_CONTEXT_RE = re.compile(
     r"\b(?:tot\s+nghiep|bang\s+tot\s+nghiep|da\s+tot\s+nghiep)"
     r"[^.!?;\n]{0,24}?\b(20\d{2})\b"
@@ -48,6 +50,13 @@ def extract_requested_year(question: str, *, default_year: int | None = None) ->
     admission_years = [int(match.group(1)) for match in _ADMISSION_YEAR_RE.finditer(normalized)]
     if admission_years:
         return admission_years[-1]
+
+    relative = _RELATIVE_YEAR_RE.search(normalized)
+    if relative and not _YEAR_RE.search(normalized):
+        from src.config.settings import settings
+
+        # Relative to the admission year being served, not to a year inherited from the last turn.
+        return settings.target_year - 1
 
     graduation_spans = [match.span(1) for match in _GRADUATION_CONTEXT_RE.finditer(normalized)]
     candidates = [
@@ -137,4 +146,81 @@ def current_admission_window_answer(question: str, evidence: object, *, today: d
     return {"answer": answer, "status": "ok", "sources": sources, "temporal_checked": True}
 
 
-__all__ = ["extract_requested_year", "current_admission_window_answer"]
+_WHEN_RE = re.compile(r"\b(?:khi nao|bao gio|ngay nao|ngay may|luc nao|thoi gian|thoi han|han chot|han|truoc ngay|den ngay|may gio)\b")
+# (question pattern, milestone bullet marker) from the official round-1 schedule.
+_MILESTONE_TOPICS = (
+    (r"\bxac nhan nhap hoc\b", "xac nhan nhap hoc"),
+    # Not "công bố điểm chuẩn": 13.8 is the national notice deadline, not DHV's score release date.
+    (r"^(?!.*\bdiem\b).*\b(?:thong bao|cong bo|biet|co)\b.{0,20}\btrung tuyen\b", "thong bao thi sinh trung tuyen"),
+    (r"\ble phi\b", "nop le phi"),
+    (r"\bnguyen vong\b", "dieu chinh nguyen vong"),
+    (r"\bxet tuyen thang\b|\buu tien xet tuyen\b", "xet tuyen thang"),
+    (r"\bra soat\b", "ra soat ket qua hoc tap"),
+    (r"\b(?:nop ho so|dang ky xet tuyen|dang ky du tuyen)\b", "dieu chinh nguyen vong"),
+)
+# DHV's own plan states a later registration deadline than the national wish window; give both.
+_DHV_REGISTRATION_RE = re.compile(r"Thời gian đăng ký xét tuyển:\s*([^\n.]+)")
+
+
+def schedule_milestone_answer(question: str, *, target_year: int) -> dict[str, object] | None:
+    """Answer "khi nào …" from the verified round-1 schedule bullets, whatever intent the router picked."""
+
+    text = _normalize(question)
+    if (
+        not _WHEN_RE.search(text)
+        # "nộp hồ sơ lúc nào trong ngày" asks reception hours, not a schedule milestone.
+        or re.search(r"\b(?:bo sung|dot 2|dot hai|nhap hoc truc tiep|tuu truong|khai giang|trong ngay|gio nao|may gio|thu bay|chu nhat)\b", text)
+        or extract_requested_year(text, default_year=target_year) != target_year
+    ):
+        return None
+    marker = next((marker for pattern, marker in _MILESTONE_TOPICS if re.search(pattern, text)), None)
+    if marker is None or (marker == "dieu chinh nguyen vong" and "nhap hoc" in text):
+        return None
+
+    milestone = _verified_page_text("lich_tuyen_sinh", target_year)
+    if milestone is None:
+        return None
+    body, source = milestone
+    line = next(
+        (item for bullet in body.split("•")[1:] if marker in _normalize(item := re.sub(r"\s+", " ", bullet).strip())),
+        None,
+    )
+    if line is None:
+        return None
+    answer = f"Theo lịch tuyển sinh đợt 1 DHV {target_year}: {line}."
+    sources = [source]
+    plan = _verified_page_text("phuong_thuc_xet_tuyen", target_year)
+    registration = plan and re.search(r"\b(?:nop ho so|dang ky xet tuyen|dang ky du tuyen)\b", text) and _DHV_REGISTRATION_RE.search(plan[0])
+    if registration:
+        answer = (
+            f"Theo phương án tuyển sinh DHV {target_year}, thời gian đăng ký xét tuyển: {registration.group(1).strip()}.\n"
+            f"Trên lịch chung đợt 1: {line}."
+        )
+        sources.append(plan[1])
+    return {"answer": answer, "sources": sources, "status": "ok"}
+
+
+def _verified_page_text(category: str, target_year: int) -> tuple[str, dict[str, str]] | None:
+    from pathlib import Path
+
+    from src.config.settings import settings
+    from src.ingestion.structured_json import is_official_dhv_url, load_structured_json
+
+    for path in sorted((Path(settings.processed_data_dir) / category).glob("*.json")):
+        try:
+            document = load_structured_json(path)
+        except (OSError, ValueError):
+            continue
+        source = document.get("source") or {}
+        if (
+            document.get("year") == target_year
+            and source.get("status") == "verified"
+            and str(source.get("school_code") or "").upper() == "DHV"
+            and is_official_dhv_url(source.get("source_url"))
+        ):
+            body = unicodedata.normalize("NFC", "\n".join(str(page.get("text") or "") for page in document.get("pages") or ()))
+            return body, {"title": str(document.get("title") or "Tuyển sinh DHV"), "url": str(source["source_url"])}
+    return None
+
+
+__all__ = ["extract_requested_year", "current_admission_window_answer", "schedule_milestone_answer"]

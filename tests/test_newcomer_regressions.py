@@ -13,6 +13,7 @@ from src.chatbot import rag_chain
 from src.chatbot.catalog_formatters import _catalog_existence_answer
 from src.chatbot.rag_chain import ask_chatbot
 from src.chatbot.supplement_faq import _entries, lookup_supplement
+from src.chatbot.year_semantics import extract_requested_year
 from src.config.settings import settings
 
 
@@ -145,6 +146,41 @@ class VerifiedAnswerTests(unittest.TestCase):
             with self.subTest(question=question):
                 result = ask_chatbot(question, retriever=self.retriever, llm=_EchoLLM())
                 self.assertFalse(str(result["answer"]).startswith("Có. DHV có phương thức"))
+
+    def test_method_list_only_for_questions_about_the_methods(self) -> None:
+        for question in ("Hồ sơ xét tuyển học bạ gồm những gì?", "Có được đăng ký nhiều phương thức không?",
+                         "Ngành nào không xét học bạ?", "Phương thức nào được nhiều thí sinh chọn nhất?"):
+            with self.subTest(question=question):
+                answer = str(ask_chatbot(question, retriever=self.retriever, llm=_EchoLLM())["answer"])
+                self.assertNotIn("phương thức xét tuyển của DHV nhé", answer)
+                self.assertNotIn("áp dụng 5 phương thức", answer)
+        self.assertIn("5 phương thức", str(self._ask("DHV có mấy phương thức xét tuyển?")["answer"]))
+
+    def test_last_year_is_not_answered_with_this_year(self) -> None:
+        self.assertEqual(extract_requested_year("điểm chuẩn năm ngoái", default_year=2026), 2025)
+        self.assertEqual(extract_requested_year("trong 2 năm qua", default_year=2026), 2026)
+        self.assertEqual(extract_requested_year("năm sau học phí có tăng không", default_year=2026), 2026)
+        first = self._ask("điểm chuẩn ngành kế toán")
+        follow_up = ask_chatbot("điểm chuẩn năm ngoái", retriever=self.retriever, llm=_EchoLLM(),
+                                conversation_state=first["state"])
+        self.assertNotEqual(follow_up["status"], "ok")
+
+    def test_ordinal_follow_up_uses_the_displayed_major_order(self) -> None:
+        first = self._ask("trường có những ngành nào")
+        shown = [line.split(". ", 1)[1].split(" — ")[0] for line in str(first["answer"]).splitlines() if line[:2] == "3."]
+        analysis = analyze_question("ngành thứ 3 học phí bao nhiêu", ConversationState.from_value(first["state"]))
+        self.assertEqual([analysis.entities.get("major_name")], shown)
+
+    def test_when_questions_use_the_official_schedule(self) -> None:
+        for question, expected in (
+            ("Khi nào phải xác nhận nhập học?", "21.8.2026"),
+            ("Khi nào thông báo trúng tuyển?", "13.8.2026"),
+            ("Hạn chót nộp hồ sơ năm 2026?", "13/08/2026"),
+            ("Thời gian xét tuyển thẳng?", "20.6.2026"),
+        ):
+            with self.subTest(question=question):
+                self.assertIn(expected, str(self._ask(question)["answer"]))
+        self.assertIn("06:00", str(self._ask("Nộp hồ sơ lúc nào trong ngày?")["answer"]))
 
     def test_base_total_breakdown_excludes_optional_english_test(self) -> None:
         answer = str(self._ask("tổng chi phí học kỳ 1")["answer"])

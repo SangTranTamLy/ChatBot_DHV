@@ -107,6 +107,10 @@ _SCORE_RE = re.compile(
     rf"(?<![\w.,])(?:({_DECIMAL_RE})\s*(?:điểm|diem)|(\d{{1,2}}(?:[.,]\d+)?)\s*(?:đ|d))\b",
     re.IGNORECASE,
 )
+# "học bạ 24", "điểm thi tốt nghiệp 18": the score follows the method name without "điểm".
+_METHOD_TRAILING_SCORE_RE = re.compile(
+    r"\b(?:hoc ba|thi tot nghiep(?: thpt)?|thi thpt|thpt)(?: (?:duoc|dat|la|co))? (\d{1,2}(?:[.,]\d+)?)\b(?! ?(?:tin chi|trieu|nam|%))"
+)
 _SUBJECT_SCORE_RE = re.compile(
     rf"\b(toán|toan|văn|van|ngữ văn|ngu van|anh|tiếng anh|tieng anh)\s*[:=]?\s*({_DECIMAL_RE})",
     re.IGNORECASE,
@@ -632,6 +636,9 @@ def _extract_scores(normalized: str) -> tuple[dict[str, object], dict[str, objec
         if not (match.start() > 0 and normalized[match.start() - 1].isalnum())
         and (match.group(1) or _number(match.group(2)) <= 30)
     ]
+    if not standalone and (trailing := _METHOD_TRAILING_SCORE_RE.search(normalized)):
+        if 10 <= _number(trailing.group(1)) <= 30:  # "học bạ 8.5" is a GPA, not a 3-subject total
+            standalone = [_number(trailing.group(1))]
     if standalone and not subjects and "dgnl" not in scores:
         scores["unspecified"] = standalone[0]
 

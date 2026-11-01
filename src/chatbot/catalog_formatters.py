@@ -294,6 +294,26 @@ def _major_rows_from_evidence(evidence: Any) -> list[tuple[str, str]]:
     return rows
 
 
+def _listed_major_rows(analysis: QueryAnalysis, evidence: Any) -> tuple[list[tuple[str, str]], list[dict[str, object]], object, int]:
+    """Rows of a major list in the order shown, so "ngành thứ 3" later points at the same row."""
+
+    try:
+        target_year = int(analysis.entities.get("year") or settings.target_year)
+    except (TypeError, ValueError):
+        target_year = int(settings.target_year)
+    verified_catalog = _verified_major_catalog(target_year)
+    if verified_catalog is not None:
+        major_rows, catalog_source, _ = verified_catalog
+        catalog_sources = [catalog_source]
+    else:
+        major_rows = _major_rows_from_evidence(evidence)
+        catalog_sources = [dict(source) for source in evidence.sources]
+    major_group = str(analysis.entities.get("major_group") or "")
+    if major_group:
+        major_rows = [(major, code) for major, code in major_rows if _major_in_group(code, major_group)]
+    return list(major_rows), catalog_sources, verified_catalog, target_year
+
+
 def _majors_without_programs_answer(analysis: QueryAnalysis) -> dict[str, object] | None:
     """Trả lời "chưa chia chuyên ngành" khi danh mục đã xác minh ghi ``program_count == 0``."""
 
@@ -669,26 +689,8 @@ def _evidence_catalog_answer(
     if analysis.intent == "HOI_NGANH":
         return _catalog_existence_answer(analysis)
     if analysis.intent == "DANH_SACH_NGANH":
-        try:
-            target_year = int(analysis.entities.get("year") or settings.target_year)
-        except (TypeError, ValueError):
-            target_year = int(settings.target_year)
-        verified_catalog = _verified_major_catalog(
-            target_year
-        )
-        if verified_catalog is not None:
-            major_rows, catalog_source, _ = verified_catalog
-            catalog_sources = [catalog_source]
-        else:
-            major_rows = _major_rows_from_evidence(evidence)
-            catalog_sources = [dict(source) for source in evidence.sources]
+        major_rows, catalog_sources, verified_catalog, target_year = _listed_major_rows(analysis, evidence)
         major_group = str(analysis.entities.get("major_group") or "")
-        if major_group:
-            major_rows = [
-                (major, code)
-                for major, code in major_rows
-                if _major_in_group(code, major_group)
-            ]
         if not major_rows:
             return None
         group_label = _MAJOR_GROUP_LABELS.get(major_group)
@@ -866,6 +868,16 @@ def _evidence_catalog_answer(
             return None
         operation = str(analysis.entities.get("query_mode") or "SINGLE_FACT")
         if operation not in {"COUNT", "LIST", "LIST_AND_COUNT"}:
+            return None
+        folded = normalize_question(analysis.normalized_question)
+        # Only list when the methods themselves are asked for: "hồ sơ xét học bạ gồm gì",
+        # "học bạ 24 đỗ ngành nào", "đăng ký nhiều phương thức được không" ask something else.
+        if not re.search(
+            r"\b(?:nhung|cac|may|bao nhieu|liet ke|ke ra|tat ca)\s+(?:phuong thuc|hinh thuc|cach xet tuyen)\b"
+            r"|\b(?:phuong thuc|hinh thuc)(?:\s+xet\s+tuyen)?\s+(?:nao|gi)\b"
+            r"|^(?:cac\s+)?phuong thuc(?:\s+xet\s+tuyen)?(?:\s+(?:cua\s+)?(?:dhv|truong))?(?:\s+nam\s+\d{4})?\W*$",
+            folded,
+        ) or re.search(r"\b(?:ho so|giay to|nganh nao|nganh gi|nhat|phu hop|nen|khac nhau|khong can|uu tien)\b", folded):
             return None
         methods: list[tuple[int, str]] = []
         for fact in getattr(evidence, "score_facts", ()):
