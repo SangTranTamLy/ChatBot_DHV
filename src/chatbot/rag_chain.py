@@ -16,6 +16,7 @@ from .admission_answers import (
     _application_documents_missing_evidence,
     _evidence_admission_bonus_answer,
     _evidence_admission_combination_answer,
+    _evidence_admission_method_list_answer,
     _evidence_admission_method_presence_answer,
     _evidence_applicant_support_answer,
     _evidence_application_registration_answer,
@@ -1033,6 +1034,7 @@ def _ask_chatbot_core(
             or _evidence_method_calculation_answer(analysis, evidence)
             or _evidence_admission_combination_answer(analysis, evidence)
             or _evidence_admission_method_presence_answer(analysis, evidence)
+            or _evidence_admission_method_list_answer(analysis, evidence)
         )
     elif analysis.intent == "HOI_CHUONG_TRINH":
         relation_analysis = analysis

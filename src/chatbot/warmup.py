@@ -64,6 +64,15 @@ def _warmup_worker() -> None:
         logger.info("[Warmup] Chroma retriever initialized in %.2fs", time.perf_counter() - t0)
         _warmup_succeeded = True
 
+        # Step 3: Load the chat model into RAM so the first question skips the cold load.
+        from ollama import Client
+        from src.config.settings import settings
+        # Same num_ctx as LocalLLM, otherwise Ollama reloads the model on the first real chat.
+        Client(host=settings.ollama_base_url).generate(
+            model=settings.ollama_model, keep_alive="30m", options={"num_ctx": settings.ollama_num_ctx}
+        )
+        logger.info("[Warmup] Chat model loaded in %.2fs", time.perf_counter() - t0)
+
     except Exception as exc:
         logger.warning("[Warmup] Non-critical background warmup error: %s", exc)
     finally:

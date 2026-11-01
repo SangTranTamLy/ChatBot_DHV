@@ -83,6 +83,8 @@ class LocalLLM:
                 model=self.model,
                 messages=[{"role": "user", "content": prompt}],
                 options={"temperature": 0, "num_ctx": self.num_ctx},
+                # Ollama unloads after 5 idle minutes; reloading 7B costs seconds on the next question.
+                keep_alive="30m",
             )
         except Exception as exc:
             if isinstance(exc, _TIMEOUT_ERRORS):

@@ -100,6 +100,13 @@ class VerifiedAnswerTests(unittest.TestCase):
                 self.assertIn("(tóm tắt)", answer)
                 self.assertNotIn("1.9 Điều kiện", answer)
 
+    def test_which_admission_methods_lists_all_five_without_llm(self) -> None:
+        for question in ("Năm 2026 DHV xét tuyển theo phương thức nào?", "trường xét tuyển bằng những hình thức nào"):
+            with self.subTest(question=question):
+                answer = str(self._ask(question)["answer"])
+                self.assertIn("5 phương thức", answer)
+                self.assertIn("H-SCA", answer)
+
     def test_base_total_breakdown_excludes_optional_english_test(self) -> None:
         answer = str(self._ask("tổng chi phí học kỳ 1")["answer"])
         base_sentence = answer.split(". Nếu")[0]

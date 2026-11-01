@@ -346,6 +346,15 @@ def _verified_admission_conditions_section(evidence: Any, *, target_year: int) -
     return []
 
 
+_METHOD_LABELS = {
+    1: "Thi tốt nghiệp THPT",
+    2: "Học bạ THPT",
+    3: "Đánh giá năng lực (ĐGNL)",
+    4: "Đánh giá năng lực chuyên biệt (H-SCA)",
+    5: "Tốt nghiệp trung cấp",
+}
+
+
 def _requested_admission_method_number(analysis: QueryAnalysis) -> int | None:
     normalized = normalize_question(analysis.normalized_question)
     method = str(analysis.entities.get("admission_method") or "").casefold()
@@ -391,13 +400,7 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
 
     target_year = _analysis_target_year(analysis)
     method_details = _method_details_from_evidence(evidence, target_year=target_year)
-    labels = {
-        1: "Thi tốt nghiệp THPT",
-        2: "Học bạ THPT",
-        3: "Đánh giá năng lực (ĐGNL)",
-        4: "Đánh giá năng lực chuyên biệt (H-SCA)",
-        5: "Tốt nghiệp trung cấp",
-    }
+    labels = _METHOD_LABELS
     if _asks_for_each_admission_method(normalized):
         if all(number in method_details for number in range(1, 6)):
             header = f"Điều kiện theo từng phương thức xét tuyển DHV {target_year}:\n"
@@ -1419,6 +1422,25 @@ def _evidence_admission_combination_answer(analysis: QueryAnalysis, evidence: An
         )
     heading, bullet = sections[0]
     return f"{heading}: {bullet}" if heading else bullet
+
+
+def _evidence_admission_method_list_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
+    """List the five methods from verified page text so "xét tuyển phương thức nào?" skips the LLM."""
+
+    normalized = normalize_question(analysis.normalized_question)
+    if (
+        analysis.entities.get("major_name")
+        or _requested_admission_method_number(analysis)
+        or not re.search(r"\b(?:phuong thuc|hinh thuc) nao\b|\b(?:nhung|cac|may|bao nhieu) (?:phuong thuc|hinh thuc)\b", normalized)
+    ):
+        return None
+    target_year = _analysis_target_year(analysis)
+    details = _method_details_from_evidence(evidence, target_year=target_year)
+    if not all(number in details for number in _METHOD_LABELS):
+        return None
+    return f"DHV {target_year} áp dụng 5 phương thức xét tuyển:\n" + "\n".join(
+        f"{number}. {label}: {details[number].splitlines()[0]}" for number, label in _METHOD_LABELS.items()
+    )
 
 
 def _evidence_admission_method_presence_answer(
