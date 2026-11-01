@@ -169,10 +169,12 @@ def schedule_milestone_answer(question: str, *, target_year: int) -> dict[str, o
     if (
         not _WHEN_RE.search(text)
         # "nộp hồ sơ lúc nào trong ngày" asks reception hours, not a schedule milestone.
-        or re.search(r"\b(?:bo sung|dot 2|dot hai|nhap hoc truc tiep|tuu truong|khai giang|trong ngay|gio nao|may gio|thu bay|chu nhat)\b", text)
+        or re.search(r"\b(?:bo sung|dot 2|dot hai|nhap hoc truc tiep|trong ngay|gio nao|may gio|thu bay|chu nhat)\b", text)
         or extract_requested_year(text, default_year=target_year) != target_year
     ):
         return None
+    if re.search(r"\b(?:tuu truong|khai giang|bat dau hoc|vao hoc)\b", text):
+        return _school_start_answer(text, target_year)
     marker = next((marker for pattern, marker in _MILESTONE_TOPICS if re.search(pattern, text)), None)
     if marker is None or (marker == "dieu chinh nguyen vong" and "nhap hoc" in text):
         return None
@@ -200,12 +202,26 @@ def schedule_milestone_answer(question: str, *, target_year: int) -> dict[str, o
     return {"answer": answer, "sources": sources, "status": "ok"}
 
 
+def _school_start_answer(text: str, target_year: int) -> dict[str, object] | None:
+    found = _verified_page_text("ho_so", target_year)
+    sentence = found and re.search(r"[^.\n]*ngày tựu trường[^.\n]*\d{4}\.?", found[0])
+    if not sentence:
+        return None
+    answer = sentence.group(0).strip().rstrip(".") + "."
+    if "tuu truong" not in text:
+        # The source dates only the first-day gathering; do not present it as the opening ceremony.
+        answer += " Tài liệu tuyển sinh chưa nêu riêng ngày khai giảng hay ngày bắt đầu học."
+    return {"answer": answer, "sources": [found[1]], "status": "ok"}
+
+
 def _verified_page_text(category: str, target_year: int) -> tuple[str, dict[str, str]] | None:
     from pathlib import Path
 
     from src.config.settings import settings
     from src.ingestion.structured_json import is_official_dhv_url, load_structured_json
 
+    bodies: list[str] = []
+    first_source: dict[str, str] | None = None
     for path in sorted((Path(settings.processed_data_dir) / category).glob("*.json")):
         try:
             document = load_structured_json(path)
@@ -218,9 +234,10 @@ def _verified_page_text(category: str, target_year: int) -> tuple[str, dict[str,
             and str(source.get("school_code") or "").upper() == "DHV"
             and is_official_dhv_url(source.get("source_url"))
         ):
-            body = unicodedata.normalize("NFC", "\n".join(str(page.get("text") or "") for page in document.get("pages") or ()))
-            return body, {"title": str(document.get("title") or "Tuyển sinh DHV"), "url": str(source["source_url"])}
-    return None
+            bodies.append(unicodedata.normalize("NFC", "\n".join(str(page.get("text") or "") for page in document.get("pages") or ())))
+            first_source = first_source or {"title": str(document.get("title") or "Tuyển sinh DHV"), "url": str(source["source_url"])}
+    # shortcut: cites the first file of the category; split per file if a category ever mixes sources.
+    return ("\n".join(bodies), first_source) if first_source else None
 
 
 __all__ = ["extract_requested_year", "current_admission_window_answer", "schedule_milestone_answer"]

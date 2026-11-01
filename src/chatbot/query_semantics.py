@@ -190,7 +190,11 @@ def analyze_fee_request(question: str) -> FeeRequest:
         "tin chi" in text
         and any(marker in text for marker in ("bao nhieu", "gia", "phi", "tien", "dong"))
     )
-    if not has_money_request:
+    # Asking how/whether tuition is paid, reduced or what it covers is not asking its amount.
+    if not has_money_request or (
+        re.search(r"\b(?:mien giam|giam hoc phi|tra gop|dong bang|cach dong|bang cach nao|o dau|dong the nao|nop the nao|hinh thuc|thanh toan|may lan|may dot|giao trinh)\b", text)
+        and not re.search(r"\b(?:bao nhieu|bn|muc|gia)\b", text)
+    ):
         return FeeRequest()
 
     items = tuple(
@@ -237,9 +241,9 @@ def analyze_fee_request(question: str) -> FeeRequest:
     if scholarship:
         topics.append("scholarship")
 
-    annual = any(marker in text for marker in ("theo nam", "moi nam", "hang nam", "trung binh nam"))
+    annual = any(marker in text for marker in ("theo nam", "moi nam", "hang nam", "trung binh nam", "1 nam", "mot nam"))
     semester = None
-    if re.search(r"\b(?:hki|hk1|hoc ky i|hoc ki i|hoc ky 1|hoc ki 1)\b", text):
+    if re.search(r"\b(?:hki|hk1|hoc ky i|hoc ki i|hoc ky 1|hoc ki 1|ky 1|ki 1|ky dau|(?:1|mot) (?:hoc )?k[yi])\b", text):
         semester = "HKI"
     elif re.search(r"\b(?:hkii|hk2|hoc ky ii|hoc ki ii|hoc ky 2|hoc ki 2)\b", text):
         semester = "HKII"

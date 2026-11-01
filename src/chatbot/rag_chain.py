@@ -11,6 +11,8 @@ from src.models.local_llm import LocalLLM, OllamaError, OllamaUnavailableError, 
 from src.prompts.rag_prompt import build_rag_prompt
 from src.retrieval.retriever import RetrieverEmbeddingError, VectorDatabaseError, requested_year
 from .year_semantics import current_admission_window_answer, schedule_milestone_answer
+from .scholarship_formatters import scholarship_section_answer
+from .year_semantics import _verified_page_text
 
 from .admission_answers import (
     _application_documents_missing_evidence,
@@ -248,6 +250,11 @@ def _major_threshold_exception_lines(analysis: Any, evidence: Any) -> list[str]:
     return lines
 
 
+def _verified_scholarship_source(target_year: int) -> dict[str, str] | None:
+    found = _verified_page_text("hoc_bong", target_year)
+    return found[1] if found else None
+
+
 def _is_dhv_related_unsupported(analysis: Any, query: str) -> bool:
     """True for an unsupported topic that is still about DHV, not a foreign domain."""
 
@@ -395,8 +402,21 @@ def _ask_chatbot_core(
         # is answered honestly as missing data instead of "not admissions".
         related_no_data = _is_dhv_related_unsupported(analysis, query)
         status = "no_data" if related_no_data else "out_of_scope"
+        # A dated milestone ("hạn nộp lệ phí", "ngày tựu trường") is answerable even when the router missed the topic.
+        milestone = (
+            schedule_milestone_answer(query, target_year=settings_obj.target_year)
+            if analysis.entities.get("target_school", "UNSPECIFIED") in {"UNSPECIFIED", "DHV"}
+            else None
+        )
+        if milestone:
+            status = "ok"
         answer_plan = plan_answer(analysis, status=status)
         trace = _trace(analysis, plan, next_state, answer_plan=answer_plan)
+        if milestone:
+            trace["temporal_checked"] = True
+            return _attach_answer_plan({
+                **milestone, "state": next_state.to_dict(), "conversation_state": next_state.to_dict(), "trace": trace,
+            }, answer_plan)
         trace["retrieved_docs_count"] = 0
         trace["evidence_count"] = 0
         trace["retrieval_calls"] = 0
@@ -648,6 +668,12 @@ def _ask_chatbot_core(
     temporal_result = current_admission_window_answer(analysis.question, evidence) or schedule_milestone_answer(
         str(analysis.entities.get("contextual_question") or analysis.question), target_year=settings_obj.target_year
     )
+    if temporal_result is None and (analysis.intent == "HOI_HOC_BONG" or "mien giam" in normalize_question(query)):
+        # Quoted from the verified scholarship files themselves, so it does not depend on which chunks were retrieved.
+        section = scholarship_section_answer(query, target_year=settings_obj.target_year)
+        if section:
+            found = _verified_scholarship_source(settings_obj.target_year)
+            temporal_result = {"answer": section, "sources": [found] if found else [], "status": "ok"}
     if temporal_result is not None:
         trace["temporal_checked"] = True
         return finish(temporal_result, plan_answer(

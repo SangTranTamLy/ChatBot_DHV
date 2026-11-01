@@ -965,3 +965,89 @@ def _evidence_admission_scholarship_conditions_answer(
         answer_lines.extend(f"  - {detail}" for detail in method["details"])
     answer_lines.extend(notes)
     return "\n".join(answer_lines)
+
+
+# "1.4 Học bổng Ngành Tiên phong"; not a money cell such as "5.000.000 đồng".
+_SECTION_HEADING_RE = re.compile(r"^\s*\d{1,2}\.\d{1,2}(?:\.\d{1,2})?\s+((?=[^\W\d_])(?-i:[A-ZÀ-Ỹ]).+?)\s*$", re.M)
+_GENERIC_HEADING_WORDS = {"hoc", "bong", "chuong", "trinh", "ho", "tro", "chinh", "sach", "danh", "cho", "tan", "sinh", "vien", "tuyen"}
+_GPA_RE = re.compile(r"\b(?:hoc ba|diem tb|diem trung binh|trung binh|gpa|hoc luc)\D{0,12}?(\d(?:[.,]\d+)?)\b")
+
+
+def scholarship_section_answer(question: str, *, target_year: int) -> str | None:
+    """Answer a named scholarship ("Ngành Tiên phong", "UniBridge") or a GPA question from its own section."""
+
+    from .year_semantics import _verified_page_text
+
+    found = _verified_page_text("hoc_bong", target_year)
+    if found is None:
+        return None
+    body = found[0]
+    text = normalize_question(question)
+    headings = list(_SECTION_HEADING_RE.finditer(body))
+
+    def section(index: int) -> str:
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(body)
+        lines: list[str] = []
+        for raw in body[headings[index].end():end].splitlines():
+            line = raw.strip()
+            if re.match(r"^(?:Bảng\s*\d|\d+$)", line):
+                break  # a table's cells follow; its rows are not readable as text
+            if not line:
+                continue
+            # PDF lines wrap mid-sentence; only bullets, rules and "Điều kiện:" start a new line.
+            if lines and not re.match(r"^(?:[•\-]|Điểm|Tổng|Điều kiện|Mức|Riêng)", line) and not lines[-1].endswith(":"):
+                lines[-1] += " " + line
+            else:
+                lines.append(line)
+        while lines and lines[-1].endswith(":"):
+            lines.pop()  # its table was cut above
+        return f"**{headings[index].group(1)}**\n" + "\n".join(lines)
+
+    if re.search(r"\bmien(?:,)? giam\b", text):
+        lines = [line.strip() for line in body.splitlines()]
+        hit = next((i for i, line in enumerate(lines) if "miễn, giảm học phí" in line), None)
+        if hit is None:
+            return None
+        start = hit
+        # Walk back over wrapped lines of the same sentence; a short line is a heading.
+        while start > 0 and not lines[start - 1].endswith(".") and len(lines[start - 1]) >= 40:
+            start -= 1
+        end = hit
+        while end + 1 < len(lines) and not lines[end].endswith("."):
+            end += 1
+        sentence = " ".join(lines[start:end + 1])
+        return (
+            f"Có. Theo tài liệu DHV {target_year}: {sentence} "
+            "Tài liệu chưa nêu mức miễn, giảm cụ thể."
+        )
+
+    gpa = _GPA_RE.search(text)
+    if gpa and float(gpa.group(1).replace(",", ".")) <= 10:
+        score = float(gpa.group(1).replace(",", "."))
+        index = next((i for i, h in enumerate(headings) if "hoc ba" in normalize_question(h.group(1))), None)
+        if index is None:
+            return None
+        for line in section(index).splitlines()[1:]:
+            folded = normalize_question(line).replace(",", ".")
+            above = re.search(r">\s*(\d+(?:\.\d+)?)", folded)
+            between = re.search(r"tu (\d+(?:\.\d+)?) den (\d+(?:\.\d+)?)", folded)
+            if (above and score > float(above.group(1))) or (
+                between and float(between.group(1)) <= score <= float(between.group(2))
+            ):
+                return (
+                    f"Với điểm trung bình học bạ {gpa.group(1)}, theo {headings[index].group(1)} (DHV {target_year}): "
+                    f"{line.strip()}"
+                )
+        return (
+            f"Điểm trung bình học bạ {gpa.group(1)} chưa đạt mức thấp nhất của {headings[index].group(1)} "
+            f"trong tài liệu DHV {target_year}. Bạn có thể xem các học bổng khác như Đôi bạn cùng tiến hoặc UniBridge."
+        )
+
+    best = None
+    for index, heading in enumerate(headings):
+        if re.match(r"(?:bang|dieu kien)\b", normalize_question(heading.group(1))):
+            continue  # table captions and condition sub-headings are not named policies
+        words = [w for w in normalize_question(heading.group(1)).split() if w not in _GENERIC_HEADING_WORDS]
+        if words and re.search(rf"\b{re.escape(' '.join(words))}\b", text) and (best is None or len(words) > best[1]):
+            best = (index, len(words))
+    return section(best[0]) if best else None

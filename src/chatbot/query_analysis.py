@@ -602,7 +602,7 @@ def _clear_ambiguous_advisory_entities(
 
 def _extract_interest(normalized: str) -> str | None:
     match = re.search(
-        r"\b(?:dam me|so thich|thich|quan tam|yeu thich)\s*(?::|la)?\s*"
+        r"\b(?:dam me|so thich|thich|quan tam|yeu thich)\s*(?::|la\b)?\s*"
         r"(.+?)(?=\s*(?:,|\.|nhung|chua|va chua|va dang|thi\s+(?:nen|chon)|"
         r"nen chon|chon nganh|nganh nao|nganh gi|chuong trinh nao|$))",
         normalized,
@@ -3253,6 +3253,8 @@ def _classify_intent(
     ), "deterministic_fallback"
 
 
+_METHOD_REPLY_LABELS = {"thpt": "thi tốt nghiệp THPT", "hoc_ba": "xét học bạ", "dgnl": "thi ĐGNL",
+                        "h_sca": "thi H-SCA", "trung_cap": "tốt nghiệp trung cấp"}
 _MAJOR_SWITCH_TOPIC_PREFIXES = {
     "HOI_DIEM_TRUNG_TUYEN": "Điểm chuẩn",
     "HOI_NGUONG_DAU_VAO": "Điểm sàn",
@@ -3375,8 +3377,7 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
             (name for name, pattern in _METHOD_PATTERNS if pattern.fullmatch(reply)), None
         )
         if method:
-            label = {"thpt": "thi tốt nghiệp THPT", "hoc_ba": "xét học bạ", "dgnl": "thi ĐGNL",
-                     "h_sca": "thi H-SCA", "trung_cap": "tốt nghiệp trung cấp"}[method]
+            label = _METHOD_REPLY_LABELS[method]
             expanded = f"Tôi {label} được {active_state.student_scores['unspecified']} điểm"
             expanded += (f" thì đậu ngành {active_state.current_major} không" if active_state.current_major
                          else " thì học được ngành nào")
@@ -3393,6 +3394,26 @@ def analyze_question(question: str, state: ConversationState | Mapping[str, obje
         expanded = f"{topic_prefix} {rest}"
         resolved = analyze_question(expanded, active_state, default_year=active_state.current_year)
         if resolved.entities.get("major_name") and resolved.intent == active_state.previous_intent:
+            return replace(resolved, question=original,
+                           entities={**resolved.entities, "contextual_question": expanded})
+    # A bare major, method or year ("cntt", "học bạ thì sao", "năm ngoái thì sao") keeps the per-major topic.
+    bare = re.sub(r"\s+thi sao$", "", re.sub(r"^(?:(?:the|vay)\s+)?(?:con\s+)?", "", normalized.strip(" ?.!")))
+    if topic_prefix and 0 < len(bare.split()) <= 5 and not {"gi", "nao", "khong", "ko", "bao", "nhieu", "sao"} & set(bare.split()):
+        method = {"thpt": "thpt", "hb": "hoc_ba"}.get(bare) or next(
+            (name for name, pattern in _METHOD_PATTERNS if pattern.fullmatch(bare)), None
+        )
+        year_only = re.fullmatch(r"(?:nam\s+)?(?:20\d{2}|ngoai|truoc|roi)", bare)
+        subject = f" ngành {active_state.current_major}" if active_state.current_major else ""
+        if method:
+            expanded = f"{topic_prefix}{subject} theo {_METHOD_REPLY_LABELS[method].removeprefix('xét ')}"
+        elif year_only:
+            expanded = f"{topic_prefix}{subject} {'năm ' if bare[:3] != 'nam' else ''}{bare}"
+        else:
+            expanded = f"{topic_prefix} {bare}"
+        resolved = analyze_question(expanded, active_state, default_year=active_state.current_year)
+        if resolved.intent == active_state.previous_intent and (
+            method or year_only or resolved.entities.get("major_name")
+        ):
             return replace(resolved, question=original,
                            entities={**resolved.entities, "contextual_question": expanded})
     detected_school = detect_target_school(normalized)

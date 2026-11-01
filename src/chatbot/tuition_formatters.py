@@ -21,6 +21,7 @@ from .query_semantics import (
 _PAYMENT_QUESTION_MARKERS = (
     "thanh toan", "dong tien o dau", "chuyen khoan", "ngan hang", "so tai khoan",
     "nop hoc phi the nao", "hinh thuc dong", "dong hoc phi", "nop hoc phi", "dong tien mat",
+    "hoc phi dong the nao", "hoc phi nop o dau",
 )
 _BANK_ACCOUNT_MARKERS = ("chuyen khoan", "ngan hang", "so tai khoan", "tai khoan ngan hang")
 

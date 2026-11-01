@@ -11,7 +11,7 @@ from typing import Any
 from src.config.settings import Settings
 from src.models.local_llm import LocalLLM, OllamaError
 from .query_semantics import analyze_fee_request, normalize_semantic_text
-from .scope_guard import detect_target_school
+from .scope_guard import detect_target_school, has_foreign_domain_signal, is_in_scope
 
 
 @dataclass(frozen=True)
@@ -115,6 +115,61 @@ def _resolve_fee_followup(
     return HistoryResolution(resolved, "fee_history_resolution")
 
 
+_ACK_RE = re.compile(r"(?:co|co a|vang|vang a|da|da vang|u|um|uh|ok|oke|okay|duoc|dong y|liet ke(?: di| giup)?(?: a)?)")
+_ORDINALS = {"nhat": 0, "dau": 0, "dau tien": 0, "mot": 0, "1": 0, "hai": 1, "2": 1, "ba": 2, "3": 2, "cuoi": -1, "cuoi cung": -1}
+
+
+def _clarification_options(last: str) -> list[str]:
+    """Options of a bot question like "…: điểm sàn, điểm trúng tuyển hay điểm bổ sung?"."""
+
+    tail = last.strip().splitlines()[-1] if last.strip() else ""
+    if not tail.endswith("?") or " hay " not in tail:
+        return []
+    body = re.split(r":|\bvề\b|\bbiết\b|\bhỏi\b", tail.rstrip("?"), maxsplit=1)[-1]
+    return [part.strip(" ,") for part in re.split(r",\s*(?:hay\s+)?|\s+hay\s+", body) if part.strip(" ,")]
+
+
+def _resolve_short_reply(question: str, text: str, last: str, last_user: str) -> HistoryResolution | None:
+    """Resolve a few-word reply against the bot's last turn instead of refusing it as out of scope."""
+
+    if len(text.split()) > 6 or not last_user:
+        return None
+    base = last_user.strip().rstrip("?.! ")
+    options = _clarification_options(last)
+    if options:
+        if re.fullmatch(r"ca (?:hai|ba|bon)|tat ca|ca", text):
+            return HistoryResolution(f"{base}: {', '.join(options)}", "clarification_option")
+        ordinal = re.fullmatch(r"(?:cai|y|phuong an|lua chon)?\s*(?:thu\s+)?(nhat|dau tien|dau|mot|hai|ba|1|2|3|cuoi cung|cuoi)", text)
+        if ordinal and abs(_ORDINALS[ordinal.group(1)]) < len(options) + (ordinal.group(1).startswith("cuoi")):
+            return HistoryResolution(f"{base}: {options[_ORDINALS[ordinal.group(1)]]}", "clarification_option")
+        words = set(text.split())
+        matches = [option for option in options if words <= set(normalize_semantic_text(option).split())]
+        if len(matches) == 1:
+            return HistoryResolution(f"{base}: {matches[0]}", "clarification_option")
+    items = re.findall(r"^\s*\d+[.)]\s+(.+)$", last, re.M)
+    # "cái thứ 2" is resolved further down; only first/last need the list length here.
+    listed = re.fullmatch(r"(?:cai|y|muc|phuong thuc|nganh)\s+(dau tien|dau|cuoi cung|cuoi)", text)
+    if items and listed and abs(_ORDINALS[listed.group(1)]) < len(items) + listed.group(1).startswith("cuoi"):
+        item = re.split(r"\s+[—–-]\s+", items[_ORDINALS[listed.group(1)]])[0].strip(" .")
+        return HistoryResolution(item, "referenced_answer_item")
+    offer = re.search(r"Bạn (?:có )?muốn mình\s+(.+?)(?:,|\s+hay\s+|\?|$)", last)
+    if offer and _ACK_RE.fullmatch(text):
+        return HistoryResolution(offer.group(1).strip(), "accepted_offer")
+    if _ACK_RE.fullmatch(text):
+        return HistoryResolution(question, "clarification", "Bạn muốn tìm hiểu thêm điều gì? Ví dụ điểm chuẩn, học phí, học bổng hay chuyên ngành.")
+    if re.fullmatch(r"(?:noi |giai thich )?(?:chi tiet|cu the|ro)(?: hon)?(?: (?:di|duoc khong|a))?", text):
+        return HistoryResolution(f"{base} (trả lời chi tiết hơn)", "previous_answer_topic")
+    if (
+        not re.search(r"\b(?:do|nay|kia|khoan|tong|cai|muc)\b", text)  # pronoun references are resolved below
+        and not is_in_scope(question)
+        and not has_foreign_domain_signal(question)
+        and is_in_scope(last_user)
+    ):
+        # "điều kiện thế nào" after "có học bổng không" keeps the previous topic.
+        return HistoryResolution(f"{base}, {question.strip()}", "previous_answer_topic")
+    return None
+
+
 def resolve_history_question(question: str, history: tuple[dict[str, str], ...], *,
                              settings_obj: Settings, llm: Any | None = None) -> HistoryResolution:
     text = normalize_semantic_text(question)
@@ -127,6 +182,9 @@ def resolve_history_question(question: str, history: tuple[dict[str, str], ...],
     fee_resolution = _resolve_fee_followup(question, history, last_user, last)
     if fee_resolution:
         return fee_resolution
+    short_reply = _resolve_short_reply(question, text.strip(" ?.!"), last, last_user)
+    if short_reply:
+        return short_reply
     reference = bool(re.search(
         r"\b(?:cai|muc|giay|khoan)\s+(?:thu|do|nay)|\b(?:y toi|y em|y minh|da co|co roi|con thieu|con lai|can mang gi|nop o dau|chu nhat|thu bay|noi ro hon|giai thich them)\b|\bco\b.{1,120}\broi\b",
         text,

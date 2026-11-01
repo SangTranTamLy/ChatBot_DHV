@@ -14,6 +14,8 @@ from src.chatbot.catalog_formatters import _catalog_existence_answer
 from src.chatbot.rag_chain import ask_chatbot
 from src.chatbot.supplement_faq import _entries, lookup_supplement
 from src.chatbot.year_semantics import extract_requested_year
+from src.chatbot.history_context import resolve_history_question
+from src.chatbot.query_semantics import analyze_fee_request
 from src.config.settings import settings
 
 
@@ -181,6 +183,60 @@ class VerifiedAnswerTests(unittest.TestCase):
             with self.subTest(question=question):
                 self.assertIn(expected, str(self._ask(question)["answer"]))
         self.assertIn("06:00", str(self._ask("Nộp hồ sơ lúc nào trong ngày?")["answer"]))
+
+    def test_school_start_and_fee_deadline_are_not_refused(self) -> None:
+        self.assertIn("03/9/2026", str(self._ask("Ngày tựu trường là ngày nào?")["answer"]))
+        self.assertIn("chưa nêu riêng ngày khai giảng", str(self._ask("Khi nào khai giảng?")["answer"]))
+        self.assertIn("21.7.2026", str(self._ask("Hạn nộp lệ phí xét tuyển?")["answer"]))
+        health = ask_chatbot("Có cần nộp giấy khám sức khỏe không?", retriever=self.retriever, llm=_EchoLLM())
+        self.assertNotEqual(health["status"], "out_of_scope")
+
+    def test_short_replies_resolve_against_the_last_bot_turn(self) -> None:
+        def resolve(question: str, user: str, bot: str) -> object:
+            history = ({"role": "user", "content": user}, {"role": "assistant", "content": bot})
+            return resolve_history_question(question, history, settings_obj=settings, llm=_NeverCalledLLM())
+
+        score_types = "Bạn muốn biết điểm sàn (ngưỡng đầu vào), điểm trúng tuyển hay điểm của đợt xét tuyển bổ sung?"
+        self.assertIn("điểm sàn", resolve("sàn", "điểm ngành kế toán là bao nhiêu", score_types).question)
+        self.assertIn("bổ sung", resolve("bổ sung", "điểm ngành kế toán là bao nhiêu", score_types).question)
+        commitment = "Bạn muốn hỏi về cam kết không tăng học phí trong suốt khóa học, hay chính sách học bổng cam kết hoàn học phí?"
+        self.assertIn("không tăng học phí", resolve("cái thứ nhất", "chính sách cam kết là gì", commitment).question)
+        offer = "Chưa có căn cứ.\nBạn muốn mình liệt kê các ngành/chương trình có trong tài liệu, hay cho biết thêm tiêu chí?"
+        self.assertIn("liệt kê các ngành", resolve("liệt kê đi", "em thích lập trình", offer).question)
+        self.assertTrue(resolve("có", "trường có ngành marketing không", "Có. DHV có ngành Marketing.").clarification)
+        self.assertIn("học bổng", resolve("điều kiện thế nào", "có học bổng không", "Có.").question)
+        methods = "Các phương thức:\n1. Thi THPT\n2. Học bạ\n3. Tốt nghiệp trung cấp"
+        self.assertEqual(resolve("cái cuối", "có những phương thức nào", methods).question, "Tốt nghiệp trung cấp")
+
+    def test_fee_questions_keep_their_scope(self) -> None:
+        for question in ("Học phí kỳ 1 bao nhiêu?", "hoc phi bao nhieu 1 ky", "học phí một học kỳ"):
+            with self.subTest(question=question):
+                self.assertIn("12.500.000", str(self._ask(question)["answer"]))
+        for question in ("Có miễn giảm học phí không?", "Có được trả góp học phí không?", "Đóng học phí bằng cách nào?"):
+            with self.subTest(question=question):
+                self.assertFalse(analyze_fee_request(question).is_fee_request)
+
+    def test_named_scholarship_and_gpa_get_their_own_rule(self) -> None:
+        pioneer = str(self._ask("Học bổng Ngành Tiên phong áp dụng ngành nào?")["answer"])
+        self.assertIn("Quản lý bệnh viện", pioneer)
+        self.assertIn("5.000.000", str(self._ask("Unibridge là gì?")["answer"]))
+        self.assertIn("70%", str(self._ask("Em học bạ 8.6 thì được học bổng bao nhiêu?")["answer"]))
+        self.assertIn("50%", str(self._ask("Em có học bạ 7.5 thì có học bổng không?")["answer"]))
+        self.assertIn("hoàn cảnh khó khăn", str(self._ask("Có miễn giảm học phí không?")["answer"]))
+
+    def test_bare_follow_up_keeps_the_previous_topic(self) -> None:
+        for first, follow_up, intent, expected in (
+            ("điểm chuẩn ngành luật", "cntt", "HOI_DIEM_TRUNG_TUYEN", ("major_name", "Công nghệ thông tin")),
+            ("học phí bao nhiêu", "ngành luật", "HOI_HOC_PHI", ("major_name", "Luật")),
+            ("điểm chuẩn luật theo học bạ", "dgnl thì sao", "HOI_DIEM_TRUNG_TUYEN", ("admission_method", "dgnl")),
+            ("điểm chuẩn luật theo học bạ", "còn thpt", "HOI_DIEM_TRUNG_TUYEN", ("admission_method", "thpt")),
+            ("điểm chuẩn kế toán", "năm ngoái thì sao", "HOI_DIEM_TRUNG_TUYEN", ("year", 2025)),
+        ):
+            with self.subTest(first=first, follow_up=follow_up):
+                state = self._ask(first)["state"]
+                analysis = analyze_question(follow_up, ConversationState.from_value(state))
+                self.assertEqual(analysis.intent, intent)
+                self.assertEqual(analysis.entities.get(expected[0]), expected[1])
 
     def test_base_total_breakdown_excludes_optional_english_test(self) -> None:
         answer = str(self._ask("tổng chi phí học kỳ 1")["answer"])
