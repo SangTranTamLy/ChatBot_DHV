@@ -5,15 +5,18 @@ Chạy từ thư mục gốc của dự án:
     python -m src.ingestion.build_vector_db --reset
 
 Lệnh này sử dụng Ollama embeddings được cấu hình trong ``.env`` hoặc qua tham số dòng lệnh.
-The input is validated JSON in ``data/processed``.  Generated Markdown is no
-longer an accepted corpus representation.
+The input is validated JSON in ``data/processed``. Generated Markdown is no
+longer an accepted corpus representation. Stop chatbot processes that have
+the configured Chroma directory open before publishing a new index; a locked
+directory fails safely and leaves the prior index in place.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
-import os
 import shutil
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -21,15 +24,26 @@ from typing import Any
 
 from langchain_chroma import Chroma
 
-from src.config.settings import settings
+from src.config.settings import PROJECT_ROOT, settings
 
-from .embeddings import DEFAULT_SENTENCE_TRANSFORMER_MODEL, create_embeddings
+from .embeddings import (
+    create_embeddings,
+    resolve_embedding_config,
+)
 from .chroma_lifecycle import close_chroma_store
 from .loader import LoadResult, load_verified_documents
+from .path_safety import (
+    DEFAULT_RAW_DIR,
+    cleanup_staging_directory,
+    publish_staged_directory,
+    unique_generated_sibling,
+    validate_generated_directory,
+)
 from .splitter import (
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_TOKENIZER_MODEL,
+    SPLITTER_SCHEMA_VERSION,
     split_documents,
 )
 
@@ -54,18 +68,100 @@ class BuildStats:
     persist_directory: str
     embedding_backend: str
     embedding_model: str
+    embedding_dimension: int
+    corpus_fingerprint: str
+    splitter_schema_version: int
     collection_count: int
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def _reset_persist_directory(persist_directory: Path) -> None:
+def _corpus_fingerprint(records: list[dict[str, Any]]) -> str:
+    """Hash the complete, ordered chunk content and metadata for this build."""
+
+    canonical_records = sorted(records, key=lambda record: str(record["id"]))
+    payload = json.dumps(
+        canonical_records,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _expected_chunk_records(chunks: list[Any]) -> list[dict[str, Any]]:
+    records = [
+        {
+            "id": str(chunk.metadata.get("chunk_id") or ""),
+            "document": str(chunk.page_content),
+            "metadata": dict(chunk.metadata),
+        }
+        for chunk in chunks
+    ]
+    ids = [record["id"] for record in records]
+    if any(not chunk_id for chunk_id in ids):
+        raise RuntimeError("every generated chunk must have a non-empty chunk_id")
+    if len(set(ids)) != len(ids):
+        raise RuntimeError("generated chunks contain duplicate chunk_id values")
+    return records
+
+
+def _validate_staged_collection(vector_store: Any, expected_records: list[dict[str, Any]]) -> int:
+    """Require the staged collection to match the complete expected chunk set."""
+
+    collection_count = int(vector_store._collection.count())
+    expected_ids = {record["id"] for record in expected_records}
+    indexed = vector_store.get(include=["documents", "metadatas"])
+    indexed_ids = [str(chunk_id) for chunk_id in indexed.get("ids", [])]
+    indexed_id_set = set(indexed_ids)
+    if collection_count != len(expected_records) or indexed_id_set != expected_ids:
+        missing = sorted(expected_ids - indexed_id_set)
+        unexpected = sorted(indexed_id_set - expected_ids)
+        raise RuntimeError(
+            "staged Chroma chunk IDs do not match the expected corpus: "
+            f"missing={missing[:10]}, unexpected={unexpected[:10]}, "
+            f"count={collection_count}, expected={len(expected_records)}"
+        )
+
+    actual_records = [
+        {
+            "id": chunk_id,
+            "document": str(document),
+            "metadata": dict(metadata or {}),
+        }
+        for chunk_id, document, metadata in zip(
+            indexed_ids,
+            indexed.get("documents", []),
+            indexed.get("metadatas", []),
+            strict=True,
+        )
+    ]
+    expected_fingerprint = _corpus_fingerprint(expected_records)
+    indexed_fingerprint = _corpus_fingerprint(actual_records)
+    if indexed_fingerprint != expected_fingerprint:
+        raise RuntimeError(
+            "staged Chroma content or metadata differs from the expected corpus"
+        )
+    return collection_count
+
+
+def _reset_persist_directory(
+    persist_directory: Path,
+    *,
+    data_directory: str | Path = settings.processed_data_dir,
+    raw_directory: str | Path = DEFAULT_RAW_DIR,
+    project_root: str | Path = PROJECT_ROOT,
+) -> None:
     """Chỉ xóa thư mục vector-store đã được cấu hình rõ ràng."""
 
-    resolved = persist_directory.resolve()
-    if resolved == Path(resolved.anchor) or resolved == Path.cwd().resolve():
-        raise ValueError("refusing to reset a filesystem root or the project root")
+    resolved = validate_generated_directory(
+        persist_directory,
+        protected_paths=(data_directory, raw_directory, settings.processed_data_dir),
+        project_root=project_root,
+        forbid_current_directory=True,
+    )
     if resolved.exists():
         LOGGER.info("resetting vector store at %s", resolved)
         shutil.rmtree(resolved)
@@ -87,8 +183,14 @@ def build_vector_db(
     tokenizer_model: str = DEFAULT_TOKENIZER_MODEL,
     reset: bool = False,
 ) -> BuildStats:
-    """Tải, chia đoạn, nhúng (embed) và lưu trữ corpus DHV đã xác thực."""
+    """Build a complete staged index, then publish it over the prior store."""
 
+    persist_path = validate_generated_directory(
+        persist_directory,
+        protected_paths=(data_directory, DEFAULT_RAW_DIR, settings.processed_data_dir),
+        project_root=PROJECT_ROOT,
+        forbid_current_directory=True,
+    )
     load_result = load_verified_documents(data_directory, target_year=target_year)
     if not load_result.documents:
         stats = load_result.stats.as_dict()
@@ -105,52 +207,93 @@ def build_vector_db(
     )
     if not chunks:
         raise RuntimeError("verified documents produced zero chunks")
+    expected_records = _expected_chunk_records(chunks)
+    corpus_fingerprint = _corpus_fingerprint(expected_records)
 
     if embeddings is not None:
         embedding_function = embeddings
         resolved_backend = "custom"
         resolved_model = type(embeddings).__name__
     else:
-        resolved_backend = (embedding_backend or settings.embedding_backend).strip().lower()
-        if resolved_backend in {"sentence_transformers", "st"}:
-            resolved_backend = "sentence-transformers"
-        if resolved_backend == "ollama":
-            resolved_model = embedding_model or settings.embedding_model
-        else:
-            resolved_model = sentence_transformer_model or os.getenv(
-                "SENTENCE_TRANSFORMER_MODEL",
-                DEFAULT_SENTENCE_TRANSFORMER_MODEL,
-            )
+        embedding_config = resolve_embedding_config(
+            backend=embedding_backend,
+            model=embedding_model,
+            sentence_transformer_model=sentence_transformer_model,
+            ollama_base_url=ollama_base_url,
+            settings_obj=settings,
+        )
+        resolved_backend = embedding_config.backend
+        resolved_model = embedding_config.model
         embedding_function = create_embeddings(
             backend=resolved_backend,
-            ollama_model=embedding_model,
-            ollama_base_url=ollama_base_url,
-            sentence_transformer_model=sentence_transformer_model,
+            model=resolved_model,
+            ollama_base_url=embedding_config.base_url,
+            settings_obj=settings,
         )
+    query_vector = embedding_function.embed_query(chunks[0].page_content)
+    embedding_dimension = len(query_vector)
+    if embedding_dimension <= 0:
+        raise RuntimeError("embedding backend returned an empty vector")
 
-    persist_path = Path(persist_directory)
-    if reset:
-        _reset_persist_directory(persist_path)
-    persist_path.mkdir(parents=True, exist_ok=True)
-
-    vector_store = Chroma(
-        collection_name=collection_name,
-        persist_directory=str(persist_path),
-        embedding_function=embedding_function,
+    staging = unique_generated_sibling(persist_path, purpose="staging")
+    staging = validate_generated_directory(
+        staging,
+        protected_paths=(data_directory, DEFAULT_RAW_DIR, settings.processed_data_dir, persist_path),
+        project_root=PROJECT_ROOT,
+        forbid_current_directory=True,
     )
-    collection_count = 0
+    persist_path.parent.mkdir(parents=True, exist_ok=True)
+    staging.mkdir()
     try:
-        vector_store.add_documents(
-            chunks,
-            ids=[chunk.metadata["chunk_id"] for chunk in chunks],
+        vector_store = Chroma(
+            collection_name=collection_name,
+            persist_directory=str(staging),
+            embedding_function=embedding_function,
+            collection_metadata={
+                "embedding_backend": resolved_backend,
+                "embedding_model": resolved_model,
+                "embedding_dimension": embedding_dimension,
+                "corpus_fingerprint": corpus_fingerprint,
+                "splitter_schema_version": SPLITTER_SCHEMA_VERSION,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "tokenizer_model": tokenizer_model,
+                "index_schema_version": 2,
+            },
         )
-        collection_count = int(vector_store._collection.count())
-        if collection_count <= 0:
-            raise RuntimeError(
-                f"Chroma collection {collection_name!r} is empty after indexing"
+        collection_count = 0
+        try:
+            vector_store.add_documents(
+                chunks,
+                ids=[chunk.metadata["chunk_id"] for chunk in chunks],
             )
+            collection_count = _validate_staged_collection(vector_store, expected_records)
+            smoke_results = vector_store.similarity_search(chunks[0].page_content, k=1)
+            if not smoke_results:
+                raise RuntimeError(
+                    f"Chroma collection {collection_name!r} returned no result for its smoke query"
+                )
+        finally:
+            close_chroma_store(vector_store)
+
+        publish_staged_directory(
+            staging,
+            persist_path,
+            protected_paths=(data_directory, DEFAULT_RAW_DIR, settings.processed_data_dir),
+            project_root=PROJECT_ROOT,
+            forbid_current_directory=True,
+        )
     finally:
-        close_chroma_store(vector_store)
+        try:
+            cleanup_staging_directory(
+                staging,
+                persist_path,
+                protected_paths=(data_directory, DEFAULT_RAW_DIR, settings.processed_data_dir),
+                project_root=PROJECT_ROOT,
+                forbid_current_directory=True,
+            )
+        except OSError as exc:
+            LOGGER.warning("could not remove verified staging directory %s: %s", staging, exc)
 
     result = BuildStats(
         **load_result.stats.as_dict(),
@@ -159,6 +302,9 @@ def build_vector_db(
         persist_directory=str(persist_path),
         embedding_backend=resolved_backend,
         embedding_model=resolved_model,
+        embedding_dimension=embedding_dimension,
+        corpus_fingerprint=corpus_fingerprint,
+        splitter_schema_version=SPLITTER_SCHEMA_VERSION,
         collection_count=collection_count,
     )
     LOGGER.info("vector database build complete: %s", result.as_dict())
@@ -209,16 +355,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--embedding-model",
-        default=settings.embedding_model,
-        help="Ollama embedding model",
+        default=None,
+        help="model for the selected backend; overrides backend-specific settings",
     )
     parser.add_argument(
         "--sentence-transformer-model",
-        default=os.getenv(
-            "SENTENCE_TRANSFORMER_MODEL",
-            DEFAULT_SENTENCE_TRANSFORMER_MODEL,
-        ),
-        help="Sentence Transformers model name or local path",
+        default=None,
+        help="legacy Sentence Transformers override; used when --embedding-model is omitted",
     )
     parser.add_argument(
         "--ollama-base-url",
@@ -231,7 +374,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="delete the configured ChromaDB directory before indexing",
+        help="accepted for compatibility; every build publishes a complete staged index",
     )
     parser.add_argument(
         "--log-level",

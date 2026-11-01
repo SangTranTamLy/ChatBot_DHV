@@ -13,7 +13,11 @@ from langchain_chroma import Chroma
 from src.config.settings import settings
 
 from .chroma_lifecycle import close_chroma_store
-from .embeddings import create_embeddings
+from .embeddings import (
+    create_embeddings,
+    resolve_embedding_config,
+    validate_embedding_metadata,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -30,6 +34,34 @@ def _compact(documents: list[Any]) -> str:
 
 def _category_documents(documents: list[Any], category: str) -> list[Any]:
     return [document for document in documents if document.metadata.get("category") == category]
+
+
+def _record_values(
+    documents: list[Any],
+    *,
+    category: str,
+    record_type: str,
+    major_name: str | None = None,
+    generic_only: bool = False,
+) -> dict[str, str]:
+    normalized_major = major_name.casefold() if major_name else None
+    return {
+        str(document.metadata.get("method") or ""): str(
+            document.metadata.get("raw_value") or document.metadata.get("value") or ""
+        )
+        for document in documents
+        if document.metadata.get("category") == category
+        and document.metadata.get("record_type") == record_type
+        and (
+            normalized_major is None
+            or str(document.metadata.get("major_name") or "").strip().casefold()
+            == normalized_major
+        )
+        and (
+            not generic_only
+            or not str(document.metadata.get("major_name") or "").strip()
+        )
+    }
 
 
 def _require(query: str, documents: list[Any], predicate: Callable[[list[Any], str], bool], detail: str) -> None:
@@ -65,50 +97,83 @@ def _check_ai_code(documents: list[Any], text: str) -> bool:
 
 
 def _check_cntt_threshold(documents: list[Any], text: str) -> bool:
-    return "công nghệ thông tin" in text and all(value in text for value in ("15", "18", "600"))
+    values = _record_values(
+        documents,
+        category="nguong_dau_vao",
+        record_type="application_threshold",
+        generic_only=True,
+    )
+    return values.get("thpt") in {"15", "15.0", "15,00"} and values.get("dgnl") == "600"
 
 
 def _check_law_threshold(documents: list[Any], text: str) -> bool:
-    # Structured JSON keeps one major per semantic record; do not require the
-    # two Law rows to share a legacy Markdown table/chunk.
+    # Structured JSON keeps the method-specific 18-point Law thresholds as
+    # semantic records; do not inspect the old Markdown table formatting.
     law_rows = {
-        str(document.metadata.get("major_name") or "").strip(): document.page_content
+        str(document.metadata.get("major_name") or "").strip().casefold(): document
         for document in documents
-        if str(document.metadata.get("record_type") or "") == "major"
-        and str(document.metadata.get("major_name") or "").strip()
-        in {"Luật", "Luật Kinh tế"}
+        if str(document.metadata.get("record_type") or "") == "application_threshold"
+        and str(document.metadata.get("method") or "") == "thpt"
+        and str(document.metadata.get("major_name") or "").strip().casefold()
+        in {"luật", "luật kinh tế"}
     }
-    if set(law_rows) != {"Luật", "Luật Kinh tế"}:
+    if set(law_rows) != {"luật", "luật kinh tế"}:
         return False
-    for row in law_rows.values():
-        normalized = _SPACE_RE.sub(" ", row).lower()
-        if normalized.count(": -") < 3:
-            return False
-        if any(f": {value}" in normalized for value in ("15", "18", "600")):
+    for document in law_rows.values():
+        metadata = document.metadata
+        if str(metadata.get("raw_value") or metadata.get("value") or "") != "18":
             return False
     return True
 
 
 def _check_admission_score(documents: list[Any], text: str) -> bool:
-    return bool(_category_documents(documents, "diem_trung_tuyen")) and "luật: 20,0" in text
+    values = _record_values(
+        documents,
+        category="diem_trung_tuyen",
+        record_type="admission_score",
+        major_name="Luật",
+    )
+    return values == {"thpt": "20", "hoc_ba": "20(*)", "dgnl": "762"}
 
 
 def _check_psychology_threshold(documents: list[Any], text: str) -> bool:
-    return "tâm lý học" in text and all(value in text for value in ("15", "18", "600"))
+    values = _record_values(
+        documents,
+        category="nguong_dau_vao",
+        record_type="application_threshold",
+        generic_only=True,
+    )
+    return values.get("thpt") in {"15", "15.0", "15,00"}
 
 
 def _check_psychology_admission(documents: list[Any], text: str) -> bool:
-    return bool(_category_documents(documents, "diem_trung_tuyen")) and "tâm lý học: 20,0" in text
+    score_documents = _category_documents(documents, "diem_trung_tuyen")
+    return any(
+        re.search(
+            r"7310401\s+Tâm lý học\s+20\s+22,5\s+762",
+            document.page_content,
+            flags=re.IGNORECASE,
+        )
+        for document in score_documents
+    )
 
 
 def _check_tuition(documents: list[Any], text: str) -> bool:
     tuition = _category_documents(documents, "hoc_phi")
-    return bool(tuition) and "12.500.000" in text and "14.500.000" in text
+    return any(
+        all(marker in document.page_content for marker in ("12.500.000", "14.250.000", "250.000"))
+        and "nếu có" in document.page_content.casefold()
+        for document in tuition
+    )
 
 
 def _check_supplementary_deadline(documents: list[Any], text: str) -> bool:
     supplementary = _category_documents(documents, "xet_tuyen_bo_sung")
-    return bool(supplementary) and "21/08/2026" in text
+    return any(
+        document.metadata.get("record_type") == "deadline"
+        and re.search(r"\b21/0?8/2026\b", document.page_content)
+        for document in supplementary
+    )
 
 
 def _check_recommendation(documents: list[Any], text: str) -> bool:
@@ -126,13 +191,41 @@ REGRESSION_CASES: tuple[tuple[str, Callable[[list[Any], str], bool], str], ...] 
     ("CNTT mã ngành bao nhiêu?", _check_cntt_code, "must retrieve code 7480201"),
     ("CNTT có chương trình gì?", _check_cntt_programs, "must retrieve all five CNTT programs"),
     ("Trí tuệ nhân tạo mã ngành?", _check_ai_code, "must retrieve code 7480107"),
-    ("Điểm sàn CNTT?", _check_cntt_threshold, "must retrieve 15/18/600"),
-    ("Điểm sàn Luật ngày 04/07/2026?", _check_law_threshold, "must preserve '-' for both Law rows"),
-    ("Điểm trúng tuyển Luật 2026?", _check_admission_score, "must retrieve 20,0 from admission-score source"),
-    ("Tâm lý học điểm sàn?", _check_psychology_threshold, "must retrieve 15/18/600"),
-    ("Tâm lý học điểm trúng tuyển?", _check_psychology_admission, "must retrieve 20,0 from admission-score source"),
-    ("Học phí HKI?", _check_tuition, "must retrieve 12.500.000 and total 14.500.000"),
-    ("Hạn xét tuyển bổ sung?", _check_supplementary_deadline, "must retrieve 21/08/2026"),
+    (
+        "Điểm sàn CNTT?",
+        _check_cntt_threshold,
+        "must retrieve the general THPT 15 and ĐGNL 600 threshold records",
+    ),
+    (
+        "Điểm sàn Luật ngày 04/07/2026?",
+        _check_law_threshold,
+        "must retrieve both Law-specific 18-point THPT thresholds",
+    ),
+    (
+        "Điểm trúng tuyển Luật 2026?",
+        _check_admission_score,
+        "must retrieve THPT 20, Học bạ 20(*), and ĐGNL 762",
+    ),
+    (
+        "Tâm lý học điểm sàn?",
+        _check_psychology_threshold,
+        "must retrieve the general 15-point THPT floor without borrowing Law's 18",
+    ),
+    (
+        "Tâm lý học điểm trúng tuyển?",
+        _check_psychology_admission,
+        "must retrieve the Psychology row 20/22.5/762 from the score table",
+    ),
+    (
+        "Học phí HKI?",
+        _check_tuition,
+        "must retrieve tuition, the 14.25M base total, and the optional 250K fee",
+    ),
+    (
+        "Hạn xét tuyển bổ sung?",
+        _check_supplementary_deadline,
+        "must retrieve the verified 21/8/2026 deadline",
+    ),
     (
         "Tôi 19 điểm, thích edit video, nên chọn ngành nào DHV 2026?",
         _check_recommendation,
@@ -145,19 +238,24 @@ REGRESSION_CASES: tuple[tuple[str, Callable[[list[Any], str], bool], str], ...] 
 def run_regression_tests(
     *,
     backend: str,
-    embedding_model: str,
+    embedding_model: str | None,
     ollama_base_url: str,
     persist_directory: str,
     collection_name: str,
-    top_k: int = 25,
+    top_k: int = 96,
 ) -> list[dict[str, object]]:
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
 
-    embedding_function = create_embeddings(
+    embedding_config = resolve_embedding_config(
         backend=backend,
-        ollama_model=embedding_model,
+        model=embedding_model,
         ollama_base_url=ollama_base_url,
+    )
+    embedding_function = create_embeddings(
+        backend=embedding_config.backend,
+        model=embedding_config.model,
+        ollama_base_url=embedding_config.base_url,
     )
     vector_store = Chroma(
         collection_name=collection_name,
@@ -167,10 +265,18 @@ def run_regression_tests(
     try:
         if vector_store._collection.count() <= 0:
             raise RuntimeError("ChromaDB collection is empty")
+        validate_embedding_metadata(vector_store._collection.metadata, embedding_config)
+        query_vector = embedding_function.embed_query(REGRESSION_CASES[0][0])
+        validate_embedding_metadata(
+            vector_store._collection.metadata,
+            embedding_config,
+            query_dimension=len(query_vector),
+        )
 
         results: list[dict[str, object]] = []
         for query, predicate, detail in REGRESSION_CASES:
-            documents = vector_store.similarity_search(query, k=top_k)
+            query_vector = embedding_function.embed_query(query)
+            documents = vector_store.similarity_search_by_vector(query_vector, k=top_k)
             _require(query, documents, predicate, detail)
             results.append(
                 {
@@ -189,11 +295,11 @@ def run_regression_tests(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--embedding-backend", default=settings.embedding_backend)
-    parser.add_argument("--embedding-model", default=settings.embedding_model)
+    parser.add_argument("--embedding-model", default=None)
     parser.add_argument("--ollama-base-url", default=settings.ollama_base_url)
     parser.add_argument("--persist-dir", default=str(settings.chroma_persist_dir))
     parser.add_argument("--collection", default=settings.chroma_collection)
-    parser.add_argument("--top-k", type=int, default=25)
+    parser.add_argument("--top-k", type=int, default=96)
     return parser
 
 

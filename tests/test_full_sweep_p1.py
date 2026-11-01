@@ -15,6 +15,7 @@ from src.chatbot.query_analysis import (
     update_conversation_state,
 )
 from src.chatbot.evidence import EvidenceBundle, EvidenceChunk, build_evidence
+from src.chatbot.evidence_utils import _remove_unresolved_url_label
 from src.chatbot.rag_chain import (
     _application_documents_missing_evidence,
     _evidence_admission_bonus_answer,
@@ -26,12 +27,10 @@ from src.chatbot.rag_chain import (
     _evidence_exam_subject_count_answer,
     _evidence_eligibility_answer,
     _evidence_enrollment_answer,
-    _evidence_optional_english_fee_answer,
     _evidence_overview_answer,
     _prioritize_enrollment_document_records,
     _prioritize_result_notification_documents,
     _evidence_result_notification_answer,
-    _remove_unresolved_url_label,
     _evidence_school_code_answer,
     _evidence_catalog_answer,
     _evidence_school_info_answer,
@@ -40,11 +39,14 @@ from src.chatbot.rag_chain import (
     _evidence_subject_minimum_answer,
     _evidence_supplementary_majors_answer,
     _evidence_score_comparison_reason_answer,
-    _evidence_tuition_total_answer,
     _prioritize_admission_date_comparison_documents,
     _named_unit_relation_missing_evidence,
     _school_info_detail_missing_evidence,
     ask_chatbot,
+)
+from src.chatbot.tuition_formatters import (
+    _evidence_optional_english_fee_answer,
+    _evidence_tuition_total_answer,
 )
 from src.chatbot.output_validator import _has_required_supplementary_date, validate_model_answer
 from src.chatbot.scope_guard import detect_target_school

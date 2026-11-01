@@ -12,8 +12,8 @@ from .retriever import (
 )
 
 __all__ = [
-    "DHVRetriever",
-    "RetrievalAudit",
+    "DHVRetriever", #lớp truy xuất dữ liệu
+    "RetrievalAudit", #cấu trúc dữ liệu kiểm toán truy xuất
     "RetrievalResult",
     "RetrieverEmbeddingError",
     "RetrieverError",

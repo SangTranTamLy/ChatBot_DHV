@@ -4,9 +4,11 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from src.supabase_auth import (
+    AuthConfigurationError,
     AuthServiceError,
     PASSWORD_RECOVERY_REDIRECT_URL,
     change_password,
+    get_password_recovery_redirect_url,
     login_user,
     register_user,
     request_password_recovery,
@@ -154,12 +156,30 @@ class SupabaseAuthServiceTests(TestCase):
             )
         self.assertIsNone(self.client.auth.update_args)
 
-    def test_password_recovery_request_uses_fixed_callback_and_normalizes_email(self):
+    def test_password_recovery_request_uses_local_default_and_normalizes_email(self):
         self.assertTrue(request_password_recovery(" AN@example.com "))
         self.assertEqual(
             self.client.auth.reset_args,
             ("an@example.com", {"redirect_to": PASSWORD_RECOVERY_REDIRECT_URL}),
         )
+
+    def test_password_recovery_callback_can_be_configured_for_https_deployment(self):
+        callback = "https://chat.example.edu/auth/recovery"
+        with patch("src.supabase_auth._read_setting", return_value=callback):
+            self.assertEqual(get_password_recovery_redirect_url(), callback)
+            self.assertTrue(request_password_recovery("AN@example.com"))
+
+        self.assertEqual(
+            self.client.auth.reset_args,
+            ("an@example.com", {"redirect_to": callback}),
+        )
+
+    def test_password_recovery_callback_rejects_plain_http_outside_loopback(self):
+        with patch(
+            "src.supabase_auth._read_setting",
+            return_value="http://chat.example.edu/auth/recovery",
+        ), self.assertRaises(AuthConfigurationError):
+            get_password_recovery_redirect_url()
 
     def test_password_recovery_send_errors_do_not_leak_account_state(self):
         self.client.auth.reset_error = ValueError("mail provider detail")

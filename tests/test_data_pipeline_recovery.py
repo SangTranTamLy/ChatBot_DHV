@@ -82,19 +82,15 @@ class DataPipelineRecoveryTests(unittest.TestCase):
         self.assertEqual(validate_manifest_sync(manifest, raw_root=RAW_ROOT), [])
         self.assertEqual(len(manifest["documents"]), len(list(RAW_ROOT.rglob("*.pdf"))))
 
-    def test_ocr_fallback_is_called_and_marks_page(self) -> None:
+    def test_compatibility_branch_uses_native_text_without_ocr_runtime(self) -> None:
         with patch(
             "src.ingestion.prepare_processed_from_raw.PdfReader",
-            return_value=_FakeReader([_FakePage("")]),
-        ), patch(
-            "src.ingestion.prepare_processed_from_raw._ocr_page",
-            return_value="OCR text có đủ nội dung để lập chỉ mục.",
-        ) as ocr:
+            return_value=_FakeReader([_FakePage("Nội dung có sẵn trong lớp chữ PDF.")]),
+        ):
             pages = _extract_pdf_pages(Path("fixture.pdf"))
 
-        ocr.assert_called_once_with(Path("fixture.pdf"), 0)
-        self.assertEqual(pages[0]["extraction_method"], "ocr")
-        self.assertEqual(pages[0]["text"], "OCR text có đủ nội dung để lập chỉ mục.")
+        self.assertEqual(pages[0]["extraction_method"], "native")
+        self.assertEqual(pages[0]["text"], "Nội dung có sẵn trong lớp chữ PDF.")
 
     def test_manifest_provenance_preserves_source_url_from_entry(self) -> None:
         entry = _historical_tuition_entry()

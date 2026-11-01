@@ -11,6 +11,10 @@ from dotenv import load_dotenv
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
+DEFAULT_SENTENCE_TRANSFORMER_MODEL = (
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+)
 
 
 def _read_env(name: str, default: str, *aliases: str) -> str:
@@ -59,6 +63,8 @@ class Settings:
     target_year: int
     ollama_timeout_seconds: float = 90.0
     rag_max_context_chars: int = 12000
+    ollama_embedding_model: str = DEFAULT_OLLAMA_EMBEDDING_MODEL
+    sentence_transformer_model: str = DEFAULT_SENTENCE_TRANSFORMER_MODEL
 
     def __post_init__(self) -> None:
         parsed_url = urlparse(self.ollama_base_url)
@@ -68,6 +74,10 @@ class Settings:
             raise ValueError("OLLAMA_MODEL must not be empty")
         if not self.embedding_model:
             raise ValueError("EMBEDDING_MODEL must not be empty")
+        if not self.ollama_embedding_model:
+            raise ValueError("OLLAMA_EMBEDDING_MODEL must not be empty")
+        if not self.sentence_transformer_model:
+            raise ValueError("SENTENCE_TRANSFORMER_MODEL must not be empty")
         if self.embedding_backend not in {
             "ollama",
             "sentence-transformers",
@@ -91,15 +101,30 @@ def load_settings() -> Settings:
     """Tải các thiết lập chuẩn, kèm theo các giá trị mặc định an toàn cho môi trường phát triển cục bộ."""
 
     load_dotenv(PROJECT_ROOT / ".env")
+    embedding_backend = _read_env("EMBEDDING_BACKEND", "ollama")
+    configured_embedding_model = os.getenv("EMBEDDING_MODEL", "").strip()
+    ollama_embedding_model = _read_env(
+        "OLLAMA_EMBEDDING_MODEL", DEFAULT_OLLAMA_EMBEDDING_MODEL
+    )
+    sentence_transformer_model = _read_env(
+        "SENTENCE_TRANSFORMER_MODEL", DEFAULT_SENTENCE_TRANSFORMER_MODEL
+    )
+    backend_key = embedding_backend.strip().lower().replace("_", "-")
+    if configured_embedding_model:
+        embedding_model = configured_embedding_model
+    elif backend_key in {"sentence-transformers", "st"}:
+        embedding_model = sentence_transformer_model
+    else:
+        embedding_model = ollama_embedding_model
     return Settings(
         ollama_base_url=_read_env("OLLAMA_BASE_URL", "http://localhost:11434"),
         ollama_model=_read_env(
             "OLLAMA_MODEL", "qwen2.5:3b", "OLLAMA_CHAT_MODEL"
         ),
-        embedding_backend=_read_env("EMBEDDING_BACKEND", "ollama"),
-        embedding_model=_read_env(
-            "EMBEDDING_MODEL", "nomic-embed-text", "OLLAMA_EMBEDDING_MODEL"
-        ),
+        embedding_backend=embedding_backend,
+        embedding_model=embedding_model,
+        ollama_embedding_model=ollama_embedding_model,
+        sentence_transformer_model=sentence_transformer_model,
         chroma_persist_dir=_project_path(
             _read_env("CHROMA_PERSIST_DIR", "chroma_db", "CHROMA_PERSIST_DIRECTORY")
         ),
@@ -120,4 +145,11 @@ def load_settings() -> Settings:
 
 settings = load_settings()
 
-__all__ = ["PROJECT_ROOT", "Settings", "load_settings", "settings"]
+__all__ = [
+    "DEFAULT_OLLAMA_EMBEDDING_MODEL",
+    "DEFAULT_SENTENCE_TRANSFORMER_MODEL",
+    "PROJECT_ROOT",
+    "Settings",
+    "load_settings",
+    "settings",
+]

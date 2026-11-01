@@ -667,6 +667,9 @@ def ask_chatbot(
         score_evaluation.get("status") == "insufficient-data"
         # Câu hỏi quy tắc phương thức (vd. học bạ lấy điểm lớp nào) không cần dữ liệu điểm số.
         and analysis.intent != "HOI_PHUONG_THUC_XET_TUYEN"
+        # A counselling answer can still list grounded majors when no numeric
+        # application threshold is available; the prompt must state that limit.
+        and analysis.intent != "TU_VAN_CHON_NGANH"
         and not structured_lookup_answer
         and not deadline_only_lookup
         and not admission_rule_answer
@@ -702,7 +705,13 @@ def ask_chatbot(
     if not evidence.is_usable:
         return no_data()
 
-    if analysis.intent == "TU_VAN_CHON_NGANH" and not _has_verified_advisory_fit_evidence(
+    allow_score_guidance_without_interest = (
+        not analysis.entities.get("interest")
+        and analysis.entities.get("admission_method") == "thpt"
+        and bool(analysis.entities.get("student_scores"))
+        and analysis.entities.get("admission_combination") == "D01"
+    )
+    if analysis.intent == "TU_VAN_CHON_NGANH" and not allow_score_guidance_without_interest and not _has_verified_advisory_fit_evidence(
         analysis,
         evidence,
         state,
@@ -772,7 +781,15 @@ def ask_chatbot(
         return no_data()
 
     requested_combination = analysis.entities.get("admission_combination")
-    if requested_combination and not _combination_is_verified(evidence, requested_combination):
+    subject_combination_is_identified = (
+        requested_combination == "D01"
+        and analysis.entities.get("admission_method") == "thpt"
+    )
+    if (
+        requested_combination
+        and not subject_combination_is_identified
+        and not _combination_is_verified(evidence, requested_combination)
+    ):
         trace["boundary"] = "admission_combination_not_verified"
         return no_data()
 

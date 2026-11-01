@@ -1,6 +1,7 @@
 """Input validation and Streamlit auth-flow tests for the Supabase integration."""
 
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
@@ -43,6 +44,36 @@ class AuthValidationTests(TestCase):
 
 
 class AuthScreenTests(TestCase):
+    def test_chat_rejects_more_than_500_characters_before_backend_call(self):
+        with patch(
+            "src.chatbot.chat_service.ask_chatbot",
+            return_value={"answer": "Không nên được gọi.", "status": "ok"},
+        ) as backend:
+            at = AppTest.from_file(str(APP))
+            at.session_state["account_page"] = "chat"
+            at.run(timeout=30)
+            at.chat_input[0].set_value("x" * 501).run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertFalse(backend.called)
+        self.assertEqual(at.session_state["messages"], [])
+        self.assertTrue(any("tối đa 500 ký tự" in warning.value for warning in at.warning))
+
+    def test_chat_accepts_exactly_500_characters(self):
+        question = "x" * 500
+        with patch(
+            "src.chatbot.chat_service.ask_chatbot",
+            return_value={"answer": "Đã nhận câu hỏi.", "status": "ok"},
+        ) as backend:
+            at = AppTest.from_file(str(APP))
+            at.session_state["account_page"] = "chat"
+            at.run(timeout=30)
+            at.chat_input[0].set_value(question).run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertEqual(at.session_state["messages"][0]["content"], question)
+        backend.assert_called_once()
+
     def test_guest_can_chat_without_login_or_saved_history(self):
         with patch("src.chatbot.chat_service.ask_chatbot", return_value={"answer": "Thông tin học phí.", "status": "ok"}) as backend:
             at = AppTest.from_file(str(APP))
@@ -136,7 +167,31 @@ class AuthScreenTests(TestCase):
         self.assertFalse(any("không tồn tại" in message.value.lower() for message in at.error))
         request_reset.assert_called_once_with("unknown@example.com")
 
-    def test_invalid_recovery_callback_shows_retry_without_loading_chat_or_admin(self):
+    def test_forgot_password_request_has_a_60_second_session_cooldown(self):
+        request_started = Event()
+
+        def send_reset(_email):
+            request_started.set()
+            return False
+
+        with (
+            patch("src.ui_auth.is_supabase_configured", return_value=True),
+            patch("src.ui_auth.request_password_recovery", side_effect=send_reset) as request_reset,
+        ):
+            at = AppTest.from_file(str(APP))
+            at.run(timeout=30)
+            at.button(key="rail_login").click().run(timeout=30)
+            at.button(key="auth_forgot_password").click().run(timeout=30)
+            at.text_input(key="password_recovery_email").set_value("unknown@example.com")
+            at.button(key="submit_password_recovery_request").click().run(timeout=30)
+            self.assertTrue(request_started.wait(timeout=2))
+            at.button(key="submit_password_recovery_request").click().run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertEqual(request_reset.call_count, 1)
+        self.assertTrue(any("Vui lòng chờ" in warning.value for warning in at.warning))
+
+    def test_invalid_recovery_callback_shows_retry_without_loading_chat(self):
         at = AppTest.from_file(str(APP))
         at.query_params["auth"] = "recovery"
         at.session_state["password_recovery_link_checked"] = True

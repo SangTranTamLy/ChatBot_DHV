@@ -8,6 +8,7 @@ from src.chatbot.evidence import EvidenceBundle, EvidenceChunk
 from src.chatbot.query_analysis import analyze_question, route_question
 from src.chatbot.query_decomposer import should_attempt_decomposition
 from src.chatbot.output_validator import validate_model_answer
+from src.chatbot.catalog_formatters import _method_details_from_evidence
 from src.chatbot.rag_chain import (
     _evidence_admission_combination_answer,
     _evidence_application_registration_answer,
@@ -16,7 +17,6 @@ from src.chatbot.rag_chain import (
     _evidence_method_application_threshold_answer,
     _evidence_method_calculation_answer,
     _evidence_scholarship_catalog_answer,
-    _method_details_from_evidence,
 )
 
 

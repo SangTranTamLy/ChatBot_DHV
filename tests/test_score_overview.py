@@ -73,6 +73,12 @@ class ScoreAnswerTests(unittest.TestCase):
         self.assertIn("762", answer)
         self.assertIn("thấp hơn mức này", answer)
 
+    def test_named_admission_score_answer_repeats_the_requested_major(self) -> None:
+        answer = self._answer("Điểm trúng tuyển Luật 2026 là bao nhiêu?")
+        self.assertIn("ngành Luật", answer)
+        self.assertIn("thi tốt nghiệp THPT: 20 điểm", answer)
+        self.assertIn("học bạ: 20(*) điểm", answer)
+
     def test_every_named_major_is_compared_without_a_method_threshold(self) -> None:
         answer = self._answer("Học bạ em được 21 điểm thì có đủ điểm trúng tuyển ngành Luật hoặc Luật kinh tế ở DHV không ạ?")
         self.assertIn("ngành Luật theo học bạ", answer)

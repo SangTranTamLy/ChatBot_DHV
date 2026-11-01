@@ -111,6 +111,27 @@ _MULTI_ISSUE_LABELS = {
 }
 
 
+def _retrieval_subplan_for_issue(subplan: Any) -> Any:
+    """Drop major filters from scholarship retrieval because offers are school-wide."""
+
+    filters = dict(getattr(subplan, "entity_filters", {}) or {})
+    if getattr(subplan, "intent", "") != "HOI_HOC_BONG" or not filters:
+        return subplan
+    scholarship_filters = {
+        key: value
+        for key, value in filters.items()
+        if key not in {
+            "major_name",
+            "major_code",
+            "program_name",
+            "parent_major",
+            "candidate_majors",
+            "candidate_programs",
+        }
+    }
+    return replace(subplan, entity_filters=scholarship_filters)
+
+
 def _ask_multi_issue(
     *,
     query: str,
@@ -139,24 +160,7 @@ def _ask_multi_issue(
     for subplan in plan.subplans:
         subquery = subplan.issue_question or subplan.retrieval_query
         normalized_subquery = normalize_question(subquery)
-        retrieval_subplan = subplan
-        if (
-            subplan.intent == "HOI_HOC_BONG"
-            and subplan.entity_filters
-        ):
-            scholarship_filters = {
-                key: value
-                for key, value in subplan.entity_filters.items()
-                if key not in {
-                    "major_name",
-                    "major_code",
-                    "program_name",
-                    "parent_major",
-                    "candidate_majors",
-                    "candidate_programs",
-                }
-            }
-            retrieval_subplan = replace(subplan, entity_filters=scholarship_filters)
+        retrieval_subplan = _retrieval_subplan_for_issue(subplan)
         effective_subplans.append(retrieval_subplan)
         sub_analysis = replace(
             analysis,

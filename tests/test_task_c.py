@@ -16,7 +16,7 @@ from src.chatbot.scope_guard import is_in_scope
 from src.config.settings import settings
 from src.models.local_llm import LocalLLM
 from src.prompts.rag_prompt import build_rag_prompt
-from src.retrieval.retriever import DHVRetriever, topic_category
+from src.retrieval.retriever import DHVRetriever, VectorDatabaseError, topic_category
 
 
 SOURCE_URL = "https://dhv.edu.vn/verified-source"
@@ -529,14 +529,23 @@ class TaskCTests(unittest.TestCase):
 
         def embedding_factory(**kwargs: object) -> object:
             calls["embedding"] = kwargs
-            return object()
+            class FixtureEmbeddings:
+                @staticmethod
+                def embed_query(_: str) -> list[float]:
+                    return [0.0, 0.0, 0.0]
+
+            return FixtureEmbeddings()
 
         class Collection:
+            def __init__(self, metadata: dict[str, object]) -> None:
+                self.metadata = metadata
+
             def count(self) -> int:
                 return 1
 
         class Store:
-            _collection = Collection()
+            def __init__(self, metadata: dict[str, object]) -> None:
+                self._collection = Collection(metadata)
 
             def similarity_search(self, question: str, *, k: int, filter: dict[str, int]) -> list[Document]:
                 calls["search"] = {"question": question, "k": k, "filter": filter}
@@ -544,7 +553,11 @@ class TaskCTests(unittest.TestCase):
 
         def store_factory(**kwargs: object) -> Store:
             calls["store"] = kwargs
-            return Store()
+            return Store({
+                "embedding_backend": "ollama",
+                "embedding_model": "nomic-embed-text",
+                "embedding_dimension": 3,
+            })
 
         with tempfile.TemporaryDirectory() as temp_dir:
             configured = replace(
@@ -562,7 +575,7 @@ class TaskCTests(unittest.TestCase):
 
         self.assertEqual(len(documents), 1)
         self.assertEqual(calls["embedding"]["backend"], "ollama")
-        self.assertEqual(calls["embedding"]["ollama_model"], "nomic-embed-text")
+        self.assertEqual(calls["embedding"]["model"], "nomic-embed-text")
         self.assertEqual(calls["embedding"]["ollama_base_url"], "http://localhost:11434")
         self.assertEqual(calls["store"]["collection_name"], "dhv_admissions_2026")
         self.assertEqual(calls["search"]["k"], 4)
@@ -570,6 +583,44 @@ class TaskCTests(unittest.TestCase):
             calls["search"]["filter"],
             {"$and": [{"year": 2026}, {"category": "hoc_phi"}]},
         )
+
+    def test_retriever_rejects_embedding_model_mismatch_before_vector_search(self) -> None:
+        searches: list[str] = []
+
+        class Collection:
+            metadata = {
+                "embedding_backend": "ollama",
+                "embedding_model": "different-model",
+                "embedding_dimension": 3,
+            }
+
+            def count(self) -> int:
+                return 1
+
+        class Store:
+            _collection = Collection()
+
+            def similarity_search(self, *_: object, **__: object) -> list[Document]:
+                searches.append("search")
+                return []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            configured = replace(
+                settings,
+                chroma_persist_dir=Path(temp_dir),
+                embedding_backend="ollama",
+                embedding_model="nomic-embed-text",
+            )
+            retriever = DHVRetriever(
+                settings_obj=configured,
+                store_factory=lambda **_: Store(),
+                embedding_factory=lambda **_: object(),
+            )
+
+            with self.assertRaisesRegex(VectorDatabaseError, "configuration mismatch"):
+                retriever.retrieve("Học phí DHV 2026")
+
+        self.assertEqual(searches, [])
 
     def test_topic_category_prioritizes_the_specific_admissions_group(self) -> None:
         self.assertEqual(topic_category("Học phí DHV 2026"), "hoc_phi")

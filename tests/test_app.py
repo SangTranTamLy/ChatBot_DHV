@@ -162,7 +162,16 @@ class StreamlitAppTests(unittest.TestCase):
     def test_starter_question_sends_its_full_query_to_chat_service(self) -> None:
         with patch(
             "src.chatbot.chat_service.ask_chatbot",
-            return_value={"answer": "Học phí theo dữ liệu DHV.", "status": "ok"},
+            return_value={
+                "answer": "Học phí theo dữ liệu DHV.",
+                "status": "ok",
+                "related_questions": [
+                    "Học phí ngành Công nghệ thông tin năm 2026 bao nhiêu?",
+                    "DHV có những học bổng nào cho tân sinh viên 2026?",
+                    "Học phí học kỳ I DHV 2026 gồm những khoản nào?",
+                    "Cách đóng học phí tại DHV như thế nào?",
+                ],
+            },
         ) as ask_chatbot:
             at = _app()
             next(button for button in at.button if button.label == "Học phí ngành CNTT năm 2026 là bao nhiêu?").click().run(timeout=30)
@@ -176,13 +185,66 @@ class StreamlitAppTests(unittest.TestCase):
                     "role": "assistant",
                     "content": "Học phí theo dữ liệu DHV.",
                     "status": "ok",
+                    "suggested_questions": [
+                        "DHV có những học bổng nào cho tân sinh viên 2026?",
+                        "Học phí học kỳ I DHV 2026 gồm những khoản nào?",
+                        "Cách đóng học phí tại DHV như thế nào?",
+                    ],
                 },
             ],
         )
         self.assertEqual(ask_chatbot.call_args.args[0], "Học phí ngành Công nghệ thông tin năm 2026 bao nhiêu?")
+        self.assertEqual(
+            [button.label for button in at.button if button.key.startswith("answer_followup_")],
+            [
+                "DHV có những học bổng nào cho tân sinh viên 2026?",
+                "Học phí học kỳ I DHV 2026 gồm những khoản nào?",
+                "Cách đóng học phí tại DHV như thế nào?",
+            ],
+        )
         self.assertEqual(len(at.pills), 0)
 
-    def test_history_hides_backend_sources_and_renders_all_service_statuses(self) -> None:
+    def test_followups_avoid_the_recent_question_and_shown_suggestions(self) -> None:
+        previous = [
+            {"role": "user", "content": "Điều kiện học bổng tuyển sinh DHV năm 2026 là gì?"},
+            {
+                "role": "assistant",
+                "content": "Có một số điều kiện được công bố.",
+                "status": "ok",
+                "suggested_questions": [
+                    "Hồ sơ xét học bổng DHV 2026 cần chuẩn bị gì?",
+                    "Học bổng tuyển sinh DHV 2026 được xét theo phương thức nào?",
+                ],
+            },
+        ]
+        response = {
+            "answer": "Đây là thông tin học bổng.",
+            "status": "ok",
+            "related_questions": [
+                "Điều kiện học bổng tuyển sinh DHV năm 2026 là gì?",
+                "Điều kiện của các học bổng DHV 2026 gồm những gì?",
+                "Hồ sơ xét học bổng DHV 2026 cần chuẩn bị gì?",
+                "Học bổng tuyển sinh DHV 2026 được xét theo phương thức nào?",
+                "Học phí học kỳ I DHV 2026 là bao nhiêu?",
+                "Học bổng nào áp dụng cho tân sinh viên DHV 2026?",
+            ],
+        }
+        at = _signed_in_app()
+        at.session_state["messages"] = previous
+        with patch("src.chatbot.chat_service.ask_chatbot", return_value=response):
+            at.run(timeout=30)
+            at.chat_input[0].set_value("Điều kiện học bổng tuyển sinh DHV năm 2026 là gì?").run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertEqual(
+            at.session_state.messages[-1]["suggested_questions"],
+            [
+                "Học phí học kỳ I DHV 2026 là bao nhiêu?",
+                "Học bổng nào áp dụng cho tân sinh viên DHV 2026?",
+            ],
+        )
+
+    def test_history_displays_public_backend_sources_and_all_service_statuses(self) -> None:
         messages = [
             {"role": "user", "content": "Học phí?"},
             {
@@ -237,8 +299,8 @@ class StreamlitAppTests(unittest.TestCase):
             + [element.value for element in at.warning]
             + [element.value for element in at.error]
         )
-        self.assertNotIn("https://dhv.edu.vn/hoc-phi", rendered_text)
-        self.assertNotIn("Nguồn học phí DHV", rendered_text)
+        self.assertIn("https://dhv.edu.vn/hoc-phi", rendered_text)
+        self.assertIn("Nguồn học phí DHV", rendered_text)
         self.assertNotIn("Nguồn chính thức", rendered_text)
         self.assertTrue(any(element.value == "Chưa có dữ liệu." for element in at.markdown))
         self.assertTrue(any(element.value == "Ollama offline." for element in at.markdown))

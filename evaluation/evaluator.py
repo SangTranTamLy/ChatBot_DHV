@@ -8,10 +8,12 @@ keeps the holdout set report-only and makes regressions reproducible offline.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from statistics import mean
 from typing import Callable, Iterable, Mapping, Sequence
@@ -21,6 +23,8 @@ from src.chatbot.output_validator import validate_model_answer
 
 DATASET_DIR = Path(__file__).resolve().parent
 _TOKEN_RE = re.compile(r"\d[\d.,]*|[A-Za-zÀ-ỹĐđ]+", re.UNICODE)
+_NUMBER_CLAIM_RE = re.compile(r"(?<!\w)\d[\d.,]*(?:\(\*\))?(?!\w)", re.UNICODE)
+_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?!\d)")
 _STOPWORDS = frozenset(
     {
         "va",
@@ -62,6 +66,7 @@ class EvaluationCase:
     relevant_chunk_ids: tuple[str, ...] = ()
     answer_contains: tuple[str, ...] = ()
     forbidden_claims: tuple[str, ...] = ()
+    evidence_provenance: tuple[Mapping[str, object], ...] = ()
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> "EvaluationCase":
@@ -81,6 +86,12 @@ class EvaluationCase:
             value.get("evidence_contains", evidence.get("contains"))
         )
         answer_contains = _string_tuple(value.get("answer_contains"))
+        provenance_value = evidence.get("provenance", value.get("evidence_provenance"))
+        provenance_items = (
+            tuple(item for item in provenance_value if isinstance(item, Mapping))
+            if isinstance(provenance_value, Sequence) and not isinstance(provenance_value, str)
+            else ()
+        )
         return cls(
             case_id=str(value.get("id") or value.get("case_id") or "").strip(),
             question=str(value.get("question") or "").strip(),
@@ -97,6 +108,7 @@ class EvaluationCase:
             relevant_chunk_ids=relevant_chunk_ids,
             answer_contains=answer_contains,
             forbidden_claims=_string_tuple(value.get("forbidden_claims")),
+            evidence_provenance=provenance_items,
         )
 
     @property
@@ -116,6 +128,7 @@ class EvaluationCase:
                 "categories": list(self.expected_categories),
                 "contains": list(self.evidence_contains),
                 "chunk_ids": list(self.relevant_chunk_ids),
+                "provenance": [dict(item) for item in self.evidence_provenance],
             },
             "answer_contains": list(self.answer_contains),
             "forbidden_claims": list(self.forbidden_claims),
@@ -138,6 +151,75 @@ def _fold(value: object) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     text = "".join(character for character in text if not unicodedata.combining(character))
     return re.sub(r"\s+", " ", text.lower().replace("đ", "d")).strip()
+
+
+def _date_claims(value: object) -> set[str]:
+    normalized: set[str] = set()
+    for day, month, year in _DATE_RE.findall(str(value or "")):
+        try:
+            normalized.add(date(int(year), int(month), int(day)).isoformat())
+        except ValueError:
+            continue
+    return normalized
+
+
+def _number_value(token: str) -> float | None:
+    token = token.replace("(*)", "")
+    if not token:
+        return None
+    comma_count = token.count(",")
+    dot_count = token.count(".")
+    if comma_count and dot_count:
+        decimal_separator = "," if token.rfind(",") > token.rfind(".") else "."
+        grouping_separator = "." if decimal_separator == "," else ","
+        integer_part, fractional_part = token.rsplit(decimal_separator, 1)
+        if 1 <= len(fractional_part) <= 2:
+            normalized = integer_part.replace(grouping_separator, "").replace(decimal_separator, "")
+            normalized = f"{normalized}.{fractional_part}"
+        else:
+            normalized = token.replace(",", "").replace(".", "")
+    elif comma_count or dot_count:
+        separator = "," if comma_count else "."
+        pieces = token.split(separator)
+        if len(pieces) > 2 and all(len(piece) == 3 for piece in pieces[1:]):
+            normalized = "".join(pieces)
+        elif len(pieces) == 2 and len(pieces[1]) == 3:
+            normalized = "".join(pieces)
+        elif len(pieces) == 2 and 1 <= len(pieces[1]) <= 2:
+            normalized = f"{pieces[0]}.{pieces[1]}"
+        else:
+            normalized = "".join(pieces)
+    else:
+        normalized = token
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
+def _claim_matches(claim: object, text: object) -> bool:
+    expected = str(claim or "").strip()
+    actual = str(text or "")
+    if not expected:
+        return False
+    expected_dates = _date_claims(expected)
+    if expected_dates:
+        return bool(expected_dates & _date_claims(actual))
+    # Restrict numeric equivalence to number-only markers. Named facts still
+    # require their surrounding text so a value from another method cannot pass.
+    if re.fullmatch(r"\s*\d[\d.,]*(?:\(\*\))?\s*", expected):
+        expected_match = _NUMBER_CLAIM_RE.search(expected)
+        expected_number = _number_value(expected_match.group(0)) if expected_match else None
+        if expected_number is None:
+            return False
+        return any(
+            (actual_number := _number_value(match.group(0))) is not None
+            and abs(actual_number - expected_number) < 1e-9
+            for match in _NUMBER_CLAIM_RE.finditer(actual)
+        )
+    if _fold(expected) in _fold(actual):
+        return True
+    return False
 
 
 def _tokens(value: object) -> set[str]:
@@ -200,6 +282,33 @@ def validate_dataset(
         raise ValueError(
             f"Expected an exact 80/20 split, got dev={len(dev)}, holdout={len(holdout)}"
         )
+    project_root = Path(dataset_dir).resolve().parent
+    verified_sources: dict[str, str] = {}
+    for case in all_cases:
+        for source in case.evidence_provenance:
+            raw_file = str(source.get("raw_file") or "").strip()
+            expected_sha256 = str(source.get("sha256") or "").strip().lower()
+            if not raw_file or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256):
+                raise ValueError(
+                    f"Evaluation case {case.case_id!r} has incomplete evidence provenance"
+                )
+            source_path = (project_root / raw_file).resolve()
+            if not source_path.is_relative_to(project_root):
+                raise ValueError(
+                    f"Evaluation case {case.case_id!r} has a provenance path outside the project"
+                )
+            if not source_path.is_file():
+                raise FileNotFoundError(
+                    f"Gold source for {case.case_id!r} is missing: {source_path}"
+                )
+            actual_sha256 = verified_sources.get(raw_file)
+            if actual_sha256 is None:
+                actual_sha256 = hashlib.sha256(source_path.read_bytes()).hexdigest()
+                verified_sources[raw_file] = actual_sha256
+            if actual_sha256 != expected_sha256:
+                raise ValueError(
+                    f"Gold source fingerprint mismatch for {case.case_id!r}: {raw_file}"
+                )
     return {
         "dataset_dir": str(Path(dataset_dir)),
         "total_cases": len(all_cases),
@@ -209,6 +318,10 @@ def validate_dataset(
         "holdout_ids": [case.case_id for case in holdout],
         "disjoint": True,
         "holdout_policy": "report_only_not_used_for_tuning",
+        "provenance": {
+            "verified_sources": len(verified_sources),
+            "sha256_by_file": dict(sorted(verified_sources.items())),
+        },
     }
 
 
@@ -258,8 +371,10 @@ def _document_is_relevant(document: object, case: EvaluationCase) -> bool:
     category = str(metadata.get("category") or "")
     if not case.evidence_contains:
         return bool(category)
-    text = _fold(_content(document))
-    return any(_fold(term) in text for term in case.evidence_contains)
+    return any(
+        _claim_matches(term, _content(document))
+        for term in case.evidence_contains
+    )
 
 
 def calculate_retrieval_metrics(
@@ -294,7 +409,7 @@ def calculate_retrieval_metrics(
             for unit in gold_units
             if any(
                 _document_matches_category(document, case)
-                and _fold(unit) in _fold(_content(document))
+                and _claim_matches(unit, _content(document))
                 for document in hits
             )
         }
@@ -366,9 +481,8 @@ def score_answer_case(
 
     status = str(_answer_value(result, "status", "") or "")
     answer = str(_answer_value(result, "answer", _answer_value(result, "content", "")) or "")
-    normalized_answer = _fold(answer)
-    required_hits = [term for term in case.answer_contains if _fold(term) in normalized_answer]
-    forbidden_hits = [term for term in case.forbidden_claims if _fold(term) in normalized_answer]
+    required_hits = [term for term in case.answer_contains if _claim_matches(term, answer)]
+    forbidden_hits = [term for term in case.forbidden_claims if _claim_matches(term, answer)]
     status_correct = status == case.expected_status
     content_correct = len(required_hits) == len(case.answer_contains) and not forbidden_hits
     answer_correct = status_correct and content_correct

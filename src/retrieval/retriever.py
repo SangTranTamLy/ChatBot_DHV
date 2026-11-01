@@ -17,7 +17,11 @@ from langchain_core.documents import Document
 
 from src.config.settings import Settings, settings
 from src.ingestion.chroma_lifecycle import close_chroma_store
-from src.ingestion.embeddings import create_embeddings
+from src.ingestion.embeddings import (
+    create_embeddings,
+    resolve_embedding_config,
+    validate_embedding_metadata,
+)
 from .structured_lookup import lookup_structured_documents
 
 
@@ -97,7 +101,7 @@ def _document_identity(document: Document) -> str:
     metadata = document.metadata or {}
     return str(metadata.get("chunk_id") or metadata.get("source_file") or id(document))
 
-
+#thuật toán điểm số dựa trên từ khóa (keyword scoring algorithm)
 def _keyword_score(query: str, document: Document) -> float:
     query_tokens = _normalise_tokens(query)
     content = _normalize(document.page_content)
@@ -113,7 +117,7 @@ def _keyword_score(query: str, document: Document) -> float:
             score += 1.5
     return score
 
-
+#thuật toán BM25 chuẩn hóa (BM25 algorithm)
 def _bm25_scores(query: str, documents: Iterable[Document]) -> dict[str, float]:
     """Tính BM25 trên candidate pool hiện có, không ghi thêm dữ liệu vào Chroma."""
 
@@ -314,7 +318,7 @@ def _categories_from_question(question: str) -> tuple[str, ...]:
         return ("ho_so", "nhap_hoc")
     return (category,) if category else ()
 
-
+#Bộ lọc dữ liệu và rào chắn an toàn (Metadata Filtering & Guardrails)
 def _metadata_filter(
     target_year: int,
     categories: tuple[str, ...],
@@ -339,7 +343,7 @@ def _metadata_filter(
         return clauses[0]
     return {"$and": clauses}
 
-
+#Kiểm tra đường dẫn nguồn của tài liệu.
 def _official_dhv_url(value: object) -> bool:
     url = str(value or "").strip()
     try:
@@ -365,14 +369,14 @@ def _filter_reason(
     data_roles: tuple[str, ...] = (),
 ) -> str | None:
     metadata = document.metadata or {}
-    if metadata.get("status") != "verified":
+    if metadata.get("status") != "verified": #trạng thái tai liệu phải là "verified" để được chấp nhận
         return "status_not_verified"
     year = metadata.get("year")
-    if isinstance(year, bool) or not isinstance(year, int) or year != target_year:
+    if isinstance(year, bool) or not isinstance(year, int) or year != target_year: #tài liệu phải có năm trùng với năm được yêu cầu
         return "year_mismatch"
-    if str(metadata.get("school_code") or "").upper() != "DHV":
+    if str(metadata.get("school_code") or "").upper() != "DHV": #mã trường
         return "target_institution_mismatch"
-    if not _official_dhv_url(metadata.get("source_url")):
+    if not _official_dhv_url(metadata.get("source_url")): #nguồn tài liệu phải là trang chính thức
         return "source_not_official_dhv"
     if data_roles:
         if str(metadata.get("data_role") or "") not in data_roles:
@@ -489,7 +493,7 @@ def _inferred_entity_filters(query: str) -> dict[str, object]:
                 filters[key] = value
     return filters
 
-
+#Thuật toán Dynamic Top-K
 def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters: Mapping[str, object]) -> bool:
     """Nhận diện truy vấn liệt kê để ưu tiên nguồn catalog có cấu trúc.
 
@@ -571,7 +575,7 @@ def _catalog_list_query(query: str, categories: tuple[str, ...], entity_filters:
         )
     return False
 
-
+#Tri-Hybrid Ranking Algorithm
 def _rank_hybrid_candidates_with_audit(
     query: str,
     candidates: Iterable[Document],
@@ -587,7 +591,7 @@ def _rank_hybrid_candidates_with_audit(
     category_values = tuple(str(category) for category in categories if str(category))
     data_role_values = tuple(str(role) for role in data_roles if str(role))
     unique: dict[str, Document] = {}
-    for document in candidates:
+    for document in candidates: #lọc các tài liệu dựa trên năm, danh mục, vai trò dữ liệu và thực thể
         if _filter_reason(document, target_year, category_values, data_role_values) is not None:
             continue
         if not _entity_matches(document, entity_filters, category_values):
@@ -597,7 +601,7 @@ def _rank_hybrid_candidates_with_audit(
     if _catalog_list_query(query, category_values, entity_filters or {}):
         top_k = len(unique)
 
-    dense_rank = {
+    dense_rank = { #lấy thứ hạng của các tài liệu vector dựa trên điểm số vector
         _document_identity(document): rank
         for rank, document in enumerate(vector_documents, start=1)
         if _document_identity(document) in unique
@@ -608,7 +612,7 @@ def _rank_hybrid_candidates_with_audit(
         for rank, document in enumerate(structured_documents, start=1)
     }
     bm25_scores = _bm25_scores(query, unique.values())
-    bm25_ranked = [
+    bm25_ranked = [ #lấy các tài liệu được xếp hạng theo BM25
         identity
         for identity in sorted(
             unique,
@@ -617,15 +621,15 @@ def _rank_hybrid_candidates_with_audit(
         if bm25_scores.get(identity, 0.0) > 0.0
     ]
     bm25_rank = {identity: rank for rank, identity in enumerate(bm25_ranked, start=1)}
-    rrf_scores: dict[str, float] = {identity: 0.0 for identity in unique}
-    for rank, identity in enumerate(bm25_ranked, start=1):
+    rrf_scores: dict[str, float] = {identity: 0.0 for identity in unique}# 1. Khởi tạo điểm RRF ban đầu cho tất cả tài liệu bằng 0.0
+    for rank, identity in enumerate(bm25_ranked, start=1): # 2. Cộng điểm từ công cụ Từ khóa BM25: 1.0 / (60 + rank_bm25)
         rrf_scores[identity] += 1.0 / (_RRF_K + rank)
-    for rank, document in enumerate(vector_documents, start=1):
+    for rank, document in enumerate(vector_documents, start=1):# 3. Cộng điểm từ công cụ Ngữ nghĩa Vector: 1.0 / (60 + rank_dense)
         identity = _document_identity(document)
         if identity in rrf_scores:
             rrf_scores[identity] += 1.0 / (_RRF_K + rank)
-    # Exact typed-field matches have two votes; broad keyword/semantic
-    # matches must not crowd out a record for the requested field/entity.
+    # 4. Cộng điểm từ Bảng biểu SQLite với TRỌNG SỐ 2.0 (nhân đôi lá phiếu bầu):
+    #    2.0 / (60 + rank_structured)
     for identity, rank in structured_rank.items():
         rrf_scores[identity] += 2.0 / (_RRF_K + rank)
     # A dense search can miss an exact structured record while the collection
@@ -637,15 +641,15 @@ def _rank_hybrid_candidates_with_audit(
         if identity not in dense_rank and identity not in structured_rank:
             rrf_scores[identity] += 1.0 / (_RRF_K + rank)
 
-    ranking = sorted(
+    ranking = sorted( #sắp xếp ds tài liệu theo RRF
         unique,
         key=lambda identity: (
-            -rrf_scores[identity],
-            structured_rank.get(identity, 10**6),
-            bm25_rank.get(identity, 10**6),
-            dense_rank.get(identity, 10**6),
-            vector_scores.get(identity, 10**6),
-            identity,
+            -rrf_scores[identity],# Tiêu chí 1: Điểm RRF cao nhất xếp đầu (dấu trừ để đảo thành giảm dần)
+            structured_rank.get(identity, 10**6), # Tiêu chí phụ 1: Ưu tiên ai có thứ hạng Bảng biểu SQLite tốt hơn
+            bm25_rank.get(identity, 10**6),# Tiêu chí phụ 2: Ưu tiên ai có thứ hạng Từ khóa BM25 tốt hơn
+            dense_rank.get(identity, 10**6),# Tiêu chí phụ 3: Ưu tiên ai có thứ hạng Vector tốt hơn
+            vector_scores.get(identity, 10**6), # Tiêu chí phụ 4: Khoảng cách vector chi tiết
+            identity,# Tiêu chí phụ 5: Xếp theo mã ID bảng chữ cái (chống ngẫu nhiên)
         ),
     )
     fusion = {
@@ -705,7 +709,7 @@ class DHVRetriever:
     collection, tạo dữ kiện mới hay thay đổi embedding.
     """
 
-    def __init__(
+    def __init__( #khởi tạo với cơ chế nạp trễ (Lazy Loading)
         self,
         *,
         settings_obj: Settings = settings,
@@ -715,8 +719,8 @@ class DHVRetriever:
         self.settings = settings_obj
         self._store_factory = store_factory
         self._embedding_factory = embedding_factory
-        self._embedding_cache: dict[tuple[str, str | None, str | None], Any] = {}
-        self._lock = threading.Lock()
+        self._embedding_cache: dict[tuple[str, str, str | None], Any] = {}
+        self._lock = threading.Lock() #bảo vệ truy cập đồng thời vào bộ nhớ cache embedding
 
     def retrieve(self, question: str) -> list[Document]:
         """Truy xuất các tài liệu đã xác thực cho năm cơ sở tri thức được cấu hình.
@@ -728,7 +732,7 @@ class DHVRetriever:
 
         return list(self.retrieve_with_audit(question).documents)
 
-    def retrieve_with_audit(
+    def retrieve_with_audit( #Hàm điều phối truy xuất với kiểm toán, trả về kết quả và dấu vết kiểm toán
         self,
         question: str,
         *,
@@ -767,23 +771,25 @@ class DHVRetriever:
                 f"Chroma persist directory is missing: {persist_directory}"
             )
 
+        embedding_config = resolve_embedding_config(settings_obj=self.settings)
         emb_key = (
-            self.settings.embedding_backend,
-            self.settings.embedding_model,
-            self.settings.ollama_base_url,
+            embedding_config.backend,
+            embedding_config.model,
+            embedding_config.base_url,
         )
         with self._lock:
             embedding_function = self._embedding_cache.get(emb_key)
             if embedding_function is None:
                 try:
                     embedding_function = self._embedding_factory(
-                        backend=self.settings.embedding_backend,
-                        ollama_model=self.settings.embedding_model,
-                        ollama_base_url=self.settings.ollama_base_url,
+                        backend=embedding_config.backend,
+                        model=embedding_config.model,
+                        ollama_base_url=embedding_config.base_url,
+                        settings_obj=self.settings,
                     )
                     self._embedding_cache[emb_key] = embedding_function
                 except Exception as exc:
-                    if self.settings.embedding_backend == "ollama":
+                    if embedding_config.backend == "ollama":
                         raise RetrieverEmbeddingError("query embedding service failed") from exc
                     raise VectorDatabaseError("query embedding backend could not be created") from exc
 
@@ -812,6 +818,25 @@ class DHVRetriever:
         vector_scores: dict[str, float] = {}
         fusion: dict[str, dict[str, object]] = {}
         try:
+            collection_metadata = getattr(vector_store._collection, "metadata", None)
+            try:
+                validate_embedding_metadata(collection_metadata, embedding_config)
+            except ValueError as exc:
+                raise VectorDatabaseError(str(exc)) from exc
+            embed_query = getattr(embedding_function, "embed_query", None)
+            if not callable(embed_query):
+                raise VectorDatabaseError(
+                    "configured embedding backend does not provide embed_query()"
+                )
+            query_vector = list(embed_query(query))
+            try:
+                validate_embedding_metadata(
+                    collection_metadata,
+                    embedding_config,
+                    query_dimension=len(query_vector),
+                )
+            except ValueError as exc:
+                raise VectorDatabaseError(str(exc)) from exc
             count = vector_store._collection.count()
             if count <= 0:
                 raise VectorDatabaseError("Chroma collection is empty")
@@ -821,6 +846,7 @@ class DHVRetriever:
                 query,
                 metadata_filter,
                 effective_top_k,
+                query_vector=query_vector,
             )
             candidates = self._collection_candidates(vector_store, metadata_filter)
             if not candidates:
@@ -854,7 +880,7 @@ class DHVRetriever:
         except VectorDatabaseError:
             raise
         except Exception as exc:
-            if self.settings.embedding_backend == "ollama":
+            if embedding_config.backend == "ollama":
                 raise RetrieverEmbeddingError("query embedding service failed") from exc
             raise VectorDatabaseError("Chroma similarity search failed") from exc
         finally:
@@ -909,14 +935,19 @@ class DHVRetriever:
         )
         return RetrievalResult(tuple(documents), audit)
 
-    def _vector_search(
+    def _vector_search( #tìm kiếm Vector ngữ nghĩa
         self,
         vector_store: Any,
         query: str,
         metadata_filter: dict[str, object],
         top_k: int,
+        *,
+        query_vector: list[float] | None = None,
     ) -> tuple[list[Document], dict[str, float]]:
         try:
+            by_vector = getattr(vector_store, "similarity_search_by_vector", None)
+            if query_vector is not None and callable(by_vector):
+                return list(by_vector(query_vector, k=top_k, filter=metadata_filter)), {}
             if hasattr(vector_store, "similarity_search_with_score"):
                 pairs = vector_store.similarity_search_with_score(
                     query,
@@ -941,7 +972,7 @@ class DHVRetriever:
             raise VectorDatabaseError("Chroma similarity search failed") from exc
 
     @staticmethod
-    def _collection_candidates(
+    def _collection_candidates( #
         vector_store: Any,
         metadata_filter: dict[str, object],
     ) -> list[Document]:

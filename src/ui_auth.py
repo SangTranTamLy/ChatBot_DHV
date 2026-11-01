@@ -35,15 +35,25 @@ _RECOVERY_NOTICE = (
     "Đã tiếp nhận yêu cầu. Nếu email này đã đăng ký, liên kết đặt lại mật khẩu "
     "sẽ được gửi đến hộp thư của bạn. Vui lòng kiểm tra cả mục Thư rác."
 )
+_RECOVERY_COOLDOWN_SECONDS = 60
+_RECOVERY_LAST_DISPATCH_KEY = "password_recovery_last_dispatch_at"
 
 
-def _dispatch_password_recovery(email: str) -> None:
+def _dispatch_password_recovery(email: str) -> int:
     """Send the recovery request off the Streamlit render path.
 
     Supabase may take several seconds to respond. The UI can show its generic
     privacy-preserving acknowledgement immediately while this daemon worker
     performs the request without touching Streamlit session state.
     """
+
+    now = time.monotonic()
+    last_dispatch = st.session_state.get(_RECOVERY_LAST_DISPATCH_KEY)
+    if isinstance(last_dispatch, (int, float)):
+        remaining = _RECOVERY_COOLDOWN_SECONDS - (now - float(last_dispatch))
+        if remaining > 0:
+            return max(1, int(remaining + 0.999))
+    st.session_state[_RECOVERY_LAST_DISPATCH_KEY] = now
 
     def _send() -> None:
         try:
@@ -60,6 +70,7 @@ def _dispatch_password_recovery(email: str) -> None:
         name="password-recovery-dispatch",
         daemon=True,
     ).start()
+    return 0
 
 _LIVE_PASSWORD_HTML = """
 <div class="password-control">
@@ -878,7 +889,7 @@ def render_auth_dialog() -> None:
                     validate_email(email)
                     # Start delivery off the render path so the generic
                     # acknowledgement does not wait on Supabase's response.
-                    _dispatch_password_recovery(email)
+                    cooldown_remaining = _dispatch_password_recovery(email)
                 except AuthServiceError as exc:
                     st.session_state.password_recovery_request_result = (
                         "error", str(exc)
@@ -888,13 +899,21 @@ def render_auth_dialog() -> None:
                         "error", "Không thể gửi yêu cầu lúc này. Vui lòng thử lại sau."
                     )
                 else:
-                    st.session_state.password_recovery_request_result = (
-                        "success", _RECOVERY_NOTICE
-                    )
+                    if cooldown_remaining:
+                        st.session_state.password_recovery_request_result = (
+                            "rate_limited",
+                            f"Vui lòng chờ {cooldown_remaining} giây trước khi gửi yêu cầu tiếp theo.",
+                        )
+                    else:
+                        st.session_state.password_recovery_request_result = (
+                            "success", _RECOVERY_NOTICE
+                        )
             result = st.session_state.get("password_recovery_request_result")
             if result:
                 if result[0] == "success":
                     st.success(result[1])
+                elif result[0] == "rate_limited":
+                    st.warning(result[1])
                 else:
                     st.error(result[1])
             st.divider()

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import unittest
 
-from src.chatbot.answer_planner import ANSWER_MODES, AnswerPlanner, plan_answer
+from src.chatbot.answer_planner import (
+    ANSWER_MODES,
+    AnswerPlanner,
+    plan_answer,
+    related_questions_for,
+)
 from src.chatbot.query_analysis import analyze_question
 from src.chatbot.rag_chain import ask_chatbot
 from src.prompts.rag_prompt import build_rag_prompt
@@ -53,6 +58,26 @@ class TaskLPlannerTests(unittest.TestCase):
         self.assertFalse(plan.related_questions)
         self.assertFalse(plan.evidence_required)
 
+    def test_followup_candidate_pool_tracks_score_and_subject_combination(self) -> None:
+        analysis = analyze_question(
+            "tôi thi 18 điểm trung học phổ thông quốc gia với toán văn anh thì phù hợp với ngành nào"
+        )
+        questions = related_questions_for(analysis)
+
+        self.assertEqual(analysis.intent, "TU_VAN_CHON_NGANH")
+        self.assertTrue(any("D01" in question for question in questions))
+        self.assertTrue(any("học bạ" in question.casefold() for question in questions))
+        self.assertGreaterEqual(len(questions), 4)
+        self.assertLessEqual(len(questions), 6)
+
+    def test_followup_candidate_pool_tracks_scholarship_topic(self) -> None:
+        analysis = analyze_question("Điều kiện nhận học bổng tuyển sinh DHV 2026?")
+        questions = related_questions_for(analysis)
+
+        self.assertEqual(analysis.intent, "HOI_HOC_BONG")
+        self.assertTrue(any("hồ sơ xét học bổng" in question.casefold() for question in questions))
+        self.assertTrue(any("học phí" in question.casefold() for question in questions))
+
     def test_prompt_contains_plan_but_keeps_facts_in_evidence_blocks(self) -> None:
         analysis = analyze_question("Tổng quan về ngành Công nghệ thông tin?")
         plan = plan_answer(analysis)
@@ -80,7 +105,7 @@ class TaskLPlannerTests(unittest.TestCase):
         self.assertEqual(result["trace"]["answer_plan"]["mode"], "OVERVIEW")
         related = result["related_questions"]
         self.assertGreaterEqual(len(related), 2)
-        self.assertLessEqual(len(related), 3)
+        self.assertLessEqual(len(related), 6)
         self.assertTrue(all("http" not in question for question in related))
 
     def test_multi_issue_has_outer_and_subplan_contracts(self) -> None:

@@ -190,16 +190,33 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertNotIn("600", result["answer"])
 
 
-class TaskResponseSuggestionRemovalTests(unittest.TestCase):
-    def test_backend_related_questions_are_not_rendered(self) -> None:
+class TaskResponseSuggestionRenderingTests(unittest.TestCase):
+    def test_followups_precede_compact_sources_without_exposing_direct_files(self) -> None:
         app = AppTest.from_file(str(PROJECT_ROOT / "app.py"))
         app.session_state["messages"] = [
             {"role": "user", "content": "Câu hỏi trước"},
             {
                 "role": "assistant",
-                "content": "Câu trả lời trước",
+                "content": (
+                    "Câu trả lời trước.\n\n"
+                    "Nguồn tham khảo: [Cổng tuyển sinh DHV](https://tuyensinh.dhv.edu.vn/)"
+                ),
                 "status": "ok",
                 "related_questions": ["Thời tiết hôm nay?"],
+                "suggested_questions": [
+                    "Điều kiện học bổng tuyển sinh DHV năm 2026 là gì?",
+                    "Hồ sơ xét học bổng DHV 2026 cần chuẩn bị gì?",
+                ],
+                "sources": [
+                    {
+                        "title": "C:\\private\\De an tuyen sinh.pdf",
+                        "url": "https://tuyensinh.dhv.edu.vn/tai-lieu/de-an-2026.pdf",
+                    },
+                    {
+                        "title": "Cổng tuyển sinh DHV",
+                        "url": "https://tuyensinh.dhv.edu.vn/",
+                    },
+                ],
             },
         ]
         app.run(timeout=30)
@@ -207,7 +224,42 @@ class TaskResponseSuggestionRemovalTests(unittest.TestCase):
         self.assertFalse(app.exception)
         self.assertEqual(len(app.pills), 0)
         self.assertEqual(len(app.chat_input), 1)
-        self.assertNotIn("Thời tiết hôm nay?", "\n".join(element.value for element in app.markdown))
+        followups = [button for button in app.button if button.key.startswith("answer_followup_")]
+        self.assertEqual(
+            [button.label for button in followups],
+            [
+                "Điều kiện học bổng tuyển sinh DHV năm 2026 là gì?",
+                "Hồ sơ xét học bổng DHV 2026 cần chuẩn bị gì?",
+            ],
+        )
+        self.assertNotIn("Thời tiết hôm nay?", [button.label for button in followups])
+        rendered_markdown = "\n".join(element.value for element in app.markdown)
+        self.assertIn("De an tuyen sinh", rendered_markdown)
+        self.assertIn("tài liệu không mở trực tiếp", rendered_markdown)
+        self.assertIn("https://tuyensinh.dhv.edu.vn/", rendered_markdown)
+        self.assertNotIn("de-an-2026.pdf", rendered_markdown)
+        self.assertNotIn("C:\\private", rendered_markdown)
+        source_rows = [
+            element.value for element in app.markdown
+            if "Nguồn tham khảo" in element.value
+        ]
+        self.assertEqual(len(source_rows), 1)
+        self.assertEqual(rendered_markdown.count("Nguồn tham khảo"), 1)
+        self.assertIn("Nguồn tham khảo:** ", source_rows[0])
+        self.assertIn("Cổng tuyển sinh DHV", source_rows[0])
+
+
+class UserMessageRenderingSafetyTests(unittest.TestCase):
+    def test_user_markdown_image_is_rendered_as_plain_text(self) -> None:
+        payload = "![tracking](https://example.invalid/pixel.png)"
+        app = AppTest.from_file(str(PROJECT_ROOT / "app.py"))
+        app.session_state["messages"] = [{"role": "user", "content": payload}]
+        app.run(timeout=30)
+
+        self.assertFalse(app.exception)
+        rendered_markdown = "\n".join(element.value for element in app.markdown)
+        self.assertIn(r"\![tracking]", rendered_markdown)
+        self.assertFalse(any(image.url == "https://example.invalid/pixel.png" for image in app.image))
 
 
 if __name__ == "__main__":

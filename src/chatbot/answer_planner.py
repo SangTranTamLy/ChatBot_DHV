@@ -393,8 +393,8 @@ def _required_content(mode: str, intent: str) -> tuple[str, ...]:
     return ()
 
 
-def related_questions_for(analysis: object, *, limit: int = 3) -> tuple[str, ...]:
-    """Sinh gợi ý follow-up ngắn từ intent/entity đã có, không gọi model."""
+def related_questions_for(analysis: object, *, limit: int = 6) -> tuple[str, ...]:
+    """Tạo nhóm ứng viên follow-up theo intent/entity, không gọi model."""
 
     if limit <= 0:
         return ()
@@ -403,6 +403,8 @@ def related_questions_for(analysis: object, *, limit: int = 3) -> tuple[str, ...
     normalized = _normalized(analysis)
     topic = _major_or_program(analysis)
     candidates = _candidate_names(analysis)
+    combination = str(_entities(analysis).get("admission_combination") or "").strip().upper()
+    has_student_score = bool(_entities(analysis).get("student_scores"))
     suggestions: list[str] = []
 
     def add(question: str) -> None:
@@ -415,16 +417,23 @@ def related_questions_for(analysis: object, *, limit: int = 3) -> tuple[str, ...
     if intent == "GREETING":
         add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
         add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
+        add(f"Học phí và học bổng DHV {year} có thông tin gì?")
+        add(f"Hồ sơ xét tuyển DHV {year} cần chuẩn bị gì?")
     elif intent == "SYSTEM_IDENTITY":
         add("Bạn hỗ trợ những nội dung tuyển sinh nào của DHV?")
         add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
+        add(f"Học phí và học bổng DHV {year} có thông tin gì?")
     elif intent == "SYSTEM_SCOPE":
         add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
         add(f"Học phí DHV {year} được công bố như thế nào?")
+        add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
+        add(f"Học bổng tuyển sinh DHV {year} có những điều kiện nào?")
     elif intent == "MULTI_ISSUE":
         add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
         add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
         add("Hồ sơ xét tuyển DHV gồm những gì?")
+        add(f"Học phí các ngành DHV {year} được tính như thế nào?")
+        add(f"Học bổng tuyển sinh DHV {year} có những điều kiện nào?")
     elif intent in {"HOI_NGANH", "HOI_CHUONG_TRINH"} and _has_multiple_choices(analysis) and any(
         marker in normalized for marker in _COMPARISON_MARKERS
     ):
@@ -434,27 +443,52 @@ def related_questions_for(analysis: object, *, limit: int = 3) -> tuple[str, ...
     elif intent in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}:
         add(f"Phương thức xét tuyển cho các ngành DHV {year} là gì?")
         add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
+        add(f"Các tổ hợp xét tuyển của DHV {year} gồm những gì?")
+        add(f"Điều kiện xét tuyển của các ngành DHV {year} ra sao?")
+        add("Có thể tìm hiểu chương trình đào tạo của một ngành cụ thể không?")
     elif intent == "TU_VAN_CHON_NGANH":
+        if combination:
+            add(f"DHV có những ngành nào xét tổ hợp {combination} năm {year}?")
+        if has_student_score:
+            add(f"Có thể dùng điểm học bạ để xét tuyển DHV năm {year} không?")
         if candidates:
             add(f"Mình có thể so sánh nội dung học của {' và '.join(candidates[:2])} không?")
         add("Các phương thức xét tuyển của lựa chọn này là gì?")
         add(f"Học phí và học bổng DHV {year} có những gì cần biết?")
+        add("Điểm sàn và điểm chuẩn khác nhau như thế nào?")
     elif intent in {"HOI_NGANH", "HOI_CHUONG_TRINH"} and topic:
         add(f"{topic} có những chương trình đào tạo nào?")
         add(f"{topic} xét tuyển theo phương thức nào năm {year}?")
         add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
+        add(f"{topic} có những tổ hợp xét tuyển nào năm {year}?")
+        add(f"Điều kiện xét tuyển ngành {topic} năm {year} là gì?")
     elif intent == "HOI_HOC_PHI":
         add(f"DHV có những học bổng nào cho tân sinh viên {year}?")
-        add("Hồ sơ xét tuyển DHV gồm những gì?")
+        add(f"Học phí học kỳ I DHV {year} gồm những khoản nào?")
+        add("Cách đóng học phí tại DHV như thế nào?")
+        add(f"Học phí DHV {year} có thể thay đổi theo năm học không?")
+        if topic:
+            add(f"Học bổng nào có thể hỗ trợ học phí ngành {topic}?")
     elif intent == "HOI_HOC_BONG":
         add(f"Học phí học kỳ I DHV {year} là bao nhiêu?")
-        add(f"Điều kiện xét tuyển DHV {year} gồm những phương thức nào?")
+        add(f"Điều kiện của các học bổng DHV {year} gồm những gì?")
+        add(f"Hồ sơ xét học bổng DHV {year} cần chuẩn bị gì?")
+        add(f"Học bổng tuyển sinh DHV {year} được xét theo phương thức nào?")
+        add("Có thể nhận tư vấn về học bổng ở đâu?")
     elif intent in _STEP_INTENTS:
         add(f"Các mốc tuyển sinh DHV {year} là gì?")
         add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
+        add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
+        add("Nộp hồ sơ trực tuyến tại cổng nào của DHV?")
+        add("Nếu thiếu giấy tờ thì cần xử lý thế nào?")
     elif intent in {"HOI_NGUONG_DAU_VAO", "HOI_DIEM_TRUNG_TUYEN", "HOI_XET_TUYEN_BO_SUNG"}:
         add(f"DHV có những phương thức xét tuyển nào năm {year}?")
         add("Cách tính điểm xét tuyển được công bố ra sao?")
+        if combination:
+            add(f"Những ngành nào tại DHV xét tổ hợp {combination} năm {year}?")
+        if has_student_score:
+            add(f"Có thể xét học bạ song song với điểm thi năm {year} không?")
+        add("Điểm sàn và điểm chuẩn khác nhau như thế nào?")
     elif "so sanh" in normalized and candidates:
         add(f"Các chương trình thuộc {' và '.join(candidates[:2])} là gì?")
         add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
@@ -468,7 +502,7 @@ def plan_answer(
     *,
     status: str = "ok",
     deterministic: bool = False,
-    related_limit: int = 3,
+    related_limit: int = 6,
 ) -> AnswerPlan:
     """Tạo AnswerPlan để trace, prompt và UI dùng chung một contract."""
 
@@ -540,7 +574,7 @@ class AnswerPlanner:
         *,
         status: str = "ok",
         deterministic: bool = False,
-        related_limit: int = 3,
+        related_limit: int = 6,
     ) -> AnswerPlan:
         return plan_answer(
             analysis,
@@ -565,7 +599,7 @@ class AnswerPlanner:
             deterministic=deterministic,
         )
 
-    def related_questions(self, analysis: object, *, limit: int = 3) -> tuple[str, ...]:
+    def related_questions(self, analysis: object, *, limit: int = 6) -> tuple[str, ...]:
         return related_questions_for(analysis, limit=limit)
 
 

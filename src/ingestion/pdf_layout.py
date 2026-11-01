@@ -10,7 +10,6 @@ from __future__ import annotations
 from functools import lru_cache
 from difflib import SequenceMatcher
 import math
-import os
 import re
 import unicodedata
 from typing import Any, Iterable
@@ -255,11 +254,8 @@ def _group_ocr_tokens(tokens: Iterable[dict[str, object]]) -> list[dict[str, obj
 
 
 def _rapidocr_tokens(image: Any, scale: float) -> list[dict[str, object]]:
-    try:
-        import numpy as np  # type: ignore
-        from rapidocr_onnxruntime import RapidOCR  # type: ignore
-    except ImportError:
-        return []
+    import numpy as np  # type: ignore
+
     engine = _rapidocr_engine()
     result, _ = engine(np.asarray(image))
     tokens: list[dict[str, object]] = []
@@ -287,58 +283,6 @@ def _rapidocr_engine() -> Any:
     from rapidocr_onnxruntime import RapidOCR  # type: ignore
 
     return RapidOCR()
-
-
-def _pytesseract_tokens(image: Any, scale: float) -> list[dict[str, object]]:
-    import pytesseract  # type: ignore
-    from pytesseract import Output  # type: ignore
-
-    configured_tesseract = os.getenv("TESSERACT_CMD", "").strip()
-    if configured_tesseract:
-        pytesseract.pytesseract.tesseract_cmd = configured_tesseract
-    available_languages = set(pytesseract.get_languages(config=""))
-    if {"vie", "eng"}.issubset(available_languages):
-        language = "vie+eng"
-    elif "vie" in available_languages:
-        language = "vie"
-    elif "eng" in available_languages:
-        # Do not fail the whole extraction when only English traineddata is
-        # installed. The caller records this reduced-language path as a QA
-        # warning; raw OCR text and confidence remain available for review.
-        language = "eng"
-    else:
-        raise RuntimeError("Tesseract has no usable language data (expected vie and/or eng).")
-    data = pytesseract.image_to_data(
-        image,
-        lang=language,
-        output_type=Output.DICT,
-    )
-    tokens: list[dict[str, object]] = []
-    for index, text in enumerate(data.get("text", [])):
-        value = _clean_text(text)
-        if not value:
-            continue
-        confidence_value = _finite_float(data.get("conf", ["-1"])[index])
-        confidence = confidence_value / 100.0 if confidence_value is not None else None
-        if confidence is not None and confidence < 0:
-            confidence = None
-        left = float(data.get("left", [0])[index]) / scale
-        top = float(data.get("top", [0])[index]) / scale
-        width = float(data.get("width", [0])[index]) / scale
-        height = float(data.get("height", [0])[index]) / scale
-        tokens.append(
-            {
-                "text": value,
-                "bbox": [round(left, 3), round(top, 3), round(left + width, 3), round(top + height, 3)],
-                "confidence": round(confidence, 4) if confidence is not None else None,
-                "source": "pytesseract",
-                "language": language,
-                "block_num": data.get("block_num", [None])[index],
-                "par_num": data.get("par_num", [None])[index],
-                "line_num": data.get("line_num", [None])[index],
-            }
-        )
-    return tokens
 
 
 def _ocr_page_layout(
@@ -389,31 +333,13 @@ def _ocr_page_layout(
                 alpha=False,
             )
             image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-            region_tokens: list[dict[str, object]] = []
-            engine_name = "rapidocr"
-            rapidocr_error: str | None = None
             try:
                 region_tokens = _rapidocr_tokens(image, configured_scale)
             except Exception as exc:
+                failures.append(f"RapidOCR failed for image region {tuple(clip)}: {exc}")
                 region_tokens = []
-                rapidocr_error = str(exc)
-            if not region_tokens:
-                engine_name = "pytesseract"
-                try:
-                    region_tokens = _pytesseract_tokens(image, configured_scale)
-                except Exception as exc:
-                    failure = f"Tesseract failed for image region {tuple(clip)}: {exc}"
-                    if rapidocr_error:
-                        failure = f"RapidOCR failed: {rapidocr_error}; {failure}"
-                    failures.append(failure)
-                    region_tokens = []
-                languages = sorted(
-                    {str(token.get("language")) for token in region_tokens if token.get("language")}
-                )
-                if languages:
-                    engine_name = f"pytesseract[{'+'.join(languages)}]"
-            if region_tokens and engine_name not in engines:
-                engines.append(engine_name)
+            if region_tokens and "rapidocr" not in engines:
+                engines.append("rapidocr")
             # Pixmap origins are pixel coordinates; convert the crop origin
             # back to the PDF page coordinate system and offset every token.
             offset_x = float(pixmap.x) / configured_scale
@@ -1261,14 +1187,6 @@ def extract_pdf_pages(path: Any) -> list[dict[str, object]]:
                         "type": "NATIVE_OCR_CONFLICT",
                         "page": page_number,
                         "message": "Conflicting OCR was retained in ocr_text/ocr_boxes but excluded from final text; review the source image.",
-                    }
-                )
-            if "pytesseract[eng]" in ocr_engine:
-                page_warnings.append(
-                    {
-                        "type": "OCR_LANGUAGE_FALLBACK",
-                        "page": page_number,
-                        "message": "Only English Tesseract data was available; Vietnamese OCR coverage may be incomplete.",
                     }
                 )
             supplemental_keys = {_line_identity(line) for line in supplemental_lines}
