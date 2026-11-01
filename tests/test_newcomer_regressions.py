@@ -106,6 +106,9 @@ class VerifiedAnswerTests(unittest.TestCase):
                 answer = str(self._ask(question)["answer"])
                 self.assertIn("5 phương thức", answer)
                 self.assertIn("H-SCA", answer)
+        self.assertIn("cách tính: Tổng điểm", answer)
+        analysis = analyze_question("Phương thức nào không cần thi?")
+        self.assertIsNone(rag_chain._evidence_admission_method_list_answer(analysis, None))
 
     def test_base_total_breakdown_excludes_optional_english_test(self) -> None:
         answer = str(self._ask("tổng chi phí học kỳ 1")["answer"])

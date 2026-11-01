@@ -1424,6 +1424,14 @@ def _evidence_admission_combination_answer(analysis: QueryAnalysis, evidence: An
     return f"{heading}: {bullet}" if heading else bullet
 
 
+# Only the bare "which methods?" question: "phương thức nào không cần thi?" asks something else.
+_METHOD_LIST_RE = re.compile(
+    r"\b(?:(?:phuong thuc|hinh thuc)(?: xet tuyen)? (?:nao|gi)"
+    r"|(?:nhung|cac|may|bao nhieu) (?:phuong thuc|hinh thuc)(?: xet tuyen)?(?: nao)?(?: cua (?:dhv|truong))?(?: nam \d{4})?(?: la gi)?)"
+    r"(?: (?:vay|a|ah|nhi|the|ha|ad|nam \d{4}))*[\s?.!]*$"
+)
+
+
 def _evidence_admission_method_list_answer(analysis: QueryAnalysis, evidence: Any) -> str | None:
     """List the five methods from verified page text so "xét tuyển phương thức nào?" skips the LLM."""
 
@@ -1431,15 +1439,23 @@ def _evidence_admission_method_list_answer(analysis: QueryAnalysis, evidence: An
     if (
         analysis.entities.get("major_name")
         or _requested_admission_method_number(analysis)
-        or not re.search(r"\b(?:phuong thuc|hinh thuc) nao\b|\b(?:nhung|cac|may|bao nhieu) (?:phuong thuc|hinh thuc)\b", normalized)
+        or not _METHOD_LIST_RE.search(normalized)
     ):
         return None
     target_year = _analysis_target_year(analysis)
     details = _method_details_from_evidence(evidence, target_year=target_year)
     if not all(number in details for number in _METHOD_LABELS):
         return None
+
+    def summary(detail: str) -> str:
+        first, *rest = detail.splitlines()
+        if not first.endswith(":"):
+            return first
+        # "…theo một trong hai cách tính:" is meaningless without its bullets.
+        return first + " " + "; ".join(line.lstrip("- ").strip() for line in rest if line.startswith("-"))
+
     return f"DHV {target_year} áp dụng 5 phương thức xét tuyển:\n" + "\n".join(
-        f"{number}. {label}: {details[number].splitlines()[0]}" for number, label in _METHOD_LABELS.items()
+        f"{number}. {label}: {summary(details[number])}" for number, label in _METHOD_LABELS.items()
     )
 
 
