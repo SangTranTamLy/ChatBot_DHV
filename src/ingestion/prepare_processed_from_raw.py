@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -20,6 +19,12 @@ from .structured_json import (
     write_structured_json,
 )
 from .pdf_layout import _row_data, extract_pdf_pages as _extract_pdf_pages_layout
+from .path_safety import (
+    cleanup_staging_directory,
+    publish_staged_directory,
+    unique_generated_sibling,
+    validate_generated_directory,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -70,51 +75,6 @@ def _normalize_extracted_text(text: str) -> str:
     return text.strip()
 
 
-class OCRUnavailableError(RuntimeError):
-    """Raised when the optional OCR runtime is not available."""
-
-
-def _is_text_usable(text: str, *, minimum_characters: int = 20) -> bool:
-    """Return whether a native page has enough useful text to index safely."""
-
-    normalized = _normalize_extracted_text(text or "")
-    if len(normalized) < minimum_characters:
-        return False
-    meaningful = sum(character.isalnum() for character in normalized)
-    if meaningful / max(len(normalized), 1) < 0.35:
-        return False
-    if normalized.count("�") > max(1, len(normalized) // 40):
-        return False
-    return True
-
-
-def _ocr_page(path: Path, page_index: int) -> str:
-    """Render one page and OCR it using the optional PyMuPDF/Tesseract stack."""
-
-    try:
-        import fitz  # type: ignore
-        import pytesseract  # type: ignore
-        from PIL import Image  # type: ignore
-    except ImportError as exc:
-        raise OCRUnavailableError(
-            "OCR fallback requires PyMuPDF, pytesseract, Pillow, and a Tesseract binary"
-        ) from exc
-
-    try:
-        configured_tesseract = os.getenv("TESSERACT_CMD", "").strip()
-        if configured_tesseract:
-            pytesseract.pytesseract.tesseract_cmd = configured_tesseract
-        with fitz.open(str(path)) as pdf:
-            page = pdf.load_page(page_index)
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
-            image = Image.frombytes("RGB", [pixmap.width, pixmap.height], pixmap.samples)
-            return _normalize_extracted_text(
-                pytesseract.image_to_string(image, lang="vie+eng") or ""
-            )
-    except Exception as exc:  # OCR engines expose several runtime-specific errors.
-        raise RuntimeError(f"OCR failed for page {page_index + 1}: {exc}") from exc
-
-
 def _extract_pdf_pages_native_legacy(path: Path) -> list[dict[str, object]]:
     """Legacy native-only extractor kept for compatibility with old imports.
 
@@ -161,38 +121,14 @@ def _extract_pdf_pages(path: Path) -> list[dict[str, object]]:
         return layout_pages
 
     reader = PdfReader(str(path))
-    pages: list[dict[str, object]] = []
-    for index, page in enumerate(reader.pages, start=1):
-        native_text = _normalize_extracted_text(page.extract_text() or "")
-        page_result: dict[str, object] = {
+    pages = [
+        {
             "page": index,
-            "text": native_text,
+            "text": _normalize_extracted_text(page.extract_text() or ""),
             "extraction_method": "native",
         }
-        if not _is_text_usable(native_text):
-            try:
-                ocr_text = _ocr_page(path, index - 1)
-            except Exception as exc:
-                page_result["warnings"] = [
-                    {
-                        "type": "OCR_FAILED",
-                        "page": index,
-                        "message": str(exc),
-                    }
-                ]
-            else:
-                if _is_text_usable(ocr_text):
-                    page_result["text"] = ocr_text
-                    page_result["extraction_method"] = "ocr"
-                else:
-                    page_result["warnings"] = [
-                        {
-                            "type": "OCR_EMPTY_OR_LOW_QUALITY",
-                            "page": index,
-                            "message": "OCR returned no usable text; native text was retained.",
-                        }
-                    ]
-        pages.append(page_result)
+        for index, page in enumerate(reader.pages, start=1)
+    ]
     if not any(str(page["text"]).strip() for page in pages):
         raise ValueError("PDF has no extractable text")
     return pages
@@ -549,16 +485,17 @@ def write_pdf_content_audit_report(
     return destination
 
 
-def _safe_reset_generated_directory(path: Path, *, raw_root: Path) -> None:
-    resolved = path.resolve()
-    raw_resolved = raw_root.resolve()
-    if (
-        resolved == raw_resolved
-        or raw_resolved in resolved.parents
-        or resolved == Path(resolved.anchor)
-        or resolved == PROJECT_ROOT.resolve()
-    ):
-        raise ValueError(f"refusing to reset protected directory: {resolved}")
+def _safe_reset_generated_directory(
+    path: Path,
+    *,
+    raw_root: Path,
+    project_root: Path = PROJECT_ROOT,
+) -> None:
+    resolved = validate_generated_directory(
+        path,
+        protected_paths=(raw_root, DEFAULT_RAW_DIR, settings.chroma_persist_dir),
+        project_root=project_root,
+    )
     if resolved.exists():
         shutil.rmtree(resolved)
 
@@ -577,14 +514,15 @@ def rebuild_structured_json(
     """
 
     raw_root = Path(raw_directory).resolve()
-    output_root = Path(output_directory).resolve()
+    output_root = validate_generated_directory(
+        output_directory,
+        protected_paths=(raw_root, DEFAULT_RAW_DIR, settings.chroma_persist_dir),
+        project_root=PROJECT_ROOT,
+    )
     if not raw_root.exists() or not raw_root.is_dir():
         raise FileNotFoundError(f"RAW directory does not exist: {raw_root}")
-    if output_root == raw_root or output_root == Path(output_root.anchor):
-        raise ValueError("refusing to use RAW directory or a filesystem root as JSON output")
-    if reset:
-        _safe_reset_generated_directory(output_root, raw_root=raw_root)
-    output_root.mkdir(parents=True, exist_ok=True)
+    if output_root.exists() and not output_root.is_dir():
+        raise ValueError(f"JSON output is not a directory: {output_root}")
 
     raw_files = sorted(path for path in raw_root.rglob("*.pdf") if path.is_file())
     if not raw_files:
@@ -600,41 +538,82 @@ def rebuild_structured_json(
     sync_errors = validate_manifest_sync(manifest, raw_root=raw_root)
     if sync_errors:
         raise RuntimeError("RAW/manifest sync failed:\n" + "\n".join(sync_errors))
-    for index, path in enumerate(raw_files, start=1):
-        LOGGER.info("[%d/%d] %s", index, len(raw_files), path.name)
-        try:
-            document = convert_pdf_to_structured_json(
-                path,
-                raw_root=raw_root,
-                output_root=output_root,
-                manifest_path=manifest_path,
-                manifest_entry=find_manifest_entry(manifest, raw_path=path, raw_root=raw_root),
-            )
-        except (OSError, ValueError) as exc:
-            failures.append(f"{path.relative_to(raw_root).as_posix()}: {exc}")
-            LOGGER.error("failed: %s", failures[-1])
-            continue
-        documents.append(document)
-        LOGGER.info(
-            "  extraction=%s pages=%d native=%d ocr=%d records=%d warnings=%d output=%s",
-            "OK",
-            document.pages_count,
-            document.native_pages_count,
-            document.ocr_pages_count,
-            document.records_count,
-            document.warnings_count,
-            document.output_path,
-        )
-    LOGGER.info(
-        "structured JSON rebuild summary: raw_pdfs=%d success=%d failed=%d records=%d warnings=%d",
-        len(raw_files),
-        len(documents),
-        len(failures),
-        sum(document.records_count for document in documents),
-        sum(document.warnings_count for document in documents),
+
+    staging = unique_generated_sibling(output_root, purpose="staging")
+    staging = validate_generated_directory(
+        staging,
+        protected_paths=(raw_root, DEFAULT_RAW_DIR, settings.chroma_persist_dir, output_root),
+        project_root=PROJECT_ROOT,
     )
-    if failures:
-        raise RuntimeError("structured JSON rebuild failed:\n" + "\n".join(failures))
+    output_root.parent.mkdir(parents=True, exist_ok=True)
+    staging.mkdir()
+    try:
+        if not reset and output_root.exists():
+            shutil.copytree(output_root, staging, dirs_exist_ok=True)
+
+        for index, path in enumerate(raw_files, start=1):
+            LOGGER.info("[%d/%d] %s", index, len(raw_files), path.name)
+            try:
+                document = convert_pdf_to_structured_json(
+                    path,
+                    raw_root=raw_root,
+                    output_root=staging,
+                    manifest_path=manifest_path,
+                    manifest_entry=find_manifest_entry(manifest, raw_path=path, raw_root=raw_root),
+                )
+            except Exception as exc:
+                failures.append(f"{path.relative_to(raw_root).as_posix()}: {exc}")
+                LOGGER.error("failed: %s", failures[-1])
+                continue
+            documents.append(document)
+            LOGGER.info(
+                "  extraction=%s pages=%d native=%d ocr=%d records=%d warnings=%d output=%s",
+                "OK",
+                document.pages_count,
+                document.native_pages_count,
+                document.ocr_pages_count,
+                document.records_count,
+                document.warnings_count,
+                document.output_path,
+            )
+        LOGGER.info(
+            "structured JSON rebuild summary: raw_pdfs=%d success=%d failed=%d records=%d warnings=%d",
+            len(raw_files),
+            len(documents),
+            len(failures),
+            sum(document.records_count for document in documents),
+            sum(document.warnings_count for document in documents),
+        )
+        if failures:
+            raise RuntimeError("structured JSON rebuild failed:\n" + "\n".join(failures))
+        if len(documents) != len(raw_files):
+            raise RuntimeError(
+                f"structured JSON rebuild incomplete: {len(documents)} of {len(raw_files)} PDFs converted"
+            )
+
+        publish_staged_directory(
+            staging,
+            output_root,
+            protected_paths=(raw_root, DEFAULT_RAW_DIR, settings.chroma_persist_dir),
+            project_root=PROJECT_ROOT,
+        )
+        documents = [
+            replace(
+                document,
+                output_path=output_root / document.output_path.resolve().relative_to(staging),
+            )
+            for document in documents
+        ]
+    finally:
+        try:
+            cleanup_staging_directory(
+                staging,
+                output_root,
+                protected_paths=(raw_root, DEFAULT_RAW_DIR, settings.chroma_persist_dir),
+                project_root=PROJECT_ROOT,
+            )
+        except OSError as exc:
+            LOGGER.warning("could not remove verified staging directory %s: %s", staging, exc)
     if audit_output is not None:
         write_pdf_content_audit_report(
             documents,

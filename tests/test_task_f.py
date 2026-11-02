@@ -10,18 +10,26 @@ from typing import Any
 
 from langchain_core.documents import Document
 
-from src.chatbot.evidence import build_evidence
+from src.chatbot.evidence import EvidenceBundle, build_evidence
 from src.chatbot.chat_service import ChatService
+from src.chatbot.catalog_formatters import _advisory_evidence_clarification
+from src.chatbot.generation_guards import (
+    _advisory_score_echo,
+    _ensure_score_advisory_open_question,
+    _remove_duplicate_major_code_bullets,
+)
 from src.chatbot.output_validator import FALLBACK_ANSWER
 from src.chatbot.rag_chain import _has_verified_advisory_fit_evidence, ask_chatbot
 from src.chatbot.query_analysis import (
     ConversationState,
+    QueryAnalysis,
     analyze_question,
     enrich_analysis_from_evidence,
     normalize_question,
     route_question,
 )
 from src.config.settings import settings
+from src.ingestion.embeddings import resolve_embedding_config
 from src.ingestion.loader import load_verified_documents
 from src.ingestion.splitter import split_documents
 from src.retrieval.retriever import DHVRetriever
@@ -144,6 +152,12 @@ class CorpusStore:
             return len(CorpusStore.chunks)
 
     _collection = Collection()
+    _embedding_config = resolve_embedding_config(settings_obj=settings)
+    _collection.metadata = {
+        "embedding_backend": _embedding_config.backend,
+        "embedding_model": _embedding_config.model,
+        "embedding_dimension": 3,
+    }
 
     def __init__(self, **_: object) -> None:
         pass
@@ -270,10 +284,15 @@ class RecordingLLM:
 
 
 def _retriever() -> DHVRetriever:
+    class FixtureEmbeddings:
+        @staticmethod
+        def embed_query(_: str) -> list[float]:
+            return [0.0, 0.0, 0.0]
+
     return DHVRetriever(
         settings_obj=settings,
         store_factory=CorpusStore,
-        embedding_factory=lambda **_: object(),
+        embedding_factory=lambda **_: FixtureEmbeddings(),
     )
 
 
@@ -328,6 +347,18 @@ class TaskFAnalysisTests(unittest.TestCase):
                 self.assertEqual(analysis.intent, case["expected_intent"])
                 for path, expected in case.get("expected_entities", {}).items():
                     self.assertEqual(_path_value(analysis.entities, path), expected)
+
+    def test_short_thpt_score_advice_recognizes_18d_and_d01_from_subjects(self) -> None:
+        analysis = analyze_question(
+            "tôi thi 18đ trung học phổ thông quốc gia với toán văn anh thì phù hợp với ngành nào"
+        )
+        self.assertEqual(analysis.intent, "TU_VAN_CHON_NGANH")
+        self.assertEqual(analysis.entities["admission_method"], "thpt")
+        self.assertEqual(analysis.entities["student_scores"], {"thpt": 18})
+        self.assertEqual(analysis.entities["admission_combination"], "D01")
+        plan = route_question(analysis, target_year=2026)
+        self.assertIn("nguong_dau_vao", plan.categories)
+        self.assertIn("phuong_thuc_xet_tuyen", plan.categories)
 
     def test_router_clarifies_ambiguous_score_without_retrieval(self) -> None:
         analysis = analyze_question("Công nghệ thông tin lấy bao nhiêu điểm?")
@@ -635,6 +666,29 @@ class TaskFGenerationTests(unittest.TestCase):
             "personal_fit_not_in_verified_evidence",
         )
 
+    def test_score_advisory_routes_18d_d01_to_generation_and_keeps_score_echo(self) -> None:
+        question = (
+            "tôi thi 18đ trung học phổ thông quốc gia với toán văn anh "
+            "thì phù hợp với ngành nào"
+        )
+        llm = RecordingLLM(
+            "Một số ngành tham khảo:\n"
+            "- **Quản trị kinh doanh** *(Mã ngành: 7340101)*\n"
+            "- Mã ngành: 7340101"
+        )
+        result = ask_chatbot(
+            question,
+            retriever=RecordingRetriever(_fixture_chunks()),
+            llm=llm,
+        )
+        self.assertEqual(result["trace"]["intent"], "TU_VAN_CHON_NGANH")
+        self.assertTrue(llm.prompts, result)
+        self.assertIn("18 điểm", result["answer"])
+        self.assertIn("D01 (Toán, Ngữ văn, Tiếng Anh)", result["answer"])
+        self.assertEqual(result["answer"].count("7340101"), 1)
+        self.assertEqual(result["answer"].count("?"), 1)
+        self.assertTrue(result["answer"].rstrip().endswith("?"))
+
     def test_direct_fit_evidence_must_be_verified_dhv_and_current_year(self) -> None:
         analysis = analyze_question(
             "Tôi thích edit video, chương trình Truyền thông đa phương tiện có phù hợp không?"
@@ -798,6 +852,124 @@ class TaskFGenerationTests(unittest.TestCase):
 
 
 class TaskFConversationTests(unittest.TestCase):
+    def test_score_advisory_echoes_score_combination_and_removes_duplicate_code(self) -> None:
+        analysis = analyze_question(
+            "tôi thi 18đ trung học phổ thông quốc gia với toán văn anh thì phù hợp với ngành nào"
+        )
+        answer = (
+            "Các ngành có thể tham khảo:\n"
+            "1. **Quản trị kinh doanh** *(Mã ngành: 7340101)*\n"
+            "- Mã ngành: 7340101\n"
+            "- Chuyên ngành: Quản trị Logistics"
+        )
+        echoed = _advisory_score_echo(answer, analysis)
+        cleaned = _remove_duplicate_major_code_bullets(echoed, analysis)
+        cleaned = _ensure_score_advisory_open_question(cleaned, analysis)
+        self.assertIn("18 điểm", cleaned)
+        self.assertIn("D01 (Toán, Ngữ văn, Tiếng Anh)", cleaned)
+        self.assertEqual(cleaned.count("7340101"), 1)
+        self.assertEqual(cleaned.count("?"), 1)
+        self.assertTrue(cleaned.endswith("?"))
+
+    def test_score_advisory_fallback_uses_compact_major_and_method_format(self) -> None:
+        analysis = analyze_question(
+            "tôi thi 18đ trung học phổ thông quốc gia với toán văn anh thì phù hợp với ngành nào"
+        )
+        evidence = EvidenceBundle(
+            chunks=(),
+            context="",
+            sources=({"title": "Điều kiện tuyển sinh DHV", "url": "https://dhv.edu.vn/"},),
+            score_facts=(
+                {
+                    "major_name": "Quản trị kinh doanh",
+                    "major_code": "7340101",
+                    "status": "verified",
+                },
+                {
+                    "score_type": "admission_method",
+                    "method": "hoc_ba",
+                    "status": "verified",
+                },
+            ),
+            entity_relations=(
+                {"program_name": "Quản trị Logistics", "parent_major": "Quản trị kinh doanh"},
+            ),
+        )
+        state = ConversationState(
+            current_year=2026,
+            current_method="thpt",
+            student_scores={"thpt": 18},
+            candidate_majors=("Quản trị kinh doanh",),
+        )
+        result = _advisory_evidence_clarification(
+            analysis,
+            evidence,
+            state,
+            score_comparisons=(
+                {
+                    "method": "thpt",
+                    "student_value": 18,
+                    "threshold_value": 15,
+                    "operator": ">=",
+                    "meets_threshold": True,
+                },
+            ),
+        )
+        answer = str(result["answer"])
+        self.assertIn("**18 điểm**", answer)
+        self.assertIn("D01 (Toán, Ngữ văn, Tiếng Anh)", answer)
+        self.assertIn("**Quản trị kinh doanh** *(Mã ngành: 7340101)*", answer)
+        self.assertIn("  - Chuyên ngành: Quản trị Logistics", answer)
+        self.assertIn("xét học bạ THPT năm 2026", answer)
+        self.assertEqual(answer.count("?"), 1)
+        self.assertTrue(answer.rstrip().endswith("?"))
+
+    def test_advisory_fallback_handles_empty_single_and_multiple_programs(self) -> None:
+        evidence = EvidenceBundle(
+            chunks=(),
+            context="",
+            sources=({"title": "Danh mục DHV", "url": "https://dhv.edu.vn/"},),
+            entity_relations=(
+                {"program_name": "Program A", "parent_major": "Major A"},
+                {"program_name": "Program B", "parent_major": "Major B"},
+            ),
+        )
+        cases = (
+            ((), None, None, ()),
+            (("Program A",), None, None, ("Program A",)),
+            (("Program A", "Program B"), "Program B", "Program A", ("Program A",)),
+            (("Program A", "Program B"), None, "Program B", ("Program A",)),
+        )
+
+        for programs, selected_in_analysis, selected_in_state, listed_programs in cases:
+            with self.subTest(programs=programs, selected=selected_in_analysis or selected_in_state):
+                entities: dict[str, object] = {"interest": "edit video"}
+                if selected_in_analysis:
+                    entities["program_name"] = selected_in_analysis
+                analysis = QueryAnalysis(
+                    question="Tư vấn chương trình theo sở thích edit video",
+                    normalized_question=normalize_question(
+                        "Tư vấn chương trình theo sở thích edit video"
+                    ),
+                    intent="TU_VAN_CHON_NGANH",
+                    entities=entities,
+                )
+                state = ConversationState(
+                    candidate_programs=programs,
+                    current_program=selected_in_state,
+                )
+
+                result = _advisory_evidence_clarification(
+                    analysis, evidence, state, score_comparisons=()
+                )
+
+                self.assertEqual(result["status"], "clarification")
+                answer = str(result["answer"])
+                for program in listed_programs:
+                    self.assertIn(f"- {program} là chương trình thuộc ngành", answer)
+                for program in set(programs) - set(listed_programs):
+                    self.assertNotIn(f"- {program} là chương trình thuộc ngành", answer)
+
     def test_two_turn_screenshot_lists_verified_majors_and_corrects_count_followup(self) -> None:
         retriever = RecordingRetriever(_fixture_chunks())
         # This is intentionally a realistic bad draft: the returned answer
@@ -1118,8 +1290,8 @@ class TaskFConversationTests(unittest.TestCase):
         self.assertNotIn("ĐHQG", second["answer"])
         self.assertNotIn("mình nghiêng về", second["answer"].casefold())
         self.assertIn("chưa nêu căn cứ để kết luận", second["answer"])
-        self.assertIn("Công nghệ thông tin (mã ngành 7480201)", second["answer"])
-        self.assertIn("Kỹ thuật máy tính (mã ngành 7480106)", second["answer"])
+        self.assertIn("**Công nghệ thông tin** *(Mã ngành: 7480201)*", second["answer"])
+        self.assertIn("**Kỹ thuật máy tính** *(Mã ngành: 7480106)*", second["answer"])
         self.assertIn("Hệ thống nhúng thông minh", second["answer"])
         self.assertIn("AI và IoT ứng dụng", second["answer"])
         self.assertIn("Công nghệ thông tin", second["answer"])

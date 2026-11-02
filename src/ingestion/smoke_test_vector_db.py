@@ -12,7 +12,11 @@ from langchain_chroma import Chroma
 from src.config.settings import settings
 
 from .chroma_lifecycle import close_chroma_store
-from .embeddings import DEFAULT_SENTENCE_TRANSFORMER_MODEL, create_embeddings
+from .embeddings import (
+    create_embeddings,
+    resolve_embedding_config,
+    validate_embedding_metadata,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -51,11 +55,16 @@ def run_smoke_tests(
     if top_k <= 0:
         raise ValueError("top_k must be greater than zero")
 
-    embedding_function = create_embeddings(
+    embedding_config = resolve_embedding_config(
         backend=backend,
-        ollama_model=embedding_model,
+        model=embedding_model,
         ollama_base_url=ollama_base_url,
         sentence_transformer_model=sentence_transformer_model,
+    )
+    embedding_function = create_embeddings(
+        backend=embedding_config.backend,
+        model=embedding_config.model,
+        ollama_base_url=embedding_config.base_url,
     )
     vector_store = Chroma(
         collection_name=collection_name,
@@ -65,10 +74,17 @@ def run_smoke_tests(
     try:
         if vector_store._collection.count() == 0:
             raise RuntimeError("ChromaDB collection is empty")
+        validate_embedding_metadata(vector_store._collection.metadata, embedding_config)
 
         all_results: list[dict[str, Any]] = []
         for query, expected_category in SMOKE_QUERIES:
-            documents = vector_store.similarity_search(query, k=top_k)
+            query_vector = embedding_function.embed_query(query)
+            validate_embedding_metadata(
+                vector_store._collection.metadata,
+                embedding_config,
+                query_dimension=len(query_vector),
+            )
+            documents = vector_store.similarity_search_by_vector(query_vector, k=top_k)
             if not documents:
                 raise AssertionError(f"no retrieval result for query: {query}")
             summaries = [_result_summary(document) for document in documents]
@@ -124,10 +140,10 @@ def run_smoke_tests(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--embedding-backend", default=settings.embedding_backend)
-    parser.add_argument("--embedding-model", default=settings.embedding_model)
+    parser.add_argument("--embedding-model", default=None)
     parser.add_argument(
         "--sentence-transformer-model",
-        default=DEFAULT_SENTENCE_TRANSFORMER_MODEL,
+        default=None,
     )
     parser.add_argument("--ollama-base-url", default=settings.ollama_base_url)
     parser.add_argument("--persist-dir", default=str(settings.chroma_persist_dir))

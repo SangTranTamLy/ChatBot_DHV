@@ -739,6 +739,9 @@ def _ask_chatbot_core(
         score_evaluation.get("status") == "insufficient-data"
         # Câu hỏi quy tắc phương thức (vd. học bạ lấy điểm lớp nào) không cần dữ liệu điểm số.
         and analysis.intent != "HOI_PHUONG_THUC_XET_TUYEN"
+        # A counselling answer can still list grounded majors when no numeric
+        # application threshold is available; the prompt must state that limit.
+        and analysis.intent != "TU_VAN_CHON_NGANH"
         and not structured_lookup_answer
         and not deadline_only_lookup
         and not admission_rule_answer
@@ -774,7 +777,13 @@ def _ask_chatbot_core(
     if not evidence.is_usable:
         return no_data()
 
-    if analysis.intent == "TU_VAN_CHON_NGANH" and not _has_verified_advisory_fit_evidence(
+    allow_score_guidance_without_interest = (
+        not analysis.entities.get("interest")
+        and analysis.entities.get("admission_method") == "thpt"
+        and bool(analysis.entities.get("student_scores"))
+        and analysis.entities.get("admission_combination") == "D01"
+    )
+    if analysis.intent == "TU_VAN_CHON_NGANH" and not allow_score_guidance_without_interest and not _has_verified_advisory_fit_evidence(
         analysis,
         evidence,
         state,
@@ -844,7 +853,15 @@ def _ask_chatbot_core(
         return no_data()
 
     requested_combination = analysis.entities.get("admission_combination")
-    if requested_combination and not _combination_is_verified(evidence, requested_combination):
+    subject_combination_is_identified = (
+        requested_combination == "D01"
+        and analysis.entities.get("admission_method") == "thpt"
+    )
+    if (
+        requested_combination
+        and not subject_combination_is_identified
+        and not _combination_is_verified(evidence, requested_combination)
+    ):
         trace["boundary"] = "admission_combination_not_verified"
         return no_data()
 
@@ -1426,8 +1443,14 @@ def ask_chatbot(
     # while result["state"] carries a year named in this question ("năm 2025").
     state = ConversationState.from_value(conversation_state, default_year=settings_obj.target_year)
     result_state = result.get("state") if isinstance(result.get("state"), Mapping) else {}
+    core_trace = result.get("trace") if isinstance(result.get("trace"), Mapping) else {}
+    # The advisory clarification only lists majors; a curated career-fit answer is better.
+    advisory_fallback = (
+        result.get("status") == "clarification"
+        and core_trace.get("advisory_boundary") == "personal_fit_not_in_verified_evidence"
+    )
     if (
-        result.get("status") not in {"no_data", "out_of_scope"}
+        (result.get("status") not in {"no_data", "out_of_scope"} and not advisory_fallback)
         or result.get("target_school") not in {None, "UNSPECIFIED", "DHV"}
         or {state.current_year, result_state.get("current_year", settings_obj.target_year)} != {settings_obj.target_year}
         or re.search(r"\bnam (?:hoc )?(?:ngoai|truoc|sau|toi|kia|do|ay)\b", normalize_question(text))

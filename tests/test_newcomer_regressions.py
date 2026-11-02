@@ -133,10 +133,8 @@ class VerifiedAnswerTests(unittest.TestCase):
                 self.assertNotIn("Có. DHV có phương thức", answer)
 
     def test_score_which_major_uses_school_floor_and_names_exceptions(self) -> None:
-        for question in (
-            "tôi thi 18đ trung học phổ thông quốc gia với toán văn anh thì phù hợp với ngành nào",
-            "em thi thpt 18 điểm học được ngành nào",
-        ):
+        # "phù hợp với ngành nào" phrasings go to the advisory flow; see test_task_f.
+        for question in ("em thi thpt 18 điểm học được ngành nào",):
             with self.subTest(question=question):
                 answer = str(self._ask(question)["answer"])
                 self.assertIn("ngưỡng nhận hồ sơ 15", answer)

@@ -160,21 +160,98 @@ def _advisory_evidence_clarification(
         if program in candidate_programs and parent and parent not in candidate_majors:
             candidate_majors.append(parent)
 
+    preferred_program = str(
+        analysis.entities.get("program_name") or state.current_program or ""
+    ).strip()
+    preferred_program_key = normalize_question(preferred_program)
+
     codes_by_major: dict[str, str] = {}
     for fact in getattr(evidence, "score_facts", ()) or ():
+        if not (
+            fact.get("status") == "verified"
+            or fact.get("source_status") == "verified"
+            or fact.get("verified") is True
+        ):
+            continue
         name = str(fact.get("major_name") or "").strip()
         code = str(fact.get("major_code") or "").strip()
         if name and code and normalize_question(name) not in codes_by_major:
             codes_by_major[normalize_question(name)] = code
 
     interest = str(analysis.entities.get("interest") or state.interest or "").strip()
+    score_guided_advice = bool(
+        analysis.entities.get("student_scores")
+        and (
+            analysis.entities.get("admission_method") == "thpt"
+            or analysis.entities.get("admission_combination") == "D01"
+        )
+    )
     interest_display = {
         "chinh sua video": "chỉnh sửa video",
         "edit video": "edit video",
     }.get(normalize_question(interest), interest)
     lines: list[str] = []
+
+    student_scores = dict(state.student_scores)
+    analysis_scores = analysis.entities.get("student_scores")
+    if isinstance(analysis_scores, dict):
+        student_scores.update(analysis_scores)
+    method = str(analysis.entities.get("admission_method") or state.current_method or "")
+    normalized_question = normalize_question(analysis.question or analysis.normalized_question)
+    combination = str(analysis.entities.get("admission_combination") or "").upper()
+    if combination != "D01" and method == "thpt" and all(
+        re.search(pattern, normalized_question)
+        for pattern in (r"\btoan\b", r"\b(?:ngu\s+)?van\b", r"\b(?:tieng\s+)?anh\b")
+    ):
+        combination = "D01"
+    combination_label = (
+        "D01 (Toán, Ngữ văn, Tiếng Anh)" if combination == "D01" else combination
+    )
+    total_score = next(
+        (
+            student_scores.get(key)
+            for key in (method, "thpt", "unspecified")
+            if key and isinstance(student_scores.get(key), (int, float))
+        ),
+        None,
+    )
+
+    def display_score(value: object) -> str:
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
+        return str(value).replace(".", ",")
+
+    if total_score is not None:
+        method_label = {
+            "thpt": "thi tốt nghiệp THPT",
+            "dgnl": "ĐGNL",
+            "hoc_ba": "học bạ THPT",
+        }.get(method, "")
+        score_context = f"Bạn cho biết đạt **{display_score(total_score)} điểm**"
+        if method_label:
+            score_context += f" theo phương thức {method_label}"
+        if combination_label:
+            score_context += f" với tổ hợp **{combination_label}**"
+        lines.append(score_context + ".")
+    elif isinstance(student_scores.get("thpt_subjects"), dict):
+        subject_labels = {"toan": "Toán", "van": "Ngữ văn", "anh": "Tiếng Anh"}
+        subject_values = student_scores["thpt_subjects"]
+        listed_subjects = [
+            f"{subject_labels[key]} {display_score(subject_values[key])}"
+            for key in ("toan", "van", "anh")
+            if key in subject_values and isinstance(subject_values[key], (int, float))
+        ]
+        if listed_subjects:
+            details = ", ".join(listed_subjects)
+            if combination_label:
+                lines.append(f"Bạn cho biết {details}, thuộc tổ hợp **{combination_label}**.")
+            else:
+                lines.append(f"Bạn cho biết điểm các môn: {details}.")
+    elif combination_label:
+        lines.append(f"Mình ghi nhận bạn đang hỏi tổ hợp **{combination_label}**.")
+
     if candidate_majors or candidate_programs:
-        lines.append("Bạn có thể cân nhắc các lựa chọn sau:")
+        lines.append("Một số lựa chọn để bạn tham khảo:")
     for major in candidate_majors:
         major_text = str(major).strip()
         if not major_text:
@@ -186,14 +263,18 @@ def _advisory_evidence_clarification(
             if str(relation.get("parent_major") or "").strip() == major_text
             and str(relation.get("program_name") or "").strip()
         ]
-        detail = f" (mã ngành {code})" if code else ""
+        heading = f"- **{major_text}** *(Mã ngành: {code})*" if code else f"- **{major_text}**"
+        lines.append(heading)
         if children:
-            lines.append(f"- {major_text}{detail} gồm: {'; '.join(dict.fromkeys(children))}.")
-        else:
-            lines.append(f"- {major_text}{detail}.")
+            lines.append(f"  - Chuyên ngành: {', '.join(dict.fromkeys(children))}.")
 
     for program in candidate_programs:
         program_text = str(program).strip()
+        if not program_text or (
+            preferred_program_key
+            and normalize_question(program_text) == preferred_program_key
+        ):
+            continue
         matches = [
             str(relation.get("parent_major"))
             for relation in relations
@@ -208,23 +289,59 @@ def _advisory_evidence_clarification(
         label = {"dgnl": "ĐGNL", "thpt": "thi tốt nghiệp THPT", "hoc_ba": "học bạ"}.get(method, method)
         lines.append(
             f"- Điểm {label} bạn cung cấp: {comparison.get('student_value')}; "
-            f"ngưỡng trong dữ liệu: {comparison.get('threshold_value')}. Đây chỉ là so sánh "
-            "với ngưỡng nhận hồ sơ, không phải kết luận trúng tuyển."
+            f"ngưỡng nhận hồ sơ tương ứng: {comparison.get('threshold_value')}. Đây chỉ là "
+            "điểm sàn/điều kiện nhận hồ sơ, không phải điểm chuẩn hay cam kết trúng tuyển."
+        )
+
+    if total_score is not None and method == "thpt" and not any(
+        str(comparison.get("method") or "") == "thpt"
+        for comparison in score_comparisons or ()
+    ):
+        lines.append(
+            "Mình chưa thể kết luận cơ hội trúng tuyển chỉ từ tổng điểm; cần đối chiếu "
+            "ngưỡng nhận hồ sơ đúng ngành và điểm chuẩn tương ứng."
+        )
+
+    has_verified_hoc_ba_method = any(
+        str(fact.get("method") or "") == "hoc_ba"
+        and str(fact.get("score_type") or "") == "admission_method"
+        and (
+            fact.get("status") == "verified"
+            or fact.get("source_status") == "verified"
+            or fact.get("verified") is True
+        )
+        for fact in getattr(evidence, "score_facts", ()) or ()
+    )
+    if has_verified_hoc_ba_method and (total_score is not None or score_comparisons):
+        year = analysis.entities.get("year") or state.current_year
+        lines.append(
+            f"Bạn cũng có thể cân nhắc phương thức xét học bạ THPT năm {year}; "
+            "hãy đối chiếu điều kiện cụ thể của ngành bạn chọn."
         )
 
     if interest:
         lines.append(
-            f"Mình ghi nhận bạn quan tâm đến {interest_display}, nhưng tài liệu DHV đã xác minh "
-            "chưa nêu căn cứ để kết luận ngành hoặc chương trình nào phù hợp với sở thích này."
+            f"Mình ghi nhận bạn quan tâm đến {interest_display}, nhưng hiện chưa nêu căn cứ "
+            "để kết luận ngành hoặc chương trình nào phù hợp với sở thích này."
         )
-        lines.append(
-            "Bạn muốn mình liệt kê các ngành/chương trình có trong tài liệu, hay cho biết thêm "
-            "tiêu chí bạn muốn ưu tiên để mình tra cứu thông tin tương ứng?"
-        )
+        if score_guided_advice:
+            lines.append(
+                "Ngoài điểm số, bạn muốn ưu tiên sở thích, nội dung học hay cơ hội nghề nghiệp khi chọn ngành?"
+            )
+        else:
+            lines.append(
+                "Bạn muốn mình liệt kê các ngành/chương trình có trong tài liệu, hay cho biết thêm "
+                "tiêu chí bạn muốn ưu tiên để mình tra cứu thông tin tương ứng?"
+            )
     else:
-        lines.append(
-            "Bạn thích sáng tạo nội dung số hay tìm hiểu AI/IoT và kỹ thuật phần cứng hơn?"
-        )
+        if score_guided_advice:
+            lines.append(
+                "Bạn đang quan tâm nhất đến lĩnh vực nào—kinh tế, truyền thông, quản trị hay công nghệ—để mình tư vấn sát hơn?"
+            )
+        else:
+            lines.append(
+                "Bạn thích sáng tạo nội dung số hay tìm hiểu AI/IoT và kỹ thuật phần cứng hơn?"
+            )
     return {
         "answer": "\n".join(lines),
         "sources": [dict(source) for source in evidence.sources],

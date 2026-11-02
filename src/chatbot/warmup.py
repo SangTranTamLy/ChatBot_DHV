@@ -1,22 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 DHV Admissions Chatbot - Background Warmup Service
-Pre-warms the SentenceTransformer embedding model and ChromaDB retriever in a
+Pre-warms the configured embedding model and ChromaDB retriever in a
 background daemon thread upon application startup.
 Matches the architectural pattern of VietLabor AI (app/warmup.py).
 """
 from __future__ import annotations
 
 import logging
-import os
 import threading
 import time
 
 logger = logging.getLogger(__name__)
-
-# Ensure HuggingFace runs in offline mode immediately
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 _warmup_lock = threading.Lock()
 _warmup_started = False
@@ -46,13 +41,26 @@ def _warmup_worker() -> None:
 
     try:
         # Step 1: Pre-load SentenceTransformer embeddings
-        from src.ingestion.embeddings import create_embeddings
-        emb = create_embeddings()
+        from src.ingestion.embeddings import create_embeddings, resolve_embedding_config
+        from src.config.settings import settings
+
+        embedding_config = resolve_embedding_config(settings_obj=settings)
+        emb = create_embeddings(
+            backend=embedding_config.backend,
+            model=embedding_config.model,
+            ollama_base_url=embedding_config.base_url,
+            settings_obj=settings,
+        )
         embed_query = getattr(emb, "embed_query", None)
         if not callable(embed_query):
             raise RuntimeError("Embedding model does not provide embed_query().")
         embed_query("DHV tuyển sinh 2026")
-        logger.info("[Warmup] Embeddings initialized in %.2fs", time.perf_counter() - t0)
+        logger.info(
+            "[Warmup] %s/%s embeddings initialized in %.2fs",
+            embedding_config.backend,
+            embedding_config.model,
+            time.perf_counter() - t0,
+        )
 
         # Step 2: Pre-load Chroma retriever
         from src.chatbot.rag_chain import _get_default_retriever

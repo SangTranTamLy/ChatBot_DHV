@@ -119,6 +119,42 @@ class IngestionTests(unittest.TestCase):
         finally:
             splitter._load_tokenizer.cache_clear()
 
+    def test_tokenizer_download_is_enabled_only_by_explicit_preparation_flag(self) -> None:
+        tokenizer = object()
+        splitter._load_tokenizer.cache_clear()
+        try:
+            with patch(
+                "transformers.AutoTokenizer.from_pretrained",
+                return_value=tokenizer,
+            ) as from_pretrained:
+                self.assertIs(
+                    splitter._load_tokenizer(
+                        "test-download-tokenizer", allow_download=True
+                    ),
+                    tokenizer,
+                )
+            from_pretrained.assert_called_once_with(
+                "test-download-tokenizer",
+                local_files_only=False,
+                use_fast=True,
+            )
+        finally:
+            splitter._load_tokenizer.cache_clear()
+
+    def test_tokenizer_cache_error_shows_valid_preparation_flag(self) -> None:
+        splitter._load_tokenizer.cache_clear()
+        try:
+            with patch(
+                "transformers.AutoTokenizer.from_pretrained",
+                side_effect=OSError("not cached"),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError, r"prepare_models --download-huggingface"
+                ):
+                    splitter._load_tokenizer("missing-local-tokenizer")
+        finally:
+            splitter._load_tokenizer.cache_clear()
+
     def test_loader_preserves_metadata_and_filters_unverified_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

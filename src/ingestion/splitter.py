@@ -15,6 +15,7 @@ from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharac
 DEFAULT_CHUNK_SIZE = 512
 DEFAULT_CHUNK_OVERLAP = 50
 DEFAULT_TOKENIZER_MODEL = os.getenv("CHUNK_TOKENIZER_MODEL", "BAAI/bge-m3")
+SPLITTER_SCHEMA_VERSION = 1
 LOGGER = logging.getLogger(__name__)
 
 
@@ -26,7 +27,7 @@ def _hf_offline_forced() -> bool:
 
 
 @lru_cache(maxsize=4)
-def _load_tokenizer(model_name: str):
+def _load_tokenizer(model_name: str, *, allow_download: bool = False):
     """Load the local tokenizer used to count chunk tokens."""
 
     try:
@@ -40,7 +41,7 @@ def _load_tokenizer(model_name: str):
     try:
         return AutoTokenizer.from_pretrained(
             model_name,
-            local_files_only=True,
+            local_files_only=not allow_download,
             use_fast=True,
         )
     except Exception as fast_exc:  # pragma: no cover - platform/cache dependent
@@ -56,7 +57,7 @@ def _load_tokenizer(model_name: str):
         try:
             return AutoTokenizer.from_pretrained(
                 model_name,
-                local_files_only=True,
+                local_files_only=not allow_download,
                 use_fast=False,
             )
         except Exception as slow_exc:  # pragma: no cover - model cache failure
@@ -71,9 +72,11 @@ def _load_tokenizer(model_name: str):
                         type(download_exc).__name__,
                     )
             raise RuntimeError(
-                f"Không tải được tokenizer cục bộ {model_name!r} "
-                "ở cả chế độ fast và slow. Tải/cache tokenizer trước hoặc "
-                "đặt CHUNK_TOKENIZER_MODEL tới model đã có sẵn."
+                f"Không chuẩn bị được tokenizer {model_name!r} "
+                f"({'tải xuống thất bại' if allow_download else 'chưa có trong cache cục bộ'}) "
+                "ở cả chế độ fast và slow. Chạy `python -m src.ingestion.prepare_models "
+                "--download-huggingface` khi muốn tải rõ ràng, hoặc đặt CHUNK_TOKENIZER_MODEL tới "
+                "model đã có sẵn."
             ) from slow_exc
 
 
@@ -189,5 +192,6 @@ __all__ = [
     "DEFAULT_CHUNK_OVERLAP",
     "DEFAULT_CHUNK_SIZE",
     "DEFAULT_TOKENIZER_MODEL",
+    "SPLITTER_SCHEMA_VERSION",
     "split_documents",
 ]

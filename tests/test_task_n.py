@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -50,6 +53,70 @@ class TaskNEvaluationTests(unittest.TestCase):
         self.assertEqual(summary["holdout_cases"], 4)
         self.assertTrue(summary["disjoint"])
         self.assertEqual(summary["holdout_policy"], "report_only_not_used_for_tuning")
+        self.assertEqual(summary["provenance"]["verified_sources"], 6)
+
+    def test_date_and_score_markers_match_equivalent_published_formats(self) -> None:
+        case = EvaluationCase(
+            case_id="semantic-format-contract",
+            question="Điểm trúng tuyển Luật và hạn hồ sơ?",
+            answer_contains=("20,0", "21/08/2026"),
+        )
+        score = score_answer_case(
+            case,
+            {"status": "ok", "answer": "Luật: 20 điểm; hạn hồ sơ 21/8/2026."},
+        )
+        self.assertEqual(score["answer_correctness"], 1.0)
+        self.assertEqual(score["required_hits"], ["20,0", "21/08/2026"])
+
+    def test_numeric_markers_require_an_exact_value_not_a_substring(self) -> None:
+        case = EvaluationCase(
+            case_id="exact-numeric-contract",
+            question="Ngưỡng là bao nhiêu?",
+            answer_contains=("15",),
+        )
+        score = score_answer_case(
+            case,
+            {"status": "ok", "answer": "Ngưỡng 150 điểm."},
+        )
+        self.assertEqual(score["answer_correctness"], 0.0)
+
+    def test_dataset_validation_detects_changed_gold_source_fingerprint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            dataset_dir = root / "evaluation"
+            dataset_dir.mkdir()
+            source_path = root / "data" / "raw" / "source.pdf"
+            source_path.parent.mkdir(parents=True)
+            source_bytes = b"audited evidence source"
+            source_path.write_bytes(source_bytes)
+            provenance = {
+                "raw_file": "data/raw/source.pdf",
+                "sha256": hashlib.sha256(source_bytes).hexdigest(),
+            }
+            dev_rows = [
+                {
+                    "id": "dev-1",
+                    "question": "Question?",
+                    "expected_evidence": {"provenance": [provenance]},
+                },
+                {"id": "dev-2", "question": "Question?"},
+                {"id": "dev-3", "question": "Question?"},
+                {"id": "dev-4", "question": "Question?"},
+            ]
+            holdout_rows = [{"id": "holdout-1", "question": "Question?"}]
+            (dataset_dir / "dev.jsonl").write_text(
+                "\n".join(json.dumps(row) for row in dev_rows), encoding="utf-8"
+            )
+            (dataset_dir / "holdout.jsonl").write_text(
+                json.dumps(holdout_rows[0]), encoding="utf-8"
+            )
+
+            verified = validate_dataset(dataset_dir=dataset_dir)
+            self.assertEqual(verified["provenance"]["verified_sources"], 1)
+
+            source_path.write_bytes(b"changed source")
+            with self.assertRaisesRegex(ValueError, "fingerprint mismatch"):
+                validate_dataset(dataset_dir=dataset_dir)
 
     def test_retrieval_metrics_measure_hit_precision_recall_and_mrr(self) -> None:
         case = EvaluationCase(

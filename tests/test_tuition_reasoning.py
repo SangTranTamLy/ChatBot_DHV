@@ -92,6 +92,28 @@ class FeeHistoryResolutionTests(unittest.TestCase):
         self.assertEqual(result.method, "fee_history_resolution")
         self.assertIn("Tổng các khoản thu học kỳ", result.question)
 
+    def test_explicit_year_and_semester_override_only_the_matching_history_slots(self) -> None:
+        history = (
+            {"role": "user", "content": "Tổng các khoản thu học kỳ I năm 2026 của DHV là bao nhiêu?"},
+            {"role": "assistant", "content": "Tổng các khoản thu học kỳ I năm 2026 là 12.500.000 đồng."},
+        )
+        cases = (
+            ("Vậy tổng học kỳ II năm 2027 là bao nhiêu?", "học kỳ II", "2027"),
+            ("Vậy tổng năm 2027 là bao nhiêu?", "học kỳ I", "2027"),
+            ("Vậy tổng học kỳ II là bao nhiêu?", "học kỳ II", "2026"),
+            ("Vậy tổng là bao nhiêu?", "học kỳ I", "2026"),
+            ("Nếu không kiểm tra tiếng Anh thì sao?", "học kỳ I", "2026"),
+        )
+
+        for question, expected_semester, expected_year in cases:
+            with self.subTest(question=question):
+                result = resolve_history_question(question, history, settings_obj=settings)
+                self.assertEqual(result.method, "fee_history_resolution")
+                self.assertIn(expected_semester, result.question)
+                self.assertIn(expected_year, result.question)
+                if "không kiểm tra" in question:
+                    self.assertIn("không gồm phí kiểm tra năng lực tiếng Anh", result.question)
+
     def test_other_fees_followup_keeps_the_fee_topic(self) -> None:
         result = resolve_history_question("Nếu thêm các khoản khác thì sao?", self.history, settings_obj=settings)
         self.assertEqual(result.method, "fee_history_resolution")
@@ -123,6 +145,28 @@ class FeeConversationRegressionTests(unittest.TestCase):
         self.assertTrue(result["trace"]["scope"]["in_scope"])
         self.assertIn("14.500.000", result["answer"])
         self.assertEqual(result["trace"]["fee_coverage"]["missing_topics"], [])
+
+    def test_chat_service_keeps_new_semester_and_year_through_the_final_answer(self) -> None:
+        class NeverGenerate:
+            def generate(self, prompt: str) -> str:
+                raise AssertionError("the unavailable HKII 2027 total must not be generated")
+
+        history = (
+            {"role": "user", "content": "Tổng các khoản thu học kỳ I năm 2026 của DHV là bao nhiêu?"},
+            {"role": "assistant", "content": "Tổng các khoản thu học kỳ I năm 2026 là 12.500.000 đồng."},
+        )
+        result = ChatService(retriever=_retriever(), llm=NeverGenerate()).ask(
+            "Vậy tổng học kỳ II năm 2027 là bao nhiêu?",
+            conversation_history=history,
+        )
+
+        resolution = result["trace"]["history_resolution"]
+        self.assertIn("học kỳ II", resolution["resolved_question"])
+        self.assertIn("2027", resolution["resolved_question"])
+        self.assertEqual(result["status"], "no_data")
+        self.assertNotIn("12.500.000", result["answer"])
+        self.assertNotIn("học kỳ I", result["answer"])
+        self.assertNotIn("2026", result["answer"])
 
     def test_tuition_and_scholarship_conditions_remain_two_independent_issues(self) -> None:
         from src.chatbot.query_analysis import route_question

@@ -2072,10 +2072,21 @@ def _structured_score_answer(
         grouped.append(f"{prefix}{label}: {value}")
     score_type = str(analysis.entities.get("score_type") or "")
     normalized_question = normalize_question(analysis.normalized_question)
+    requested_major = str(analysis.entities.get("major_name") or "").strip()
     if score_type == "admission_score":
-        intro = "Điểm trúng tuyển được công bố: "
+        intro = (
+            f"Điểm trúng tuyển của ngành {requested_major} được công bố: "
+            if requested_major
+            else "Điểm trúng tuyển được công bố: "
+        )
     elif score_type == "supplementary_threshold":
-        intro = "Ngưỡng xét tuyển bổ sung được công bố: "
+        intro = (
+            f"Ngưỡng xét tuyển bổ sung của ngành {requested_major} được công bố: "
+            if requested_major
+            else "Ngưỡng xét tuyển bổ sung được công bố: "
+        )
+    elif score_type == "application_threshold" and requested_major:
+        intro = f"Ngưỡng nhận hồ sơ của ngành {requested_major} được công bố: "
     elif (
         score_type == "application_threshold"
         and not analysis.entities.get("major_name")

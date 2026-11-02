@@ -22,11 +22,10 @@ from typing import Any, Mapping
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from evaluation.run_evaluation import EvidenceEchoLLM, OfflineCorpusStore  # noqa: E402
+from evaluation.run_evaluation import EvidenceEchoLLM, OfflineCorpusStore, _retriever  # noqa: E402
 from src.chatbot.rag_chain import ask_chatbot  # noqa: E402
 from src.config.settings import settings  # noqa: E402
 from src.ingestion.loader import load_verified_documents  # noqa: E402
-from src.ingestion.splitter import split_documents  # noqa: E402
 from src.retrieval.retriever import DHVRetriever  # noqa: E402
 
 
@@ -96,16 +95,11 @@ def dataset_audit(rows: list[dict[str, object]]) -> dict[str, object]:
 
 def setup_runtime() -> tuple[DHVRetriever, dict[str, object]]:
     load_result = load_verified_documents(ROOT / "data" / "processed")
-    chunks = tuple(split_documents(load_result.documents))
-    OfflineCorpusStore.chunks = chunks
-    retriever = DHVRetriever(
-        settings_obj=settings,
-        store_factory=OfflineCorpusStore,
-        embedding_factory=lambda **_: object(),
-    )
+    # Reuse the evaluation runner's offline store: it carries the embedding metadata the retriever validates.
+    retriever = _retriever()
     return retriever, {
         **load_result.stats.as_dict(),
-        "chunks_indexed_for_evaluation": len(chunks),
+        "chunks_indexed_for_evaluation": len(OfflineCorpusStore.chunks),
     }
 
 

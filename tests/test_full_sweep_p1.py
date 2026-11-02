@@ -46,6 +46,10 @@ from src.chatbot.rag_chain import (
     _ask_chatbot_core,
     ask_chatbot,
 )
+from src.chatbot.tuition_formatters import (
+    _evidence_optional_english_fee_answer,
+    _evidence_tuition_total_answer,
+)
 from src.chatbot.output_validator import _has_required_supplementary_date, validate_model_answer
 from src.chatbot.scope_guard import detect_target_school
 from src.retrieval.retriever import requested_year

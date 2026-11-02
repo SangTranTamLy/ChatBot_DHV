@@ -247,6 +247,120 @@ def _realize_generation_artifact(
     return "\n".join(cleaned).strip() or str(raw_answer or "").strip()
 
 
+def _advisory_score_echo(answer: str, analysis: QueryAnalysis) -> str:
+    """Keep the student's supplied score and combination visible in score advice."""
+
+    if analysis.intent != "TU_VAN_CHON_NGANH":
+        return answer
+    entities = analysis.entities
+    scores = entities.get("student_scores")
+    if not isinstance(scores, Mapping) or not scores:
+        return answer
+
+    method = str(entities.get("admission_method") or "")
+    score = next(
+        (
+            scores.get(key)
+            for key in (method, "thpt", "unspecified")
+            if key and isinstance(scores.get(key), (int, float))
+        ),
+        None,
+    )
+    combination = str(entities.get("admission_combination") or "").upper()
+    combination_label = (
+        "D01 (Toán, Ngữ văn, Tiếng Anh)" if combination == "D01" else combination
+    )
+    folded_answer = normalize_question(answer)
+    score_text = ""
+    if score is not None:
+        score_text = str(int(score) if isinstance(score, float) and score.is_integer() else score)
+        score_pattern = re.escape(score_text).replace(r"\.", r"[.,]")
+        score_is_present = bool(re.search(rf"(?<!\d){score_pattern}(?!\d)", folded_answer))
+    else:
+        score_is_present = True
+
+    combination_is_present = not combination_label or (
+        bool(re.search(r"\bd01\b", folded_answer))
+        if combination == "D01"
+        else normalize_question(combination_label) in folded_answer
+    )
+    if score_is_present and combination_is_present:
+        return answer
+
+    method_label = {
+        "thpt": " theo phương thức thi tốt nghiệp THPT",
+        "dgnl": " theo phương thức ĐGNL",
+        "hoc_ba": " theo phương thức xét học bạ THPT",
+    }.get(method, "")
+    localized_score = score_text.replace(".", ",")
+    if not score_is_present and not combination_is_present:
+        prefix = (
+            f"Bạn cho biết đạt **{localized_score} điểm**{method_label} "
+            f"với tổ hợp **{combination_label}**."
+        )
+    elif not score_is_present:
+        prefix = f"Bạn cho biết đạt **{localized_score} điểm**{method_label}."
+    else:
+        prefix = f"Tổ hợp bạn nêu là **{combination_label}**."
+    return f"{prefix}\n\n{answer}".strip() if answer.strip() else prefix
+
+
+def _remove_duplicate_major_code_bullets(answer: str, analysis: QueryAnalysis) -> str:
+    """Drop a code-only bullet if the same major code already appeared in its heading."""
+
+    if analysis.intent != "TU_VAN_CHON_NGANH":
+        return answer
+    seen_codes: set[str] = set()
+    kept: list[str] = []
+    code_only = re.compile(
+        r"^\s*(?:[-*•]\s*)?(?:mã\s+ngành|ma\s+nganh)\s*[:：]?\s*(\d{7})\s*[.)]?\s*$",
+        re.IGNORECASE,
+    )
+    for line in str(answer or "").splitlines():
+        match = code_only.match(line)
+        if match and match.group(1) in seen_codes:
+            continue
+        if match:
+            seen_codes.add(match.group(1))
+        else:
+            seen_codes.update(re.findall(r"\b\d{7}\b", line))
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def _ensure_score_advisory_open_question(answer: str, analysis: QueryAnalysis) -> str:
+    """End score-guided major advice with one open question about the student's priorities."""
+
+    scores = analysis.entities.get("student_scores")
+    if (
+        analysis.intent != "TU_VAN_CHON_NGANH"
+        or not isinstance(scores, Mapping)
+        or not scores
+    ):
+        return answer
+
+    # The prompt asks for one closing question, but models sometimes omit it or
+    # insert several. Keep declarative content and supply the same grounded,
+    # open-ended follow-up at the end of every score-advice answer.
+    declarative_lines: list[str] = []
+    for line in str(answer or "").splitlines():
+        if "?" not in line:
+            declarative_lines.append(line)
+            continue
+        declarative_lines.extend(
+            fragment.strip()
+            for fragment in re.split(r"(?<=[.!])\s+", line)
+            if fragment.strip() and "?" not in fragment
+        )
+    body = "\n".join(declarative_lines).strip()
+    body = re.sub(r"\n{3,}", "\n\n", body)
+    follow_up = (
+        "Bạn đang quan tâm nhất đến lĩnh vực nào—kinh tế, truyền thông, "
+        "quản trị hay công nghệ—để mình tư vấn sát hơn?"
+    )
+    return f"{body}\n\n{follow_up}" if body else follow_up
+
+
 def _validated_generation(
     *,
     active_llm: Any,
@@ -273,6 +387,9 @@ def _validated_generation(
         if _is_generation_artifact(raw_answer)
         else raw_answer
     )
+    generated_answer = _advisory_score_echo(generated_answer, analysis)
+    generated_answer = _remove_duplicate_major_code_bullets(generated_answer, analysis)
+    generated_answer = _ensure_score_advisory_open_question(generated_answer, analysis)
     validated = validate_model_answer(
         generated_answer,
         evidence,
@@ -309,6 +426,9 @@ def _validated_generation(
             if _is_generation_artifact(retry_answer)
             else retry_answer
         )
+        retry_answer = _advisory_score_echo(retry_answer, analysis)
+        retry_answer = _remove_duplicate_major_code_bullets(retry_answer, analysis)
+        retry_answer = _ensure_score_advisory_open_question(retry_answer, analysis)
         validated = validate_model_answer(
             retry_answer,
             evidence,

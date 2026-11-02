@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from langchain_core.documents import Document
 
 from src.config.settings import settings
+from src.ingestion.embeddings import resolve_embedding_config
 from src.retrieval.retriever import DHVRetriever, _metadata_filter, _rank_hybrid_candidates_with_audit
 from src.retrieval.structured_lookup import lookup_structured_documents
 
@@ -212,6 +213,12 @@ class ThreeStreamRuntimeTests(unittest.TestCase):
         class Store:
             def __init__(self, **kwargs):
                 self._collection = self
+                config = resolve_embedding_config(settings_obj=settings)
+                self.metadata = {
+                    "embedding_backend": config.backend,
+                    "embedding_model": config.model,
+                    "embedding_dimension": 3,
+                }
 
             def count(self):
                 return 2
@@ -224,8 +231,13 @@ class ThreeStreamRuntimeTests(unittest.TestCase):
                         "metadatas": [prose.metadata, wanted.metadata]}
 
         with TemporaryDirectory() as directory:
+            class FixtureEmbeddings:
+                @staticmethod
+                def embed_query(_: str) -> list[float]:
+                    return [0.0, 0.0, 0.0]
+
             retriever = DHVRetriever(settings_obj=replace(settings, chroma_persist_dir=directory),
-                                     store_factory=Store, embedding_factory=lambda **kwargs: object())
+                                     store_factory=Store, embedding_factory=lambda **kwargs: FixtureEmbeddings())
             result = retriever.retrieve_with_audit("Điểm chuẩn 7480201", categories=("diem_trung_tuyen",))
         self.assertEqual(result.audit.fusion_method, "bm25+dense+structured+rrf")
         self.assertEqual(result.audit.hits[0]["chunk_id"], "wanted")

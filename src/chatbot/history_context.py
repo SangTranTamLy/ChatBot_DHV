@@ -12,6 +12,7 @@ from src.config.settings import Settings
 from src.models.local_llm import LocalLLM, OllamaError
 from .query_semantics import analyze_fee_request, normalize_semantic_text
 from .scope_guard import detect_target_school, has_foreign_domain_signal, is_in_scope
+from .year_semantics import extract_requested_year
 
 
 @dataclass(frozen=True)
@@ -84,14 +85,38 @@ def _resolve_fee_followup(
     if not continuation:
         return None
 
-    recent_history_text = " ".join(
-        row["content"] for row in history[-8:] if row.get("role") in {"user", "assistant"}
-    )
-    recent_context = normalize_semantic_text(recent_history_text)
-    years = re.findall(r"\b20\d{2}\b", recent_history_text + " " + previous_user_question + " " + previous_answer)
-    year = years[-1] if years else ""
-    year_suffix = f" năm {year}" if year else ""
-    period = "học kỳ I" if any(marker in recent_context for marker in ("hoc ky i", "hki", "hk1")) else "học kỳ"
+    current_fee_request = analyze_fee_request(question)
+    if not current_fee_request.is_fee_request:
+        # The prior exchange establishes this as a fee follow-up; reuse the
+        # existing parser with that topic made explicit to read its semester.
+        current_fee_request = analyze_fee_request(f"Học phí {question}")
+    year = extract_requested_year(question, default_year=None)
+    previous_year: int | None = None
+    previous_semester: str | None = None
+    context_rows = [
+        row for row in history[-8:]
+        if row.get("role") in {"user", "assistant"} and isinstance(row.get("content"), str)
+    ]
+    context_rows.extend((
+        {"role": "user", "content": previous_user_question},
+        {"role": "assistant", "content": previous_answer},
+    ))
+    for row in context_rows:
+        content = str(row.get("content") or "")
+        fee_context = analyze_fee_request(content)
+        if not fee_context.is_fee_request:
+            continue
+        if fee_context.semester:
+            previous_semester = fee_context.semester
+        context_year = extract_requested_year(content, default_year=None)
+        if context_year is not None:
+            previous_year = context_year
+
+    if year is None:
+        year = previous_year
+    semester = current_fee_request.semester or previous_semester
+    period = {"HKI": "học kỳ I", "HKII": "học kỳ II"}.get(semester, "học kỳ")
+    year_suffix = f" năm {year}" if year is not None else ""
 
     if any(marker in text for marker in ("khong kiem tra", "khong thi", "khong dong", "khong bao gom")) and "tieng anh" in text:
         resolved = (

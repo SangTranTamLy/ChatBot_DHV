@@ -14,7 +14,6 @@ from src.ingestion.pdf_layout import (
     _merge_list_continuations,
     _merge_text,
     _ocr_page_layout,
-    _pytesseract_tokens,
     _supplemental_ocr_lines,
     extract_pdf_pages,
 )
@@ -559,31 +558,21 @@ class StructuredJSONPipelineTests(unittest.TestCase):
                 self.assertEqual(pages[1]["tables"][0]["headers"], ["column_1", "column_2", "column_3"])
                 self.assertNotIn("header_inherited", pages[1]["tables"][0])
 
-    def test_tesseract_uses_available_english_fallback_when_vietnamese_data_missing(self) -> None:
-        import pytesseract
-        from PIL import Image
+    def test_rapidocr_failure_is_reported_without_an_external_engine(self) -> None:
+        with patch(
+            "src.ingestion.pdf_layout._rapidocr_tokens",
+            side_effect=RuntimeError("runtime unavailable"),
+        ):
+            text, tokens, engine, failures = _ocr_page_layout(
+                SCHOLARSHIP_PDF,
+                0,
+                image_regions=[[102.1, 313.3, 508.1, 719.3]],
+            )
 
-        mock_data = {
-            "text": ["75%"],
-            "conf": ["95"],
-            "left": [2],
-            "top": [3],
-            "width": [10],
-            "height": [8],
-            "block_num": [1],
-            "par_num": [1],
-            "line_num": [1],
-        }
-        with patch.object(pytesseract, "get_languages", return_value=["eng"]), patch.object(
-            pytesseract,
-            "image_to_data",
-            return_value=mock_data,
-        ) as image_to_data:
-            tokens = _pytesseract_tokens(Image.new("RGB", (20, 20)), 2.0)
-
-        self.assertEqual(image_to_data.call_args.kwargs["lang"], "eng")
-        self.assertEqual(tokens[0]["language"], "eng")
-        self.assertEqual(tokens[0]["bbox"], [1.0, 1.5, 6.0, 5.5])
+        self.assertEqual(text, "")
+        self.assertEqual(tokens, [])
+        self.assertEqual(engine, "")
+        self.assertIn("RapidOCR failed", failures[0])
 
     def test_ocr_image_crop_boxes_are_translated_to_page_coordinates(self) -> None:
         token = {"text": "75%", "bbox": [1.0, 2.0, 7.0, 9.0], "confidence": 0.95, "source": "rapidocr"}

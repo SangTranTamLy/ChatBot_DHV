@@ -57,7 +57,7 @@ def _requested_kinds(query: str) -> tuple[str, ...]:
     return ()
 
 
-def _document_kinds(document: Document) -> set[str]:
+def _document_kinds(document: Document) -> set[str]: #gán nhãn loại cho tài liệu dựa trên metadata và nội dung
     metadata = document.metadata
     kind = str(metadata.get("record_type") or "")
     kinds = {kind} if kind else set()
@@ -202,7 +202,7 @@ def lookup_structured_documents(
         )
         params.extend(fields)
         params.extend(normalized)
-    connection = sqlite3.connect(":memory:")
+    connection = sqlite3.connect(":memory:") #tạo cơ sở dữ liệu SQLite trong bộ nhớ để truy vấn tạm thời
     try:
         connection.execute("CREATE TABLE facts (doc INTEGER, field TEXT, value TEXT, identity TEXT)")
         connection.executemany("INSERT INTO facts VALUES (?, ?, ?, ?)", rows)

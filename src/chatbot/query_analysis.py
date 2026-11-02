@@ -247,7 +247,7 @@ _METHOD_PATTERNS = (
         "thpt",
         re.compile(
             r"\b(?:thi\s+tot\s+nghiep(?!\s+xong\b)(?:\s+thpt)?|thi\s+thpt|thpt\s+quoc\s+gia|"
-            r"(?:thi\s+)?trung\s+hoc\s+pho\s+thong\s+quoc\s+gia|thi\s+trung\s+hoc\s+pho\s+thong|thi\s+dai\s+hoc|"
+            r"(?:(?:ky\s+)?thi\s+)?trung\s+hoc\s+pho\s+thong\s+quoc\s+gia|thi\s+trung\s+hoc\s+pho\s+thong|thi\s+dai\s+hoc|"
             r"phuong\s+thuc(?:\s+xet\s+tuyen)?(?:\s+ket\s+qua\s+ky\s+thi)?\s+tot\s+nghiep\s+thpt)\b"
         ),
     ),
@@ -2211,6 +2211,15 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
     elif score_type == SUPPLEMENTARY_THRESHOLD:
         score_query_type = SUPPLEMENTARY_THRESHOLD_LOOKUP
     combination_match = _ADMISSION_COMBINATION_RE.search(normalized)
+    combination_code = combination_match.group(1).upper() if combination_match else None
+    if (
+        combination_code is None
+        and admission_method == "thpt"
+        and re.search(r"\btoan\b", normalized)
+        and re.search(r"\b(?:ngu\s+)?van\b", normalized)
+        and re.search(r"\b(?:tieng\s+)?anh\b", normalized)
+    ):
+        combination_code = "D01"
     catalog_operation = _catalog_operation(normalized)
     
     # ``bao nhiêu`` is also used for amounts, scores and prices. Only choose a
@@ -2328,7 +2337,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         "website_kind": website_kind,
         "target_institution": "DHV",
         "score_source": score_source,
-        "admission_combination": combination_match.group(1).upper() if combination_match else None,
+        "admission_combination": combination_code,
         "admission_combination_detail": _is_admission_combination_structure_question(normalized),
         "requested_information": [],
         "request_type": enrollment_request(_without_threshold_intake(normalized)) or supplementary_request,
@@ -2878,6 +2887,12 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
     advisory = any(
         term in normalized
         for term in ("chon nganh", "chua biet chon", "phan van", "nen hoc nganh", "nen chon", "goi y nganh", "nganh hoc phu hop")
+    ) or bool(
+        re.search(
+            r"\b(?:nganh|chuong trinh)\b.{0,48}\bphu hop\b|"
+            r"\bphu hop\b.{0,48}\b(?:nganh|chuong trinh)\b",
+            normalized,
+        )
     )
     if advisory or (entities.get("interest") and entities.get("student_scores")):
         # A score inside a counselling question is context for the advice,
@@ -3987,7 +4002,14 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
         "TU_VAN_CHON_NGANH",
     }:
         if resolved.intent == "TU_VAN_CHON_NGANH":
-            categories = ("nganh_dao_tao", "nguong_dau_vao")
+            if entities.get("student_scores") or entities.get("admission_combination"):
+                categories = (
+                    "nganh_dao_tao",
+                    "nguong_dau_vao",
+                    "phuong_thuc_xet_tuyen",
+                )
+            else:
+                categories = ("nganh_dao_tao", "nguong_dau_vao")
         elif (
             resolved.intent == "DANH_SACH_NGANH"
             and entities.get("query_mode") in {"COUNT", "LIST_AND_COUNT"}

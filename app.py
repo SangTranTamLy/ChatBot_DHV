@@ -12,11 +12,13 @@ from html import escape
 from pathlib import Path
 import re
 from typing import Any
+import unicodedata
+from urllib.parse import urlparse
 
 import streamlit as st
 from dotenv import load_dotenv
 
-from src.supabase_auth import AuthServiceError, change_password, is_supabase_configured
+from src.supabase_auth import AuthServiceError, change_password
 from src.ui_auth import (
     init_auth,
     logout,
@@ -52,6 +54,16 @@ PRIVACY_REMINDER = (
     "vào khung chat."
 )
 GENERIC_ERROR_ANSWER = "Xin lỗi, tôi chưa thể xử lý câu hỏi này lúc này. Bạn vui lòng thử lại sau."
+MAX_CHAT_QUESTION_CHARS = 500
+_FOLLOWUP_STOP_WORDS = frozenset(
+    {"dhv", "nam", "la", "gi", "co", "cac", "nhung", "the", "nao", "ve",
+     "cua", "cho", "voi", "va", "toi", "ban", "minh", "mot", "ky"}
+)
+_SOURCE_FILE_SUFFIXES = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip"})
+_ANSWER_SOURCE_SECTION_RE = re.compile(
+    r"(?im)^\s*(?:(?:[-*]|\d+[.)])\s*)?(?:\*\*|__)?"
+    r"(?:nguồn tham khảo|nguồn trích dẫn|nguồn)(?:\*\*|__)?\s*:.*$"
+)
 STARTER_QUESTIONS = {
     "Ngành đào tạo": (":material/menu_book:", "DHV có những ngành đào tạo nào?"),
     "Học phí & học bổng": (":material/payments:", "Học phí và học bổng DHV năm 2026 như thế nào?"),
@@ -94,7 +106,7 @@ OFFICIAL_MAJOR_URLS: dict[str, str] = {
     "7220204": "https://lan.dhv.edu.vn/educational-program/ngon-ngu-trung-quoc?program=dai-hoc",
     "7220209": "https://lan.dhv.edu.vn/educational-program/ngon-ngu-nhat?program=dai-hoc",
     "7220210": "https://lan.dhv.edu.vn/educational-program/ngon-ngu-han-quoc?program=dai-hoc",
-    "7720701": "https://heal.dhv.edu.vn/educational-program/quan-ly-benh-vien?program=dai-hoc",
+    "7720802": "https://heal.dhv.edu.vn/educational-program/quan-ly-benh-vien?program=dai-hoc",
     "7310401": "https://heal.dhv.edu.vn/educational-program/tam-ly-hoc?program=dai-hoc",
     "7810201": "https://host.dhv.edu.vn/educational-program/quan-tri-khach-san?program=dai-hoc",
     "7810103": "https://host.dhv.edu.vn/educational-program/quan-tri-dich-vu-du-lich-lu-hanh?program=dai-hoc",
@@ -118,7 +130,7 @@ VERIFIED_MAJORS_2026 = (
     ("Ngôn ngữ Trung Quốc", "7220204"),
     ("Ngôn ngữ Nhật", "7220209"),
     ("Ngôn ngữ Hàn Quốc", "7220210"),
-    ("Quản lý bệnh viện", "7720701"),
+    ("Quản lý bệnh viện", "7720802"),
     ("Tâm lý học", "7310401"),
     ("Quản trị khách sạn", "7810201"),
     ("Quản trị dịch vụ du lịch và lữ hành", "7810103"),
@@ -225,7 +237,7 @@ def _init_session_state() -> None:
             sessions[previous_owner] = {key: deepcopy(st.session_state[key])
                                         for key in chat_keys if key in st.session_state}
         for key in (*chat_keys, "chat_input", "pending_question", "chat_request_in_progress",
-                    "saved_items", "admission_checklist"):
+                    "chat_request_phase", "saved_items", "admission_checklist"):
             st.session_state.pop(key, None)
         if st.session_state.get("account_page") != "chat":
             st.session_state.account_page = "chat"
@@ -239,15 +251,8 @@ def _init_session_state() -> None:
     st.session_state.setdefault("admission_checklist", {})
     st.session_state.setdefault("saved_items", [])
     st.session_state.setdefault("messages", [])
-    # Clean legacy editing widget state from sessions created before editing was removed.
-    legacy_edit_state = {
-        "editing_message_index", "message_edit_error", "message_branches",
-        "message_branch_view",
-    }
-    for key in list(st.session_state):
-        if key in legacy_edit_state or key.startswith("message_edit_input_"):
-            st.session_state.pop(key, None)
     st.session_state.setdefault("chat_request_in_progress", False)
+    st.session_state.setdefault("chat_request_phase", "idle")
     st.session_state.setdefault("chats", {})
     if not owner:
         st.session_state.chats = {}
@@ -287,11 +292,171 @@ def _normalise_result(result: object) -> dict[str, object]:
         "answer": answer.strip(),
         "status": status,
     }
+    sources = _normalise_sources(result.get("sources"))
+    if sources:
+        normalised["sources"] = sources
+
+    if status == "ok":
+        followup_candidates = result.get("related_questions")
+        if not isinstance(followup_candidates, (list, tuple)) or not followup_candidates:
+            trace = result.get("trace")
+            plan = trace.get("answer_plan") if isinstance(trace, Mapping) else None
+            followup_candidates = (
+                plan.get("related_questions") if isinstance(plan, Mapping) else None
+            )
+        if not isinstance(followup_candidates, (list, tuple)) or not followup_candidates:
+            followup_candidates = result.get("suggested_followups")
+        candidates = _normalise_followup_candidates(followup_candidates)
+        if candidates:
+            normalised["followup_candidates"] = candidates
+
     if allow_direct_website_url:
         normalised["allow_direct_website_url"] = True
     if allow_contact_channel_urls:
         normalised["allow_contact_channel_urls"] = True
     return normalised
+
+
+def _normalise_followup_candidates(value: object) -> list[str]:
+    """Keep only short, plain-text questions supplied by the answer planner."""
+    if not isinstance(value, (list, tuple)):
+        return []
+    questions: list[str] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        question = re.sub(r"\s+", " ", item).strip()
+        key = _followup_question_key(question)
+        if (
+            not question
+            or len(question) > 220
+            or "http://" in question.casefold()
+            or "https://" in question.casefold()
+            or key in seen
+        ):
+            continue
+        seen.add(key)
+        questions.append(question)
+        if len(questions) >= 8:
+            break
+    return questions
+
+
+def _followup_question_key(question: str) -> str:
+    without_marks = "".join(
+        char for char in unicodedata.normalize("NFD", question.casefold().replace("đ", "d"))
+        if not unicodedata.combining(char)
+    )
+    return re.sub(r"[^a-z0-9]+", " ", without_marks).strip()
+
+
+def _followup_question_tokens(question: str) -> set[str]:
+    return {
+        token for token in _followup_question_key(question).split()
+        if token not in _FOLLOWUP_STOP_WORDS and len(token) > 1
+    }
+
+
+def _is_repeated_followup(question: str, previous_questions: list[str]) -> bool:
+    question_key = _followup_question_key(question)
+    question_tokens = _followup_question_tokens(question)
+    for previous in previous_questions:
+        if question_key == _followup_question_key(previous):
+            return True
+        previous_tokens = _followup_question_tokens(previous)
+        overlap = len(question_tokens & previous_tokens)
+        smaller_set_size = min(len(question_tokens), len(previous_tokens))
+        if smaller_set_size >= 3 and overlap / smaller_set_size >= 0.78:
+            return True
+    return False
+
+
+def _select_followup_questions(
+    result: Mapping[str, Any], history: object, *, limit: int = 3
+) -> list[str]:
+    """Prefer new planner questions, avoiding repeats in the recent conversation."""
+    if result.get("status") != "ok" or limit <= 0:
+        return []
+    candidates = _normalise_followup_candidates(result.get("followup_candidates"))
+    if not candidates:
+        return []
+
+    rows = (
+        [row for row in history if isinstance(row, Mapping)]
+        if isinstance(history, (list, tuple))
+        else []
+    )
+    recent_user_questions = [
+        str(row.get("content") or "")
+        for row in rows[-12:]
+        if row.get("role") == "user" and str(row.get("content") or "").strip()
+    ]
+    recent_assistant_turns = [
+        row for row in rows if row.get("role") == "assistant"
+    ][-2:]
+    recently_shown = [
+        question
+        for row in recent_assistant_turns
+        for question in _normalise_followup_candidates(row.get("suggested_questions"))
+    ]
+    recent_prompts = recent_user_questions + recently_shown
+
+    fresh = [
+        question for question in candidates
+        if not _is_repeated_followup(question, recent_prompts)
+    ]
+    if len(fresh) < min(2, limit):
+        # If the topic has few candidates, allow an older unseen-by-user prompt
+        # to return instead of showing an empty or unrelated suggestion row.
+        fresh = [
+            question for question in candidates
+            if not _is_repeated_followup(question, recent_user_questions)
+        ]
+    return fresh[:limit]
+
+
+def _normalise_sources(value: object) -> list[dict[str, str]]:
+    """Keep readable source titles while hiding private paths and direct file URLs."""
+    if not isinstance(value, (list, tuple)):
+        return []
+    sources: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in value:
+        if not isinstance(item, Mapping):
+            continue
+        title = str(item.get("title") or item.get("name") or "Nguồn DHV").strip()
+        title = re.split(r"[\\/]", title)[-1].strip()
+        if not title:
+            continue
+        raw_url = str(item.get("url") or "").strip()
+        safe_url = ""
+        try:
+            parsed = urlparse(raw_url)
+            hostname = (parsed.hostname or "").lower().rstrip(".")
+            is_official_webpage = (
+                parsed.scheme.lower() == "https"
+                and hostname
+                and (hostname == "dhv.edu.vn" or hostname.endswith(".dhv.edu.vn"))
+                and parsed.username is None
+                and parsed.password is None
+                and parsed.port in {None, 443}
+                and not parsed.query
+                and not parsed.fragment
+            )
+            is_direct_file = Path(parsed.path).suffix.lower() in _SOURCE_FILE_SUFFIXES
+            if is_official_webpage and not is_direct_file:
+                safe_url = raw_url
+        except ValueError:
+            pass
+        key = safe_url or title.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        sources.append({"title": title[:180], "url": safe_url})
+        if len(sources) == 4:
+            break
+    return sources
 
 
 def _ask_question(question: str) -> dict[str, object]:
@@ -399,7 +564,68 @@ def _render_answer_markdown(answer: str) -> None:
         st.markdown(after, unsafe_allow_html=False)
 
 
-def _render_assistant_content(message: Mapping[str, Any]) -> None:
+def _render_source_citations(
+    message: Mapping[str, Any], *, widget_key: str
+) -> None:
+    """Show all source names together and link only public DHV pages."""
+    sources = _normalise_sources(message.get("sources"))
+    if not sources:
+        return
+
+    with st.container(key=f"answer_sources_{widget_key}"):
+        entries: list[str] = []
+        for source in sources:
+            # Escape Markdown punctuation in data-derived labels. The URL has
+            # already passed the public-DHV-page allowlist in _normalise_sources.
+            title = re.sub(
+                r"([\\`*_{}\[\]()#+\-.!|>])",
+                lambda match: "\\" + match.group(1),
+                source["title"],
+            )
+            if source["url"]:
+                safe_url = source["url"].replace("(", "%28").replace(")", "%29")
+                entries.append(f"[:material/open_in_new: {title}]({safe_url})")
+            else:
+                entries.append(f":material/lock: {title} *(tài liệu không mở trực tiếp)*")
+        st.markdown(":material/link: **Nguồn tham khảo:** " + " · ".join(entries))
+
+
+def _render_followup_suggestions(
+    message: Mapping[str, Any], *, widget_key: str
+) -> None:
+    """Show the current answer's context-aware continuation questions."""
+    if st.session_state.get("chat_request_in_progress", False):
+        return
+    questions = _normalise_followup_candidates(message.get("suggested_questions"))
+    if not questions:
+        return
+    st.caption("Bạn có thể hỏi tiếp")
+    with st.container(key=f"answer_followups_{widget_key}", horizontal=True, wrap=False, gap="small"):
+        for index, question in enumerate(questions):
+            st.button(
+                question,
+                key=f"answer_followup_{widget_key}_{index}",
+                type="secondary",
+                width="content",
+                on_click=_queue_question,
+                args=(question,),
+                disabled=st.session_state.get("chat_request_in_progress", False),
+            )
+
+
+def _strip_embedded_source_section(answer: str, message: Mapping[str, Any]) -> str:
+    """Use the compact source row for citations instead of repeating answer footers."""
+    if not _normalise_sources(message.get("sources")):
+        return answer
+    match = _ANSWER_SOURCE_SECTION_RE.search(answer)
+    if match is None:
+        return answer
+    return answer[:match.start()].rstrip()
+
+
+def _render_assistant_content(
+    message: Mapping[str, Any], *, widget_key: str = "answer", show_followups: bool = True
+) -> None:
     """Hiển thị nội dung trả lời an toàn bên trong khung tin nhắn."""
 
     answer = str(
@@ -409,9 +635,13 @@ def _render_assistant_content(message: Mapping[str, Any]) -> None:
     )
     if not (message.get("allow_direct_website_url") or message.get("allow_contact_channel_urls")):
         answer = _strip_display_urls(answer)
+    answer = _strip_embedded_source_section(answer, message)
     if not answer:
         answer = GENERIC_ERROR_ANSWER
     _render_answer_markdown(answer)
+    if show_followups:
+        _render_followup_suggestions(message, widget_key=widget_key)
+    _render_source_citations(message, widget_key=widget_key)
 
 
 def _current_chat_user_avatar() -> str:
@@ -423,13 +653,31 @@ def _current_chat_user_avatar() -> str:
 
 
 def _render_user_message(message: Mapping[str, Any]) -> None:
+    content = str(message.get("content") or "")
+    # Keep Markdown text styling while preventing image syntax from making the
+    # browser fetch remote pixels from user supplied messages.
+    safe_content = re.sub(r"(?<!\\)!\[", r"\\![", content)
     with st.chat_message("user", avatar=_current_chat_user_avatar()):
-        st.markdown(str(message.get("content") or ""), unsafe_allow_html=False)
+        st.markdown(safe_content, unsafe_allow_html=False)
+
+
+def _render_chat_input_limit_warning() -> None:
+    if st.session_state.pop("chat_input_limit_error", False):
+        st.warning(f"Mỗi câu hỏi tối đa {MAX_CHAT_QUESTION_CHARS} ký tự.")
+
+
+def _latest_assistant_message_index() -> int | None:
+    for index in range(len(st.session_state.messages) - 1, -1, -1):
+        message = st.session_state.messages[index]
+        if isinstance(message, Mapping) and message.get("role") == "assistant":
+            return index
+    return None
 
 
 def _render_chat_history() -> None:
     """Display the current conversation history."""
 
+    latest_assistant = _latest_assistant_message_index()
     for index, message in enumerate(st.session_state.messages):
         if not isinstance(message, Mapping):
             continue
@@ -441,7 +689,11 @@ def _render_chat_history() -> None:
             _render_user_message(message)
         else:
             with st.chat_message("assistant", avatar=":material/school:"):
-                _render_assistant_content(message)
+                _render_assistant_content(
+                    message,
+                    widget_key=f"history_{index}",
+                    show_followups=index == latest_assistant,
+                )
             if st.button(
                 "Lưu vào sổ tay", icon=":material/bookmark_add:", key=f"save_answer_{index}",
                 type="tertiary",
@@ -711,6 +963,7 @@ def _new_chat() -> None:
     _save_current_chat()
     st.session_state.pop("pending_question", None)
     st.session_state.chat_request_in_progress = False
+    st.session_state.chat_request_phase = "idle"
     st.session_state.next_chat += 1
     st.session_state.active_chat = st.session_state.next_chat
     st.session_state.messages = []
@@ -1109,7 +1362,7 @@ def _render_conversation() -> None:
                         with st.container(horizontal=True, wrap=True, gap="small"):
                             for index, (label, (_, question)) in enumerate(STARTER_QUESTIONS.items()):
                                 if st.button(label, key=f"empty_chat_topic_{index}", icon=":material/arrow_forward:", type="secondary"):
-                                    st.session_state.pending_question = question
+                                    _queue_question(question)
                                     st.rerun()
         with info_col:
             with st.container(key="notebook_panel"):
@@ -1122,7 +1375,7 @@ def _render_conversation() -> None:
                 st.html('<div class="dhv-side-title"><div><span class="material-symbols-rounded">explore</span><b>Bạn đang quan tâm?</b></div></div>')
                 for index, (label, (_, question)) in enumerate(STARTER_QUESTIONS.items()):
                     if st.button(label, icon=":material/arrow_outward:", key=f"chat_topic_{index}", type="tertiary", width="stretch"):
-                        st.session_state.pending_question = question
+                        _queue_question(question)
                         st.rerun()
 
             with st.container(key="chat_official_channels_card"):
@@ -1139,8 +1392,9 @@ def _render_conversation() -> None:
 
 
 def _render_simple_chat_history() -> None:
-    """Render the conversation without per-message editing controls."""
-    for message in st.session_state.messages:
+    """Render the conversation history."""
+    latest_assistant = _latest_assistant_message_index()
+    for index, message in enumerate(st.session_state.messages):
         if not isinstance(message, Mapping):
             continue
         role = message.get("role")
@@ -1150,7 +1404,11 @@ def _render_simple_chat_history() -> None:
             _render_user_message(message)
         else:
             with st.chat_message("assistant", avatar=":material/school:"):
-                _render_assistant_content(message)
+                _render_assistant_content(
+                    message,
+                    widget_key=f"history_{index}",
+                    show_followups=index == latest_assistant,
+                )
 
 
 def _render_clean_conversation() -> None:
@@ -1196,12 +1454,15 @@ def _render_clean_conversation() -> None:
                             '<small>Đặt câu hỏi về ngành học, học phí, phương thức xét tuyển, đời sống sinh viên...</small></div>'
                             '<div class="dhv-reference-ready"><i></i>Luôn sẵn sàng hỗ trợ bạn</div></div>'
                         )
+                        _render_chat_input_limit_warning()
                         st.chat_input(
                             "Bạn muốn hỏi điều gì về tuyển sinh DHV?",
-                            key="chat_input", height=96, submit_mode="disable", max_chars=MAX_QUESTION_CHARS,
+                            key="chat_input", height=96, max_chars=MAX_CHAT_QUESTION_CHARS,
+                            submit_mode="disable",
                             on_submit=_submit_chat_question,
                             disabled=st.session_state.chat_request_in_progress,
                         )
+                        st.caption(f"Mỗi câu hỏi tối đa {MAX_CHAT_QUESTION_CHARS} ký tự.")
                         st.html(
                             '<div class="dhv-reference-suggestion-title">'
                             '<span class="material-symbols-rounded dhv-reference-suggestion-icon" '
@@ -1261,13 +1522,20 @@ def _render_clean_conversation() -> None:
 
 def _queue_question(question: str) -> None:
     """Record a submission before rerendering, and accept only one pending turn."""
+    if not isinstance(question, str):
+        return
     clean_question = question.strip()
+    if len(clean_question) > MAX_CHAT_QUESTION_CHARS:
+        st.session_state.chat_input_limit_error = True
+        return
     if (not clean_question or st.session_state.get("chat_request_in_progress")
             or st.session_state.get("pending_question")):
         return
+    st.session_state.pop("chat_input_limit_error", None)
     st.session_state.messages.append({"role": "user", "content": clean_question})
     st.session_state.pending_question = clean_question
     st.session_state.chat_request_in_progress = True
+    st.session_state.chat_request_phase = "queued"
     st.session_state.account_page = "chat"
 
 
@@ -1285,256 +1553,25 @@ def _render_profile_view() -> None:
         _render_profile_page()
 
 
-def _is_admin_user() -> bool:
-    user = st.session_state.get("auth_user")
-    return isinstance(user, Mapping) and user.get("role") == "admin"
-
-
-def _admin_source_inventory() -> tuple[list[Path], list[str], str, int | None]:
-    """Read the current instance's processed knowledge files and Chroma count."""
-    from src.config.settings import settings
-
-    root = Path(settings.processed_data_dir)
-    files = sorted(root.rglob("*.json")) if root.is_dir() else []
-    categories = sorted({path.parent.name for path in files})
-    vector_path = Path(settings.chroma_persist_dir) / "chroma.sqlite3"
-    vector_status = "Chưa tạo" if not vector_path.is_file() else "Không đọc được"
-    vector_count: int | None = None
-    if vector_path.is_file():
-        try:
-            import chromadb
-
-            client = chromadb.PersistentClient(path=str(settings.chroma_persist_dir))
-            collection = client.get_collection(settings.chroma_collection)
-            vector_count = int(collection.count())
-            vector_status = "Sẵn sàng" if vector_count else "Đang trống"
-        except Exception:
-            vector_status = "Cần kiểm tra"
-    return files, categories, vector_status, vector_count
-
-
-def _render_admin_login_gate() -> None:
-    with st.container(key="admin_gate"):
-        left, right = st.columns([1.15, .85], gap="large", vertical_alignment="center")
-        with left:
-            st.html(
-                '<div class="dhv-admin-gate-brand"><span class="material-symbols-rounded">school</span>'
-                '<div><b>DHV</b><small>QUẢN TRỊ CHATBOT</small></div></div>'
-                '<div class="dhv-admin-gate-copy"><small>KHÔNG GIAN RIÊNG CỦA QUẢN TRỊ VIÊN</small>'
-                '<h1>Giữ nguồn đúng.<br><em>Giữ câu trả lời tin cậy.</em></h1>'
-                '<p>Theo dõi dữ liệu tuyển sinh và kiểm tra chất lượng câu trả lời của trợ lý DHV.</p></div>'
-            )
-        with right:
-            with st.container(key="admin_login_card"):
-                st.html('<div class="dhv-admin-card-badge"><span class="material-symbols-rounded">shield</span> KHU VỰC QUẢN TRỊ</div>')
-                if not st.session_state.auth_user:
-                    st.markdown("### Đăng nhập quản trị")
-                    st.caption("Dùng tài khoản Supabase riêng đã được cấp quyền admin.")
-                    if not is_supabase_configured():
-                        st.warning("Ứng dụng chưa được kết nối Supabase.")
-                    if st.button("Đăng nhập", icon=":material/login:", type="primary", key="admin_login", width="stretch"):
-                        open_auth("login")
-                        st.rerun()
-                else:
-                    st.markdown("### Tài khoản này chưa có quyền quản trị")
-                    st.caption("Đăng xuất tài khoản hiện tại rồi đăng nhập bằng tài khoản admin riêng.")
-                    st.button("Đăng xuất tài khoản hiện tại", icon=":material/logout:", key="admin_gate_logout", width="stretch", on_click=_logout_account)
-
-
-def _render_admin_console() -> None:
-    """Admin-only console. The URL is not a permission check; Supabase app_metadata is."""
-    if not st.session_state.auth_user or not _is_admin_user():
-        _render_admin_login_gate()
-        return
-
-    from src.config.settings import settings
-
-    files, categories, vector_status, vector_count = _admin_source_inventory()
-    page = st.session_state.get("admin_page", "overview")
-    allowed_pages = {"overview", "sources", "quality"}
-    if page not in allowed_pages:
-        page = "overview"
-        st.session_state.admin_page = page
-
-    with st.sidebar:
-        st.html(
-            '<div class="dhv-admin-side-brand"><span class="material-symbols-rounded">school</span>'
-            '<div><b>DHV</b><small>ADMIN CONSOLE</small></div></div>'
-        )
-        st.html('<div class="dhv-admin-side-label">QUẢN LÝ CHATBOT</div>')
-        for label, icon, target in (
-            ("Tổng quan", "dashboard", "overview"),
-            ("Nguồn tài liệu", "description", "sources"),
-            ("Kiểm tra câu trả lời", "fact_check", "quality"),
-        ):
-            if st.button(
-                label, icon=f":material/{icon}:", key=f"admin_nav_{target}",
-                type="primary" if page == target else "tertiary", width="stretch",
-            ):
-                st.session_state.admin_page = target
-                st.rerun()
-        with st.container(key="admin_sidebar_footer"):
-            st.html(
-                '<div class="dhv-admin-current-user"><span class="material-symbols-rounded">admin_panel_settings</span>'
-                '<div><b>Quản trị viên</b><small>Quyền truy cập đã xác minh</small></div></div>'
-            )
-            if st.button("Về chatbot", icon=":material/arrow_back:", key="admin_exit", width="stretch"):
-                st.query_params.clear()
-                st.rerun()
-            st.button("Đăng xuất", icon=":material/logout:", key="admin_logout", width="stretch", on_click=_logout_account)
-
-    labels = {
-        "overview": ("TỔNG QUAN", "Trung tâm quản trị DHV", "Tình trạng dữ liệu đang được dùng bởi chatbot trên máy chủ này."),
-        "sources": ("TRI THỨC DHV", "Nguồn tài liệu", "Danh sách tệp JSON đã xử lý trong kho dữ liệu hiện tại."),
-        "quality": ("KIỂM TRA CHATBOT", "Thử câu hỏi", "Gửi câu hỏi thử qua cùng pipeline đang phục vụ người dùng."),
-    }
-    eyebrow, title, description = labels[page]
-    with st.container(key="admin_console"):
-        with st.container(key="admin_topbar", horizontal=True, vertical_alignment="center"):
-            st.html(
-                '<div class="dhv-admin-topbrand"><span class="material-symbols-rounded">shield</span>'
-                '<b>Quản trị chatbot tuyển sinh DHV</b></div>'
-            )
-            st.html('<span class="dhv-admin-live"><i></i> KHU VỰC QUẢN TRỊ</span>')
-        st.html(
-            f'<div class="dhv-admin-page-heading"><small>{escape(eyebrow)}</small>'
-            f'<h1>{escape(title)}</h1><p>{escape(description)}</p></div>'
-        )
-
-        if page == "overview":
-            vector_value = f"{vector_count:,}" if vector_count is not None else vector_status
-            stat_data = (
-                ("Tài liệu đã xử lý", str(len(files)), "Tệp JSON trong kho hiện tại", "description"),
-                ("Nhóm dữ liệu", str(len(categories)), "Các chủ đề có tài liệu", "category"),
-                ("Bản ghi tìm kiếm", vector_value, "Collection Chroma đang cấu hình", "database"),
-            )
-            with st.container(key="admin_stats", horizontal=True, gap="small"):
-                for label, value, caption, icon in stat_data:
-                    st.html(
-                        '<article class="dhv-admin-stat">'
-                        f'<div><span>{escape(label)}</span><i class="material-symbols-rounded">{escape(icon)}</i></div>'
-                        f'<strong>{escape(value)}</strong><small>{escape(caption)}</small></article>'
-                    )
-            col_sources, col_tools = st.columns([1.1, .9], gap="medium")
-            with col_sources:
-                with st.container(key="admin_overview_sources"):
-                    st.markdown("### Nguồn dữ liệu")
-                    st.caption(f"{len(files)} tệp · {len(categories)} nhóm · {vector_status}")
-                    if files:
-                        for path in files[:5]:
-                            st.html(
-                                '<div class="dhv-admin-file-row"><span class="material-symbols-rounded">description</span>'
-                                f'<div><b>{escape(path.stem.replace("_", " "))}</b>'
-                                f'<small>{escape(path.parent.name.replace("_", " "))}</small></div></div>'
-                            )
-                    else:
-                        st.info("Chưa tìm thấy tài liệu đã xử lý trên máy chủ này.")
-                    if st.button("Mở danh sách nguồn", icon=":material/arrow_forward:", key="admin_overview_sources_open"):
-                        st.session_state.admin_page = "sources"
-                        st.rerun()
-            with col_tools:
-                with st.container(key="admin_overview_quality"):
-                    st.markdown("### Kiểm tra câu trả lời")
-                    st.caption("Thử một câu hỏi bằng chính bộ truy xuất và mô hình hiện tại.")
-                    st.html(
-                        '<div class="dhv-admin-callout"><span class="material-symbols-rounded">fact_check</span>'
-                        '<div><b>Không dùng số liệu minh họa</b><small>Chỉ hiển thị trạng thái đọc được từ tệp và Chroma trên máy chủ.</small></div></div>'
-                    )
-                    if st.button("Mở công cụ kiểm tra", icon=":material/arrow_forward:", key="admin_overview_quality_open", type="primary"):
-                        st.session_state.admin_page = "quality"
-                        st.rerun()
-            st.caption("Các câu hỏi của user chưa được ghi vào nhật ký tập trung, nên bảng này không tạo số liệu lượt hỏi hoặc hàng chờ giả.")
-
-        elif page == "sources":
-            with st.container(key="admin_sources_panel"):
-                st.markdown("### Kho tài liệu đã xử lý")
-                st.caption(f"Thư mục: `{Path(settings.processed_data_dir)}` · Vector store: {vector_status}")
-                if not files:
-                    st.info("Kho dữ liệu hiện tại chưa có tệp JSON đã xử lý.")
-                else:
-                    for index, path in enumerate(files):
-                        try:
-                            modified = datetime.fromtimestamp(path.stat().st_mtime).strftime("%d/%m/%Y %H:%M")
-                            size_kb = max(1, round(path.stat().st_size / 1024))
-                        except OSError:
-                            modified, size_kb = "Không đọc được", 0
-                        st.html(
-                            '<div class="dhv-admin-source-row">'
-                            '<span class="dhv-admin-file-icon material-symbols-rounded">description</span>'
-                            f'<div><b>{escape(path.stem.replace("_", " "))}</b>'
-                            f'<small>{escape(path.parent.name.replace("_", " "))} · Cập nhật {escape(modified)}</small></div>'
-                            f'<span class="dhv-admin-file-size">{size_kb} KB</span></div>'
-                        )
-                st.info("Màn hình chỉ đọc. Tệp nguồn chỉ được thêm sau khi qua quy trình xác minh và dựng lại Chroma của dự án.")
-
-        else:
-            with st.container(key="admin_quality_panel"):
-                st.markdown("### Chạy thử truy vấn")
-                st.caption("Kết quả là phản hồi trực tiếp từ pipeline hiện tại; thao tác này không lưu câu hỏi vào dữ liệu người dùng.")
-                with st.form("admin_question_form", clear_on_submit=False, border=False):
-                    question = st.text_area(
-                        "Câu hỏi cần kiểm tra", key="admin_test_question",
-                        placeholder="Ví dụ: DHV có học bổng không?", height=100,
-                    )
-                    submitted = st.form_submit_button("Chạy kiểm tra", icon=":material/play_arrow:", type="primary")
-                if submitted:
-                    if not question.strip():
-                        st.warning("Nhập câu hỏi trước khi chạy.")
-                    else:
-                        from src.chatbot.chat_service import ask_chatbot
-                        from src.chatbot.query_analysis import ConversationState
-
-                        try:
-                            with st.spinner("Đang chạy truy xuất và tạo câu trả lời..."):
-                                result = ask_chatbot(
-                                    question.strip(),
-                                    conversation_state=ConversationState().to_dict(),
-                                    conversation_history=[],
-                                    bypass_cache=True,
-                                )
-                            st.session_state.admin_quality_result = result
-                            st.session_state.admin_quality_question = question.strip()
-                        except Exception:
-                            st.session_state.admin_quality_result = {
-                                "answer": GENERIC_ERROR_ANSWER, "status": "error", "sources": [],
-                            }
-                            st.session_state.admin_quality_question = question.strip()
-                result = st.session_state.get("admin_quality_result")
-                if isinstance(result, Mapping):
-                    st.divider()
-                    st.caption(f"Câu hỏi: {st.session_state.get('admin_quality_question', '')} · Trạng thái: {result.get('status', 'không rõ')}")
-                    st.markdown(str(result.get("answer") or GENERIC_ERROR_ANSWER))
-                    sources = result.get("sources")
-                    if isinstance(sources, list) and sources:
-                        st.markdown("**Nguồn được trả về**")
-                        for source in sources:
-                            if not isinstance(source, Mapping):
-                                continue
-                            title = str(source.get("title") or "Nguồn DHV")
-                            url = str(source.get("url") or "")
-                            if _is_official_url(url):
-                                st.link_button(title, url, key=f"admin_source_link_{abs(hash(url))}")
-                            else:
-                                st.markdown(f"- {escape(title)}")
-                    trace = result.get("trace")
-                    if isinstance(trace, Mapping):
-                        with st.expander("Chi tiết truy xuất", expanded=False):
-                            st.json(trace, expanded=False)
-
-
 def _record_and_render_exchange(question: str) -> None:
     """Answer the user turn already recorded by the submission callback."""
 
     with st.chat_message("assistant", avatar=":material/school:"):
         with st.spinner("Đang tra cứu thông tin tuyển sinh..."):
             result = _ask_question(question)
-        _render_assistant_content(result)
+        message: dict[str, Any] = {
+            "role": "assistant",
+            "content": result["answer"],
+            "status": result["status"],
+        }
+        suggestions = _select_followup_questions(result, st.session_state.messages)
+        if suggestions:
+            message["suggested_questions"] = suggestions
+        if result.get("sources"):
+            message["sources"] = result["sources"]
+        widget_key = f"chat_{st.session_state.active_chat}_{len(st.session_state.messages)}"
+        _render_assistant_content(message, widget_key=widget_key)
 
-    message = {
-        "role": "assistant",
-        "content": result["answer"],
-        "status": result["status"],
-    }
     if result.get("allow_direct_website_url"):
         message["allow_direct_website_url"] = True
     if result.get("allow_contact_channel_urls"):
@@ -1548,7 +1585,7 @@ def _record_and_render_exchange(question: str) -> None:
 _inject_chat_styles()
 if st.query_params.get("auth") == "recovery":
     # Recovery callbacks carry short-lived credentials in the URL fragment.
-    # Handle this route before normal auth restoration or chat/admin rendering.
+    # Handle this route before normal auth restoration or chat rendering.
     render_password_recovery_page()
     st.stop()
 
@@ -1563,38 +1600,41 @@ from src.chatbot.query_analysis import ConversationState
 from src.chatbot.warmup import start_background_warmup, wait_for_warmup
 
 _init_session_state()
-admin_console_route = st.query_params.get("console") == "admin"
-if admin_console_route:
-    _render_admin_console()
+start_background_warmup()
+page = st.session_state.get("account_page", "chat")
+if page not in {"chat", "profile"}:
+    page = "chat"
+    st.session_state.account_page = page
+_render_sidebar()
+_render_topbar()
+
+show_profile = bool(st.session_state.auth_user) and page == "profile"
+if show_profile:
+    _render_profile_view()
 else:
-    start_background_warmup()
-    page = st.session_state.get("account_page", "chat")
-    if page not in {"chat", "profile"}:
-        page = "chat"
-        st.session_state.account_page = page
-    _render_sidebar()
-    _render_topbar()
+    _render_clean_conversation()
+    if st.session_state.messages:
+        _render_chat_input_limit_warning()
+        st.chat_input(
+            "Nhập câu hỏi về tuyển sinh DHV...",
+            key="chat_input", max_chars=MAX_CHAT_QUESTION_CHARS, submit_mode="disable",
+            on_submit=_submit_chat_question,
+            disabled=st.session_state.chat_request_in_progress,
+        )
+        st.caption(f"Mỗi câu hỏi tối đa {MAX_CHAT_QUESTION_CHARS} ký tự.")
+    with st.container(key="chat_note"):
+        st.caption(
+            "Thông tin quan trọng vui lòng đối chiếu tại "
+            "[Cổng tuyển sinh DHV](https://tuyensinh.dhv.edu.vn/)."
+        )
 
-    show_profile = bool(st.session_state.auth_user) and page == "profile"
-    if show_profile:
-        _render_profile_view()
-    else:
-        _render_clean_conversation()
-        if st.session_state.messages:
-            st.chat_input(
-                "Nhập câu hỏi về tuyển sinh DHV...",
-                key="chat_input", submit_mode="disable", max_chars=MAX_QUESTION_CHARS,
-                on_submit=_submit_chat_question,
-                disabled=st.session_state.chat_request_in_progress,
-            )
-        with st.container(key="chat_note"):
-            st.caption(
-                "Thông tin quan trọng vui lòng đối chiếu tại "
-                "[Cổng tuyển sinh DHV](https://tuyensinh.dhv.edu.vn/)."
-            )
-
-    queued_question = st.session_state.get("pending_question")
-    if isinstance(queued_question, str) and queued_question.strip():
+queued_question = st.session_state.get("pending_question")
+if isinstance(queued_question, str) and queued_question.strip():
+    if st.session_state.get("chat_request_phase") == "queued":
+        # Commit the chat-only screen before the slower retrieval/model call.
+        st.session_state.chat_request_phase = "processing"
+        st.rerun()
+    elif st.session_state.get("chat_request_phase") == "processing":
         try:
             with st.container(key="conversation_pending_answer"):
                 _record_and_render_exchange(queued_question)
@@ -1602,6 +1642,7 @@ else:
             _save_current_chat()
         finally:
             st.session_state.chat_request_in_progress = False
+            st.session_state.chat_request_phase = "idle"
         st.rerun()
 
 if st.session_state.auth_view and (

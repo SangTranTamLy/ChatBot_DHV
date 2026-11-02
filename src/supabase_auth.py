@@ -14,6 +14,7 @@ import time
 import unicodedata
 from collections.abc import Mapping
 from typing import Any, Callable
+from urllib.parse import urlsplit
 
 import streamlit as st
 
@@ -40,6 +41,35 @@ def _read_setting(name: str) -> str | None:
     if value is None or not str(value).strip():
         value = os.getenv(name)
     return str(value).strip() if value is not None and str(value).strip() else None
+
+
+def get_password_recovery_redirect_url() -> str:
+    """Return a validated, deployment-configurable recovery callback URL."""
+
+    configured = _read_setting("SUPABASE_PASSWORD_RECOVERY_REDIRECT_URL")
+    redirect_url = configured or PASSWORD_RECOVERY_REDIRECT_URL
+    try:
+        parsed = urlsplit(redirect_url)
+        hostname = (parsed.hostname or "").casefold()
+    except ValueError as exc:
+        raise AuthConfigurationError(
+            "SUPABASE_PASSWORD_RECOVERY_REDIRECT_URL is invalid."
+        ) from exc
+
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise AuthConfigurationError(
+            "SUPABASE_PASSWORD_RECOVERY_REDIRECT_URL must be an absolute HTTP(S) URL."
+        )
+    if parsed.scheme == "http" and hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise AuthConfigurationError(
+            "Use HTTPS for non-local password recovery callback URLs."
+        )
+    return redirect_url
 
 
 def get_supabase_config() -> tuple[str, str] | None:
@@ -106,7 +136,7 @@ def validate_password(value: str) -> str:
 def validate_password_pair(password: str, confirmation: str) -> None:
     validate_password(password)
     if password != confirmation:
-        raise AuthServiceError("Mật khẩu nhập lại chưa khớp.")
+        raise AuthServiceError("Mật khẩu nhập chưa khớp.")
 
 
 def _create_client() -> Any:
@@ -147,9 +177,9 @@ def _token_state(session: Any) -> dict[str, Any]:
     if not access_token or not refresh_token:
         raise AuthServiceError("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.")
     expires_at = _value(session, "expires_at")
-    if expires_at is None:
+    if not expires_at:
         expires_in = _value(session, "expires_in")
-        expires_at = int(time.time()) + int(3600 if expires_in is None else expires_in)
+        expires_at = int(time.time()) + int(expires_in or 3600)
     return {
         "access_token": str(access_token),
         "refresh_token": str(refresh_token),
@@ -175,9 +205,9 @@ def _profile_name(client: Any, user_id: str) -> str:
     )
     data = _value(result, "data")
     name = _value(data, "display_name")
-    if not isinstance(name, str) or not name.strip():
+    if not isinstance(name, str) or not name:
         raise AuthServiceError("Không tải được hồ sơ tài khoản. Vui lòng thử đăng nhập lại.")
-    return name.strip()
+    return name
 
 
 def _authenticated_user(client: Any, user: Any) -> dict[str, str]:
@@ -185,18 +215,11 @@ def _authenticated_user(client: Any, user: Any) -> dict[str, str]:
     email = _value(user, "email")
     if not user_id or not email:
         raise AuthServiceError("Không xác nhận được tài khoản. Vui lòng đăng nhập lại.")
-    authenticated = {
+    return {
         "id": str(user_id),
         "name": _profile_name(client, str(user_id)),
         "email": str(email).strip().lower(),
     }
-    # Supabase app_metadata can only be changed through trusted admin-side
-    # operations. Never use user_metadata as a permission source: users can
-    # edit it themselves through Auth APIs.
-    app_metadata = _value(user, "app_metadata", {})
-    if isinstance(app_metadata, Mapping) and app_metadata.get("role") == "admin":
-        authenticated["role"] = "admin"
-    return authenticated
 
 
 def _safe_sign_out(client: Any) -> None:
@@ -313,9 +336,8 @@ def change_password(tokens: Mapping[str, Any], current_password: str,
 def request_password_recovery(email: str) -> bool:
     """Request a reset email without revealing whether the account exists.
 
-    The fixed local redirect is intentionally not caller-controlled. Supabase
-    returns successfully for unknown addresses without sending an email, so
-    those requests do not consume the project's email-send quota.
+    The callback is read from trusted server configuration and validated before
+    it is sent to Supabase. Unknown-address requests keep the same response.
     """
 
     clean_email = validate_email(email)
@@ -323,7 +345,7 @@ def request_password_recovery(email: str) -> bool:
         client = _create_client()
         client.auth.reset_password_for_email(
             clean_email,
-            {"redirect_to": PASSWORD_RECOVERY_REDIRECT_URL},
+            {"redirect_to": get_password_recovery_redirect_url()},
         )
         return True
     except AuthConfigurationError:

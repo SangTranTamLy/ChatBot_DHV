@@ -12,9 +12,11 @@ from typing import Mapping
 from langchain_core.documents import Document
 
 from src.chatbot.evidence import _clean_context_text
+from src.chatbot.multi_issue import _retrieval_subplan_for_issue
 from src.chatbot.rag_chain import ask_chatbot
 from src.chatbot.query_analysis import ConversationState, analyze_question, route_question
-from src.config.settings import settings
+from src.config.settings import Settings, settings
+from src.ingestion.embeddings import resolve_embedding_config
 from src.ingestion.loader import load_verified_documents
 from src.ingestion.splitter import split_documents
 from src.retrieval.retriever import DHVRetriever
@@ -59,12 +61,18 @@ class OfflineCorpusStore:
     """
 
     chunks: tuple[Document, ...] = ()
+    embedding_config = resolve_embedding_config(settings_obj=settings)
 
     class Collection:
         def count(self) -> int:
             return len(OfflineCorpusStore.chunks)
 
     _collection = Collection()
+    _collection.metadata = {
+        "embedding_backend": embedding_config.backend,
+        "embedding_model": embedding_config.model,
+        "embedding_dimension": 3,
+    }
 
     def __init__(self, **_: object) -> None:
         pass
@@ -160,49 +168,119 @@ class EvidenceEchoLLM:
         return _clean_context_text(context) if context else ""
 
 
-def _retriever() -> DHVRetriever:
-    processed = Path(__file__).resolve().parents[1] / "data" / "processed"
+def _retriever(*, settings_obj: Settings = settings) -> DHVRetriever:
+    processed = Path(settings_obj.processed_data_dir)
     OfflineCorpusStore.chunks = tuple(split_documents(load_verified_documents(processed).documents))
+    embedding_config = resolve_embedding_config(settings_obj=settings_obj)
+    OfflineCorpusStore._collection.metadata = {
+        "embedding_backend": embedding_config.backend,
+        "embedding_model": embedding_config.model,
+        "embedding_dimension": 3,
+    }
+
+    class OfflineEmbeddings:
+        @staticmethod
+        def embed_query(_: str) -> list[float]:
+            return [0.0, 0.0, 0.0]
+
     return DHVRetriever(
-        settings_obj=settings,
+        settings_obj=settings_obj,
         store_factory=OfflineCorpusStore,
-        embedding_factory=lambda **_: object(),
+        embedding_factory=lambda **_: OfflineEmbeddings(),
     )
 
 
-def _retrieve_for_case(retriever: DHVRetriever, case: EvaluationCase) -> object:
-    state = ConversationState.from_value(case.state, default_year=settings.target_year)
-    analysis = analyze_question(case.question, state, default_year=settings.target_year)
-    plan = route_question(analysis, state, target_year=settings.target_year)
+def _retrieve_for_case(
+    retriever: DHVRetriever,
+    case: EvaluationCase,
+    *,
+    top_k: int | None = None,
+    settings_obj: Settings = settings,
+) -> object:
+    state = ConversationState.from_value(case.state, default_year=settings_obj.target_year)
+    analysis = analyze_question(case.question, state, default_year=settings_obj.target_year)
+    plan = route_question(analysis, state, target_year=settings_obj.target_year)
     if not plan.categories or plan.needs_clarification:
         return ()
+    if analysis.intent == "MULTI_ISSUE" and plan.subplans:
+        groups: list[list[Document]] = []
+        retrieval_top_k = max(1, int(top_k or settings_obj.retriever_top_k))
+        for subplan in plan.subplans:
+            subquery = subplan.issue_question or subplan.retrieval_query
+            if not subquery or not subplan.categories or subplan.needs_clarification:
+                continue
+            retrieval_subplan = _retrieval_subplan_for_issue(subplan)
+            result = retriever.retrieve_with_audit(
+                subquery,
+                categories=subplan.categories,
+                retrieval_query=subplan.retrieval_query,
+                entity_filters=retrieval_subplan.entity_filters,
+                data_roles=subplan.data_roles,
+                top_k=retrieval_top_k,
+            )
+            groups.append(list(getattr(result, "documents", result) or ()))
+
+        # Production retrieves each issue independently. Interleave their ranks
+        # so a compound question's global top-k metric gives every issue a turn.
+        merged: list[Document] = []
+        seen_ids: set[str] = set()
+        while len(merged) < retrieval_top_k:
+            added = False
+            for group in groups:
+                if len(merged) >= retrieval_top_k:
+                    break
+                while group:
+                    document = group.pop(0)
+                    chunk_id = str(document.metadata.get("chunk_id") or "")
+                    identity = chunk_id or f"{document.metadata!r}:{document.page_content}"
+                    if identity in seen_ids:
+                        continue
+                    seen_ids.add(identity)
+                    merged.append(document)
+                    added = True
+                    break
+            if not added:
+                break
+        return merged
     return retriever.retrieve_with_audit(
         case.question,
         categories=plan.categories,
         retrieval_query=plan.retrieval_query,
         entity_filters=plan.entity_filters,
         data_roles=plan.data_roles,
+        top_k=top_k,
     )
 
 
-def run_evaluation(split: str = "all", *, top_k: int = 5) -> dict[str, object]:
+def run_evaluation(
+    split: str = "all",
+    *,
+    top_k: int = 5,
+    settings_obj: Settings = settings,
+) -> dict[str, object]:
     """Run intent, retrieval and answer contract metrics for one fixed split."""
 
     dataset_report = validate_dataset()
     cases = load_cases(split)
-    retriever = _retriever()
+    effective_top_k = max(1, int(top_k))
+    retriever = _retriever(settings_obj=settings_obj)
     intent_report = evaluate_intents(
         cases,
         lambda case: analyze_question(
             case.question,
-            ConversationState.from_value(case.state, default_year=settings.target_year),
-            default_year=settings.target_year,
+            ConversationState.from_value(case.state, default_year=settings_obj.target_year),
+            default_year=settings_obj.target_year,
         ).intent,
     )
     retrieval_report = evaluate_retrieval(
         cases,
-        lambda case: _retrieve_for_case(retriever, case),
-        top_k=top_k,
+        lambda case: _retrieve_for_case(
+            retriever,
+            case,
+            top_k=effective_top_k,
+            settings_obj=settings_obj,
+        ),
+        top_k=effective_top_k,
     )
 
     llm = EvidenceEchoLLM()
@@ -213,6 +291,7 @@ def run_evaluation(split: str = "all", *, top_k: int = 5) -> dict[str, object]:
             retriever=retriever,
             llm=llm,
             conversation_state=case.state,
+            settings_obj=settings_obj,
         )
 
     answer_report = evaluate_answers(cases, answer_case)
