@@ -422,16 +422,37 @@ div[class*="st-key-answer_sources_"] [data-testid="stMarkdownContainer"] p {
     overflow-x: auto;
     scrollbar-width: none;
 }
-div[class*="st-key-answer_sources_"] [data-testid="stMarkdownContainer"] p::-webkit-scrollbar,
-div[class*="st-key-answer_followups_"]::-webkit-scrollbar { display: none; }
+div[class*="st-key-answer_sources_"] [data-testid="stMarkdownContainer"] p::-webkit-scrollbar { display: none; }
 div[class*="st-key-answer_sources_"] a { color: #d71920; text-underline-offset: 2px; }
 div[class*="st-key-answer_sources_"] a:hover { color: #a90f18; }
 div[class*="st-key-answer_followups_"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: .4rem !important;
     flex-wrap: nowrap !important;
     overflow-x: auto;
-    scrollbar-width: none;
-    padding-bottom: .2rem;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #9aa9be #e7edf5;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 .05rem .35rem;
+}
+div[class*="st-key-answer_followups_"]::-webkit-scrollbar {
+    display: block;
+    height: 7px;
+}
+div[class*="st-key-answer_followups_"]::-webkit-scrollbar-track {
+    border-radius: 999px;
+    background: #e7edf5;
+}
+div[class*="st-key-answer_followups_"]::-webkit-scrollbar-thumb {
+    border: 1px solid #e7edf5;
+    border-radius: 999px;
+    background: #9aa9be;
+}
+div[class*="st-key-answer_followups_"]::-webkit-scrollbar-thumb:hover {
+    background: #71839c;
 }
 div[class*="st-key-answer_followups_"] [data-testid="stButton"] {
     width: auto !important;

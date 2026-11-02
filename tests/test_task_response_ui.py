@@ -56,7 +56,7 @@ class TaskResponseRegressionTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["answer_plan"]["mode"], "DIRECT_SHORT")
-        self.assertFalse(llm.prompts)
+        self.assertTrue(llm.prompts)
         self.assertIn("720", result["answer"])
         self.assertIn("600", result["answer"])
         self.assertIn("không phải kết luận trúng tuyển", result["answer"])
@@ -82,7 +82,37 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertIn("Học phí HKI (10 tín chỉ)", result["answer"])
         self.assertIn("12.500.000 đồng", result["answer"])
         self.assertNotIn("Tổng chi phí học kỳ I: 14.250.000 đồng", result["answer"])
-        self.assertFalse(llm.prompts)
+        self.assertTrue(llm.prompts)
+
+    def test_calculated_tuition_is_sent_as_a_verified_fact_to_the_common_composer(self) -> None:
+        class ExactCalculationLLM:
+            def __init__(self) -> None:
+                self.prompts: list[str] = []
+
+            def generate(self, prompt: str) -> str:
+                self.prompts.append(prompt)
+                return (
+                    "Học phí là 1.250.000 đồng/tín chỉ; 12 tín chỉ tương ứng "
+                    "15.000.000 đồng tiền học, chưa gồm khoản thu khác và chưa trừ học bổng."
+                )
+
+        llm = ExactCalculationLLM()
+        result = ask_chatbot(
+            "Học phí 12 tín chỉ hết bao nhiêu?",
+            retriever=_retriever(),
+            llm=llm,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("15.000.000", result["answer"])
+        self.assertLessEqual(len(llm.prompts), 2)
+        self.assertEqual(
+            result["trace"].get("response_composer", {}).get("status"),
+            "composed",
+            str(result["trace"].get("response_composer")),
+        )
+        self.assertIn("tuition_calculation", llm.prompts[0])
+        self.assertIn("12 tín chỉ tương ứng 15.000.000", llm.prompts[0])
 
     def test_verified_scholarship_policy_is_structured_without_generation(self) -> None:
         class InvalidLocalLLM(LocalLLM):
@@ -103,7 +133,7 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertGreaterEqual(str(result["answer"]).count("- "), 3)
         self.assertIn("50%", result["answer"])
-        self.assertFalse(llm.prompts)
+        self.assertTrue(llm.prompts)
 
     def test_followup_lists_conditions_for_each_scholarship_without_mixing_financial_files(self) -> None:
         result, llm = self._ask("điều kiện của những học bổng đó là gì")
@@ -135,7 +165,7 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertNotIn("12.500.000", answer)
         self.assertNotIn("23.250.000", answer)
         self.assertNotIn("DHV 2026 - Chính sách học bổng DHV 2026", answer)
-        self.assertFalse(llm.prompts)
+        self.assertTrue(llm.prompts)
 
     def test_named_scholarship_conditions_are_scoped_to_that_policy(self) -> None:
         result, llm = self._ask("Học bổng Tài năng điều kiện thế nào?")
@@ -146,7 +176,7 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertIn("thành tích nổi bật", answer)
         self.assertNotIn("Học bổng tuyển sinh", answer)
         self.assertNotIn("Học bổng Đôi bạn cùng tiến", answer)
-        self.assertFalse(llm.prompts)
+        self.assertTrue(llm.prompts)
 
     def test_formula_does_not_turn_into_a_threshold_answer(self) -> None:
         result, _ = self._ask("Cách tính điểm xét tuyển học bạ")
@@ -199,7 +229,8 @@ class TaskResponseSuggestionRenderingTests(unittest.TestCase):
                 "role": "assistant",
                 "content": (
                     "Câu trả lời trước.\n\n"
-                    "Nguồn tham khảo: [Cổng tuyển sinh DHV](https://tuyensinh.dhv.edu.vn/)"
+                    "- :material/link: **Nguồn tham khảo:** "
+                    "[Cổng tuyển sinh DHV](https://tuyensinh.dhv.edu.vn/)"
                 ),
                 "status": "ok",
                 "related_questions": ["Thời tiết hôm nay?"],

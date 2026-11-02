@@ -457,7 +457,7 @@ class TaskFGenerationTests(unittest.TestCase):
         ):
             with self.subTest(method=method):
                 self.assertIn(method.casefold(), answer.casefold())
-        self.assertEqual(llm.prompts, [])
+        self.assertTrue(llm.prompts)
 
     def test_method_conditions_followup_answers_all_methods_without_treating_just_now_as_current(self) -> None:
         llm = EchoEvidenceLLM()
@@ -544,7 +544,7 @@ class TaskFGenerationTests(unittest.TestCase):
         self.assertIn("tổng điểm 03 môn", second["answer"].casefold())
         self.assertIn("Toán + 02 môn có điểm cao nhất", second["answer"])
         self.assertIn("Ngữ văn + 02 môn có điểm cao nhất", second["answer"])
-        self.assertEqual(llm.prompts, [])
+        self.assertTrue(llm.prompts)
         self.assertEqual(
             second["sources"],
             [{
@@ -593,7 +593,7 @@ class TaskFGenerationTests(unittest.TestCase):
                 for item in scholarship_selected
             )
         )
-        self.assertEqual(llm.prompts, [])
+        self.assertTrue(llm.prompts)
         # A semester total is not a per-major tuition quote; show the verified
         # per-credit rate instead of implying 10 credits is universal.
         tuition_answer = result["answer"].split("### Học phí\n", 1)[1].split("\n### ", 1)[0]
@@ -635,7 +635,7 @@ class TaskFGenerationTests(unittest.TestCase):
                 for item in selected
             )
         )
-        self.assertEqual(llm.prompts, [])
+        self.assertTrue(llm.prompts)
 
     def test_advisory_does_not_generate_personal_fit_without_verified_evidence(self) -> None:
         llm = SequenceLLM(
@@ -804,7 +804,7 @@ class TaskFGenerationTests(unittest.TestCase):
             llm=llm,
         )
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(len(llm.prompts), 0)
+        self.assertTrue(llm.prompts)
         self.assertEqual(
             result["trace"]["deterministic_branch"],
             "application_threshold_lookup",

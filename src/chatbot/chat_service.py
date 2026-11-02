@@ -26,6 +26,7 @@ from .conversational import detect_smalltalk
 from .query_analysis import ConversationState
 from .rag_chain import ask_chatbot as _ask_chatbot
 from .history_context import bounded_history, resolve_history_question
+from .facts import ResolvedContext
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,14 @@ class ChatService:
 
         # Stage 1: Fallback to full grounded RAG pipeline
         resolution = resolve_history_question(norm_q, history, settings_obj=self.settings, llm=self.llm)
+        resolved_context = ResolvedContext(
+            original_question=norm_q,
+            resolved_question=resolution.question,
+            status="AMBIGUOUS" if resolution.clarification else "RESOLVED",
+            method=resolution.method,
+            entities=state.to_dict(),
+            clarification=resolution.clarification,
+        )
         if resolution.clarification:
             state_dict = state.to_dict()
             return {
@@ -127,6 +136,7 @@ class ChatService:
                         "method": resolution.method,
                         "messages_used": len(history),
                     },
+                    "resolved_context": resolved_context.to_dict(),
                     "is_follow_up": resolution.method != "independent_question",
                 },
                 "latency_ms": (time.perf_counter() - t0) * 1000,
@@ -137,6 +147,7 @@ class ChatService:
             llm=self.llm,
             settings_obj=self.settings,
             conversation_state=state,
+            resolved_context=resolved_context.to_dict(),
         )
         if history:
             trace = payload.get("trace")

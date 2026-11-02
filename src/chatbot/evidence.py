@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from langchain_core.documents import Document
 
 from src.config.settings import Settings, settings
+from .facts import VerifiedFact, facts_from_chunks
 
 
 _URL_RE = re.compile(r"(?:https?://|www\.)[^\s)>]+", re.IGNORECASE)
@@ -109,6 +110,7 @@ class EvidenceBundle:
     sources: tuple[dict[str, str], ...]
     score_facts: tuple[dict[str, object], ...] = ()
     entity_relations: tuple[dict[str, str], ...] = ()
+    facts: tuple[VerifiedFact, ...] = ()
 
     @property
     def is_usable(self) -> bool:
@@ -224,6 +226,10 @@ def build_evidence(
         sources=_backend_sources(chunks),
         score_facts=score_facts,
         entity_relations=entity_relations,
+        # Keep normalized facts for every selected verified source. ``chunks``
+        # below are only the bounded excerpts that fit the LLM context window;
+        # truncating the fact catalog here would silently drop verified rows.
+        facts=facts_from_chunks(fact_chunks),
     )
 
 
@@ -974,6 +980,13 @@ def _fact_provenance(chunk: EvidenceChunk) -> dict[str, object]:
         "status": metadata.get("status"),
         "source_status": metadata.get("status"),
         "year": metadata.get("year"),
+        "document_id": metadata.get("document_id") or metadata.get("structured_document_id"),
+        "structured_record_id": metadata.get("structured_record_id"),
+        "chunk_id": metadata.get("chunk_id"),
+        "page": metadata.get("page"),
+        "title": metadata.get("title"),
+        "source_url": metadata.get("source_url"),
+        "source_sha256": metadata.get("source_sha256"),
     }
 
 

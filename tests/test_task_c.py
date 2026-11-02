@@ -293,7 +293,7 @@ class TaskCTests(unittest.TestCase):
         self.assertIn("đăng ký vào DHV và ngành học mong muốn", result["answer"])
         self.assertIn("13/08/2026", result["answer"])
         self.assertNotIn("các bước", result["answer"].casefold())
-        self.assertFalse(llm.called)
+        self.assertTrue(llm.called)
 
     def test_contact_validator_rejects_unverified_phone_and_retries_from_evidence(self) -> None:
         category = "co_so_lien_he"
@@ -315,7 +315,7 @@ class TaskCTests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertIn("0287 1000 888", result["answer"])
         self.assertNotIn("0909 999 999", result["answer"])
-        self.assertEqual(llm.prompts, [])
+        self.assertEqual(len(llm.prompts), 2)
 
     def test_fact_only_validator_rejects_unverified_date_and_retries(self) -> None:
         category = "dang_ky_xet_tuyen"
@@ -352,7 +352,7 @@ class TaskCTests(unittest.TestCase):
         self.assertEqual(result["sources"], [{"title": "Học phí DHV 2026", "url": SOURCE_URL}])
         self.assertNotIn("fake.invalid", result["answer"])
         self.assertIn("1.250.000 đồng/tín chỉ", result["answer"])
-        self.assertFalse(llm.called)
+        self.assertTrue(llm.called)
 
     def test_tuition_validator_does_not_relabel_total_cost_as_tuition(self) -> None:
         documents = [
@@ -367,6 +367,8 @@ class TaskCTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "no_data")
         self.assertEqual(result["sources"], [])
+        # No verified fee row matched this vague request, so the common
+        # composer is intentionally bypassed instead of guessing a value.
         self.assertFalse(llm.prompts)
 
     def test_threshold_answer_preserves_numeric_semantics_from_evidence(self) -> None:
@@ -447,7 +449,7 @@ class TaskCTests(unittest.TestCase):
         self.assertEqual(result_2024["trace"]["evidence_count"], 1)
         self.assertIn("1.100.000", result_2024["answer"])
         self.assertNotIn("1.250.000", result_2024["answer"])
-        self.assertFalse(llm_2024.called)
+        self.assertTrue(llm_2024.called)
 
         retriever_2026 = RecordingRetriever(
             [
@@ -647,7 +649,7 @@ class TaskCTests(unittest.TestCase):
     def test_prompt_requires_context_only_and_no_urls(self) -> None:
         prompt = build_rag_prompt("Học phí DHV 2026", "Học phí là 1.250.000 đồng/tín chỉ.")
 
-        self.assertIn("CHỈ DÙNG CONTEXT", prompt)
+        self.assertIn("CHỈ DÙNG VERIFIED_FACTS và CONTEXT", prompt)
         self.assertIn("Không tạo, đoán hoặc chép URL", prompt)
         self.assertIn("điểm sàn", prompt)
         self.assertIn("Học phí là 1.250.000", prompt)

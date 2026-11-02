@@ -150,6 +150,11 @@ class StreamlitAppTests(unittest.TestCase):
                         "chỉ hỗ trợ các câu hỏi liên quan đến tuyển sinh của trường."
                     ),
                     "status": "out_of_scope",
+                    "suggested_questions": [
+                        "DHV hiện có những ngành đào tạo nào năm 2026?",
+                        "Các phương thức xét tuyển DHV năm 2026 gồm những gì?",
+                        "Học phí và học bổng DHV năm 2026 có thông tin gì?",
+                    ],
                 },
             ],
         )
@@ -158,6 +163,14 @@ class StreamlitAppTests(unittest.TestCase):
         )
         self.assertEqual(at.session_state["state"], at.session_state["conversation_state"])
         self.assertEqual(len(at.pills), 0)
+        self.assertEqual(
+            [button.label for button in at.button if button.key.startswith("answer_followup_")],
+            [
+                "DHV hiện có những ngành đào tạo nào năm 2026?",
+                "Các phương thức xét tuyển DHV năm 2026 gồm những gì?",
+                "Học phí và học bổng DHV năm 2026 có thông tin gì?",
+            ],
+        )
 
     def test_starter_question_sends_its_full_query_to_chat_service(self) -> None:
         with patch(

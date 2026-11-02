@@ -15,7 +15,7 @@ from .admission_answers import (
 from .answer_planner import AnswerPlan
 from .catalog_formatters import _deterministic_recommendation_answer
 from .evidence_utils import _evidence_text_lines
-from .output_validator import validate_model_answer
+from .output_validator import FALLBACK_ANSWER, validate_model_answer
 from .query_analysis import QueryAnalysis, normalize_question
 from .scholarship_formatters import _evidence_scholarship_answer
 from .school_info_formatters import _evidence_overview_answer
@@ -48,8 +48,18 @@ _RETRYABLE_VALIDATION_REASONS = frozenset(
         "institution_mismatch",
         "official_status_claim",
         "requested_information_mismatch",
+        "answer_too_long",
+        "context_echo",
+        "missing_score_comparison",
+        "wrong_score_comparison",
+        "major_catalog_missing",
+        "major_catalog_count_mismatch",
+        "major_catalog_code_mismatch",
+        "required_content_missing",
     }
 )
+
+_MAX_GENERATED_ANSWER_CHARS = 6000
 
 
 def _retry_prompt(
@@ -58,6 +68,7 @@ def _retry_prompt(
     facts: Any,
     evidence: Any,
     analysis: QueryAnalysis | None = None,
+    score_comparisons: Any = (),
 ) -> str:
     checklist = "; ".join(
         f"{fact.get('method')} → {fact.get('raw_value')}"
@@ -66,15 +77,24 @@ def _retry_prompt(
     )
     labeled_amounts: list[str] = []
     seen_amounts: set[str] = set()
-    for line in _evidence_text_lines(evidence):
-        normalized = normalize_question(line)
-        if not any(label in normalized for label in ("hoc phi", "tong chi phi")):
-            continue
-        if line not in seen_amounts:
-            seen_amounts.add(line)
-            labeled_amounts.append(line)
-            if len(labeled_amounts) == 4:
-                break
+    analysis_question = str(
+        getattr(analysis, "normalized_question", "")
+        or getattr(analysis, "question", "")
+        or ""
+    )
+    is_tuition_question = (
+        analysis is not None and getattr(analysis, "intent", None) == "HOI_HOC_PHI"
+    ) or any(marker in normalize_question(analysis_question) for marker in ("hoc phi", "tien hoc"))
+    if is_tuition_question:
+        for line in _evidence_text_lines(evidence):
+            normalized = normalize_question(line)
+            if not any(label in normalized for label in ("hoc phi", "tong chi phi")):
+                continue
+            if line not in seen_amounts:
+                seen_amounts.add(line)
+                labeled_amounts.append(line)
+                if len(labeled_amounts) == 4:
+                    break
     amount_instruction = ""
     if labeled_amounts:
         amount_instruction = (
@@ -114,6 +134,50 @@ def _retry_prompt(
                     + ", ".join(sorted(set(allowed_codes)))
                     + "."
                 )
+    comparison_instruction = ""
+    if score_comparisons and getattr(analysis, "intent", None) != "TU_VAN_CHON_NGANH":
+        required_comparisons = []
+        for comparison in score_comparisons:
+            method = str(comparison.get("method") or "")
+            label = {
+                "thpt": "thi tốt nghiệp THPT",
+                "hoc_ba": "học bạ THPT",
+                "dgnl": "ĐGNL",
+            }.get(method, "phương thức xét tuyển")
+            relation = "cao hơn hoặc bằng" if comparison.get("meets_threshold") else "thấp hơn"
+            required_comparisons.append(
+                f"{label}: điểm thí sinh {comparison.get('student_value')}; "
+                f"ngưỡng {comparison.get('threshold_value')}; kết luận đúng là {relation}."
+            )
+        if required_comparisons:
+            comparison_instruction = (
+                " Bắt buộc giữ nguyên từng phép so sánh điểm cá nhân sau đây, không bỏ "
+                "điểm thí sinh hoặc đổi quan hệ: " + " | ".join(required_comparisons)
+            )
+    major_catalog_instruction = ""
+    if analysis is not None and getattr(analysis, "intent", None) == "DANH_SACH_NGANH":
+        major_rows: list[str] = []
+        seen_major_rows: set[tuple[str, str]] = set()
+        for fact in getattr(evidence, "score_facts", ()) or ():
+            if (
+                str(fact.get("category") or "") != "nganh_dao_tao"
+                or not fact.get("major_name")
+                or not fact.get("major_code")
+                or str(fact.get("status") or fact.get("source_status") or "").casefold() != "verified"
+            ):
+                continue
+            identity = (str(fact["major_name"]), str(fact["major_code"]))
+            if identity in seen_major_rows:
+                continue
+            seen_major_rows.add(identity)
+            major_rows.append(f"{identity[0]} — mã ngành {identity[1]}")
+        if major_rows:
+            major_catalog_instruction = (
+                " Danh sách ngành đã xác minh phải giữ đủ từng cặp tên–mã dưới đây, "
+                "mỗi ngành đúng một lần; không thêm ngành hoặc mã khác: "
+                + " | ".join(major_rows)
+                + "."
+            )
     return (
         f"{prompt}\n\nBẢN NHÁP CẦN KIỂM TRA:\n{draft[:2000]}\n\n"
         "Hãy tạo lại câu trả lời chỉ từ CONTEXT và không nhắc tới từ CONTEXT hay "
@@ -122,8 +186,61 @@ def _retry_prompt(
         "không thêm số và không kết luận đậu/trượt."
         + amount_instruction
         + relation_instruction
+        + comparison_instruction
+        + major_catalog_instruction
         + "\n\nCÂU TRẢ LỜI MỚI:\n"
     )
+
+
+def _score_comparison_failure(
+    answer: str,
+    score_comparisons: Any,
+    analysis: QueryAnalysis,
+) -> str:
+    """Keep user-provided scores and deterministic comparison outcomes intact."""
+
+    if not score_comparisons or analysis.intent == "TU_VAN_CHON_NGANH":
+        return ""
+    folded = normalize_question(answer)
+    numeric_tokens = re.findall(r"(?<!\d)\d+(?:[.,]\d+)?(?!\d)", folded)
+    normalized_numbers = {
+        number.replace(",", ".").rstrip("0").rstrip(".")
+        if "." in number or "," in number
+        else number
+        for number in numeric_tokens
+    }
+
+    def number_is_present(value: object) -> bool:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return str(value) in numeric_tokens
+        expected = str(int(numeric)) if numeric.is_integer() else f"{numeric:g}"
+        return expected in normalized_numbers
+
+    for comparison in score_comparisons:
+        if not number_is_present(comparison.get("student_value")) or not number_is_present(
+            comparison.get("threshold_value")
+        ):
+            return "missing_score_comparison"
+        if comparison.get("meets_threshold"):
+            if not any(
+                marker in folded
+                for marker in (
+                    "cao hon hoac bang",
+                    "bang hoac cao hon",
+                    "cao hon nguong",
+                    "dat nguong",
+                    "dat muc toi thieu",
+                )
+            ):
+                return "wrong_score_comparison"
+        elif not any(
+            marker in folded
+            for marker in ("thap hon", "chua dat nguong", "duoi nguong")
+        ):
+            return "wrong_score_comparison"
+    return ""
 
 
 def _is_generation_artifact(answer: object) -> bool:
@@ -136,6 +253,31 @@ def _is_generation_artifact(answer: object) -> bool:
             "day la cac thong tin duoc cong bo",
         )
     )
+
+
+def _is_context_echo(answer: object, evidence: Any) -> bool:
+    """Reject long verbatim source dumps even when every copied number is valid."""
+
+    value = normalize_question(str(answer or ""))
+    answer_tokens = value.split()
+    if len(value) < 800 or len(answer_tokens) < 100:
+        return False
+    candidates = [str(getattr(evidence, "context", "") or "")]
+    candidates.extend(
+        str(getattr(chunk, "text", "") or "")
+        for chunk in (getattr(evidence, "chunks", ()) or ())
+    )
+    for candidate in candidates:
+        normalized_candidate = normalize_question(candidate)
+        candidate_tokens = set(normalized_candidate.split())
+        overlap = sum(token in candidate_tokens for token in answer_tokens)
+        if len(normalized_candidate) >= 400 and (
+            value in normalized_candidate
+            or normalized_candidate in value
+            or overlap / len(answer_tokens) >= 0.86
+        ):
+            return True
+    return False
 
 
 def _combination_is_verified(evidence: Any, combination: object) -> bool:
@@ -371,6 +513,7 @@ def _validated_generation(
     score_facts: Any,
     answer_plan: AnswerPlan,
     score_comparisons: Any = (),
+    required_phrases: Any = (),
     target_year: int = settings.target_year,
 ) -> dict[str, object]:
     raw_answer = active_llm.generate(prompt)
@@ -390,13 +533,15 @@ def _validated_generation(
     generated_answer = _advisory_score_echo(generated_answer, analysis)
     generated_answer = _remove_duplicate_major_code_bullets(generated_answer, analysis)
     generated_answer = _ensure_score_advisory_open_question(generated_answer, analysis)
-    validated = validate_model_answer(
+    validated = _validate_generated_answer(
         generated_answer,
-        evidence,
+        evidence=evidence,
         question=question,
         analysis=analysis,
+        score_comparisons=score_comparisons,
         target_year=target_year,
     )
+    validated = _check_required_phrases(validated, generated_answer, required_phrases)
     reason = validated.get("_validation_reason")
     retry_advisory_fallback = (
         reason == "model_fallback" and analysis.intent == "TU_VAN_CHON_NGANH"
@@ -405,9 +550,23 @@ def _validated_generation(
         reason in _RETRYABLE_VALIDATION_REASONS or retry_advisory_fallback
     ):
         try:
-            retry_answer = active_llm.generate(
-                _retry_prompt(prompt, raw_answer, score_facts, evidence, analysis)
-            )
+            retry_prompt = _retry_prompt(
+                    prompt,
+                    raw_answer,
+                    score_facts,
+                    evidence,
+                    analysis,
+                    score_comparisons,
+                )
+            required = [str(phrase).strip() for phrase in required_phrases or () if str(phrase).strip()]
+            if required:
+                retry_prompt += (
+                    "\n\nBẢN ĐÁP ÁN TRƯỚC ĐÃ BỎ SÓT NỘI DUNG BẮT BUỘC. "
+                    "Ở lần trả lời này, hãy bao gồm đầy đủ các cụm/tiêu đề sau, "
+                    "không bỏ bất kỳ mục nào: "
+                    + "; ".join(required)
+                )
+            retry_answer = active_llm.generate(retry_prompt)
         except Exception:
             # A retryable draft must not turn into a generic runtime error when
             # a local model/adapter cannot produce the second draft. Return the
@@ -429,11 +588,68 @@ def _validated_generation(
         retry_answer = _advisory_score_echo(retry_answer, analysis)
         retry_answer = _remove_duplicate_major_code_bullets(retry_answer, analysis)
         retry_answer = _ensure_score_advisory_open_question(retry_answer, analysis)
-        validated = validate_model_answer(
+        validated = _validate_generated_answer(
             retry_answer,
-            evidence,
+            evidence=evidence,
             question=question,
             analysis=analysis,
+            score_comparisons=score_comparisons,
             target_year=target_year,
         )
+        validated = _check_required_phrases(validated, retry_answer, required_phrases)
     return validated
+
+
+def _check_required_phrases(
+    validated: dict[str, object], answer: str, required_phrases: Any
+) -> dict[str, object]:
+    """Reject an otherwise grounded answer when it silently omits a required section."""
+
+    if validated.get("status") != "ok":
+        return validated
+    folded_answer = normalize_question(answer)
+    missing = [
+        str(phrase).strip()
+        for phrase in required_phrases or ()
+        if str(phrase).strip()
+        and normalize_question(str(phrase)) not in folded_answer
+    ]
+    if not missing:
+        return validated
+    return {
+        "answer": FALLBACK_ANSWER,
+        "sources": [],
+        "status": "no_data",
+        "_validation_reason": "required_content_missing",
+    }
+
+
+def _validate_generated_answer(
+    answer: str,
+    *,
+    evidence: Any,
+    question: str,
+    analysis: QueryAnalysis,
+    score_comparisons: Any,
+    target_year: int,
+) -> dict[str, object]:
+    if len(answer) > _MAX_GENERATED_ANSWER_CHARS:
+        reason = "answer_too_long"
+    elif _is_context_echo(answer, evidence):
+        reason = "context_echo"
+    else:
+        reason = _score_comparison_failure(answer, score_comparisons, analysis)
+    if reason:
+        return {
+            "answer": FALLBACK_ANSWER,
+            "sources": [],
+            "status": "no_data",
+            "_validation_reason": reason,
+        }
+    return validate_model_answer(
+        answer,
+        evidence,
+        question=question,
+        analysis=analysis,
+        target_year=target_year,
+    )

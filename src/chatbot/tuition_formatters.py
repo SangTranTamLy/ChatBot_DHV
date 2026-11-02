@@ -329,7 +329,10 @@ def answer_fee_request(
             f"Mức học phí năm {year} của DHV là {_money(int(per_credit))}/tín chỉ; "
             f"{fee_request.credits} tín chỉ tương ứng {_money(amount)} tiền học, chưa gồm khoản thu khác và chưa trừ học bổng."
         )
-        return _fee_result(answer, fee_request, answered={"tuition"})
+        # The requested total for this credit count has now been computed from
+        # the verified per-credit rate; expose it as answered coverage so the
+        # common composer does not treat its deterministic result as missing.
+        return _fee_result(answer, fee_request, answered={"tuition", "total"})
 
     asked_amount = _parse_vnd(question)
     if per_credit and asked_amount and any(marker in question for marker in ("bao nhieu tin chi", "may tin chi", "so tin chi")):

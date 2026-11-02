@@ -157,7 +157,7 @@ class TaskGCatalogTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(len(llm.prompts), 0)
+        self.assertTrue(llm.prompts)
         catalog = result["trace"]["catalog"]
         self.assertTrue(catalog["deterministic"])
         self.assertEqual(catalog["requested_major"], "Công nghệ thông tin")
@@ -184,7 +184,7 @@ class TaskGCatalogTests(unittest.TestCase):
         )
 
         self.assertEqual(result["status"], "ok")
-        self.assertEqual(len(llm.prompts), 0)
+        self.assertTrue(llm.prompts)
         self.assertEqual(result["trace"]["catalog"]["program_count"], 5)
         self.assertIn("có 5 chương trình đào tạo", result["answer"])
         self.assertNotIn("4", result["answer"])

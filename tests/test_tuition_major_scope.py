@@ -37,6 +37,53 @@ class TuitionEntityFilterTests(unittest.TestCase):
         general = _tuition("Học phí HKI (10 tín chỉ): 12.500.000 đồng")
         self.assertTrue(_entity_matches(general, CNTT, ("hoc_phi",)))
 
+    def test_schoolwide_admission_method_facts_pass_a_major_filter(self) -> None:
+        typed_method = Document(
+            page_content="DHV có các phương thức xét tuyển năm 2026.",
+            metadata={
+                "category": "phuong_thuc_xet_tuyen",
+                "record_type": "admission_method",
+            },
+        )
+        self.assertTrue(
+            _entity_matches(typed_method, CNTT, ("phuong_thuc_xet_tuyen",))
+        )
+
+        page_text = Document(
+            page_content="DHV có các phương thức xét tuyển năm 2026.",
+            metadata={
+                "category": "phuong_thuc_xet_tuyen",
+                "record_type": "page_text",
+            },
+        )
+        self.assertFalse(
+            _entity_matches(page_text, CNTT, ("phuong_thuc_xet_tuyen",))
+        )
+        self.assertTrue(
+            _entity_matches(
+                page_text,
+                {**CNTT, "schoolwide_admission_method_request": True},
+                ("phuong_thuc_xet_tuyen",),
+            )
+        )
+
+    def test_general_admission_page_does_not_leak_into_major_counselling(self) -> None:
+        law_conditions = Document(
+            page_content="Riêng ngành Luật và Luật Kinh tế cần đáp ứng điều kiện học lực.",
+            metadata={
+                "category": "phuong_thuc_xet_tuyen",
+                "record_type": "page_text",
+            },
+        )
+        counselling_categories = (
+            "nganh_dao_tao",
+            "nguong_dau_vao",
+            "phuong_thuc_xet_tuyen",
+        )
+        self.assertFalse(
+            _entity_matches(law_conditions, CNTT, counselling_categories)
+        )
+
     def test_other_major_specific_tuition_is_not_borrowed(self) -> None:
         cntt_only = _tuition("Học phí ngành Công nghệ thông tin: 15.000.000 đồng",
                              major_name="Công nghệ thông tin")

@@ -317,17 +317,51 @@ def _verified_admission_conditions_section(evidence: Any, *, target_year: int) -
         if start is None:
             continue
         section_lines: list[str] = []
-        for line in lines[start + 1 :]:
-            if re.match(r"^\d+\.\d+(?:\.\d+)*\.?\s", normalize_question(line)):
+        remaining_lines = lines[start + 1 :]
+        for index, line in enumerate(remaining_lines):
+            normalized_line = normalize_question(line)
+            next_line = (
+                normalize_question(remaining_lines[index + 1])
+                if index + 1 < len(remaining_lines)
+                else ""
+            )
+            is_subsection_heading = bool(
+                re.match(r"^\d+\.\d+(?:\.\d+)*\.?\s", normalized_line)
+            )
+            is_next_top_level_section = (
+                re.fullmatch(r"\d+", normalized_line)
+                and next_line.startswith(("cac phuong thuc xet tuyen", "chinh sach cong diem"))
+            ) or bool(
+                re.match(
+                    r"^\d+\s+(?:cac )?(?:phuong thuc xet tuyen|chinh sach cong diem)\b",
+                    normalized_line,
+                )
+            )
+            if is_subsection_heading or is_next_top_level_section:
                 break
             section_lines.append(line)
         blocks: list[str] = []
         current = ""
+        law_section_started = False
         for line in section_lines:
-            if re.match(r"^\d+\.\s+", line) or normalize_question(line).startswith("rieng doi voi"):
+            normalized_line = normalize_question(line)
+            is_law_intro = normalized_line.startswith("rieng doi voi")
+            is_law_bullet = law_section_started and bool(
+                re.match(r"^[•●▪◦*\-]\s+", line)
+            )
+            if (
+                is_law_intro
+                or re.match(r"^\d+\.\s+", line)
+                or is_law_bullet
+            ):
                 if current:
                     blocks.append(current.strip())
-                current = line
+                current = (
+                    re.sub(r"^[•●▪◦*\-]\s+", "", line).strip()
+                    if is_law_bullet
+                    else line
+                )
+                law_section_started = law_section_started or is_law_intro
             elif current:
                 current = f"{current} {line}".strip()
             else:
@@ -415,15 +449,13 @@ def _evidence_eligibility_answer(analysis: QueryAnalysis, evidence: Any) -> str 
     blocks = _verified_admission_conditions_section(evidence, target_year=target_year)
     if len(blocks) < 3:
         return None
-    general = [
-        block for block in blocks
-        if not normalize_question(block).startswith("rieng doi voi") and not re.match(r"^\d+\.\s+", block)
-    ]
     law_intro = next(
         (block for block in blocks if normalize_question(block).startswith("rieng doi voi")),
         None,
     )
-    law_conditions = [block for block in blocks if re.match(r"^\d+\.\s+", block)]
+    law_intro_index = blocks.index(law_intro) if law_intro is not None else len(blocks)
+    general = blocks[:law_intro_index]
+    law_conditions = blocks[law_intro_index + 1 :]
     if not general or not law_intro or len(law_conditions) < 2:
         return None
 

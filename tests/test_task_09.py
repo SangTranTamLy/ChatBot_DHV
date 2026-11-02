@@ -850,9 +850,9 @@ class Task09RoutingTests(unittest.TestCase):
                 multi_issue = result["trace"]["multi_issue"]
                 intents = [subplan["intent"] for subplan in multi_issue["subplans"]]
                 self.assertEqual(len(multi_issue["subplans"]), 4)
-                # Scholarship now has a deterministic evidence-backed route too; the
-                # overview without matching intro evidence must not trigger generation.
-                self.assertEqual(len(llm.prompts), 0)
+                # The final multi-issue answer uses the common composer for the
+                # supported scholarship facts and marks the missing overview safely.
+                self.assertGreater(len(llm.prompts), 0)
                 scholarship_index = intents.index("HOI_HOC_BONG")
                 self.assertEqual(multi_issue["statuses"][scholarship_index], "ok")
                 self.assertIn("học bổng", result["answer"].casefold())
@@ -960,7 +960,9 @@ class Task09RoutingTests(unittest.TestCase):
                 multi_issue = result["trace"]["multi_issue"]
                 intents = [subplan["intent"] for subplan in multi_issue["subplans"]]
                 overview_index = intents.index("SCHOOL_INFO")
-                self.assertEqual(llm.prompts, [])
+                # The merged answer is composed once from supported issue facts;
+                # the unverified school overview remains an explicit safe fallback.
+                self.assertGreater(len(llm.prompts), 0)
                 self.assertEqual(multi_issue["statuses"][overview_index], "no_data")
                 self.assertEqual(
                     multi_issue["evidence_boundaries"][overview_index],

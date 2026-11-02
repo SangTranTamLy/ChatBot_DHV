@@ -8,17 +8,17 @@ from typing import Any, Mapping
 from src.config.settings import Settings
 from src.models.local_llm import LocalLLM, OllamaError, OllamaUnavailableError, OllamaTimeoutError
 from src.retrieval.retriever import RetrieverEmbeddingError, VectorDatabaseError
-from src.prompts.rag_prompt import build_rag_prompt
 
 from .admission_answers import _evidence_enrollment_answer, _evidence_general_registration_answer
 from .answer_planner import plan_answer
 from .catalog_formatters import _candidate_values, _evidence_catalog_answer
+from .answer_composer import compose_verified_response
+from .facts import VerifiedFact
 from .evidence import (
     build_evidence,
     merge_evidence_bundles,
     select_evidence_documents,
 )
-from .generation_guards import _validated_generation
 from .official_links import _official_links_answer
 from .output_validator import FALLBACK_ANSWER, OLLAMA_OFFLINE_ANSWER, OLLAMA_TIMEOUT_ANSWER, VECTOR_DB_ERROR_ANSWER, validate_model_answer
 from .query_semantics import analyze_fee_request, enrollment_request
@@ -31,7 +31,6 @@ from .query_analysis import (
     deterministic_score_evaluation,
     enrich_analysis_from_evidence,
     normalize_question,
-    select_relevant_score_facts,
     update_conversation_state,
 )
 from .scholarship_formatters import (
@@ -141,6 +140,7 @@ def _ask_multi_issue(
     retriever: Any,
     llm: Any | None,
     settings_obj: Settings,
+    resolved_context: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Retrieve và trả lời từng issue độc lập rồi ghép lại theo thứ tự câu hỏi."""
 
@@ -155,7 +155,6 @@ def _ask_multi_issue(
     retrieved_document_counts: list[int] = []
     selected_evidence_counts: list[int] = []
     retrieval_call_count = 0
-    active_llm: Any | None = None
     effective_subplans: list[Any] = []
     for subplan in plan.subplans:
         subquery = subplan.issue_question or subplan.retrieval_query
@@ -472,40 +471,21 @@ def _ask_multi_issue(
             if catalog_result is not None:
                 sub_result = catalog_result
             else:
-                try:
-                    if active_llm is None:
-                        active_llm = (
-                            llm if llm is not None else LocalLLM(settings_obj=settings_obj)
-                        )
-                    relevant_score_facts = select_relevant_score_facts(
-                        sub_analysis,
-                        evidence.score_facts,
-                    )
-                    prompt = build_rag_prompt(
-                        subquery,
-                        evidence.context,
-                        intent=sub_analysis.intent,
-                        entities=sub_analysis.entities,
-                        conversation_state=state.to_dict(),
-                        answer_plan=sub_answer_plan,
-                        score_facts=relevant_score_facts,
-                        score_comparisons=score_comparisons,
-                        entity_relations=evidence.entity_relations,
-                    )
-                    sub_result = _validated_generation(
-                        active_llm=active_llm,
-                        prompt=prompt,
-                        evidence=evidence,
-                        question=subquery,
-                        analysis=sub_analysis,
-                        score_facts=relevant_score_facts,
-                        answer_plan=sub_answer_plan,
-                        score_comparisons=score_comparisons,
-                        target_year=settings_obj.target_year,
-                    )
-                    sub_result.pop("_validation_reason", None)
-                except OllamaError as exc:
-                    sub_result = _issue_failure(exc)
+                # Keep the per-issue step deterministic: collect source-backed
+                # text for an offline fallback, then let the one shared composer
+                # answer the complete question after all evidence is merged.
+                excerpt_parts = [
+                    str(chunk.text).replace("\\n", "\n").strip()
+                    for chunk in evidence.chunks[:3]
+                    if str(chunk.text).strip()
+                ]
+                excerpt = "\n".join(excerpt_parts)[:1200]
+                sub_result = {
+                    "answer": excerpt or FALLBACK_ANSWER,
+                    "sources": [dict(source) for source in evidence.sources],
+                    "status": "ok" if excerpt and evidence.is_usable else "no_data",
+                    "evidence_boundary": None if excerpt else "no_relevant_fact_excerpt",
+                }
         sub_result["answer_plan"] = sub_answer_plan.to_dict()
         sub_result["intent"] = subplan.intent
         sub_result["request_type"] = sub_analysis.entities.get("request_type")
@@ -611,8 +591,9 @@ def _ask_multi_issue(
     }
     trace["score_comparisons"] = []
     trace["score_engine"] = score_evaluations
-    return _attach_answer_plan({
-        "answer": "\n\n".join(answer_sections) or FALLBACK_ANSWER,
+    answer = "\n\n".join(answer_sections) or FALLBACK_ANSWER
+    result = {
+        "answer": answer,
         "sources": _dedupe_sources(sub_results),
         "status": status,
         "partial": partial_response,
@@ -620,4 +601,125 @@ def _ask_multi_issue(
         "state": next_state.to_dict(),
         "conversation_state": next_state.to_dict(),
         "trace": trace,
-    }, merged_answer_plan)
+    }
+    if status == "ok" and merged_evidence.is_usable:
+        raw_context = dict(resolved_context or {})
+        original_question = str(raw_context.get("original_question") or query)
+        raw_context.setdefault("resolved_question", query)
+        raw_context.setdefault("status", "RESOLVED")
+        raw_context["subquestions"] = [
+            str(subplan.issue_entities.get("issue_original_question") or subplan.issue_question or subplan.retrieval_query)
+            for subplan in effective_subplans
+        ]
+        required_multi_phrases: list[str] = []
+        required_sections: list[str] = []
+        for section, sub_result in zip(answer_sections, sub_results):
+            heading, _, body = section.partition("\n")
+            heading_text = heading.removeprefix("### ").strip()
+            if heading_text:
+                required_sections.append(heading_text)
+                required_multi_phrases.append(heading_text)
+            if str(sub_result.get("status") or "") != "ok" and body.strip():
+                required_multi_phrases.append(body.strip())
+        raw_context["required_sections"] = required_sections
+        issue_status_facts: list[VerifiedFact] = []
+        for index, (subplan, sub_result) in enumerate(
+            zip(effective_subplans, sub_results), start=1
+        ):
+            issue_question = str(
+                subplan.issue_entities.get("issue_original_question")
+                or subplan.issue_question
+                or subplan.retrieval_query
+            )
+            issue_key = f"issue_{index}"
+            coverage = sub_result.get("fee_coverage")
+            issue_bundle = evidence_bundles[index - 1]
+            source_fact = next(
+                (
+                    fact
+                    for fact in issue_bundle.facts
+                    if fact.status == "VERIFIED" and fact.provenance is not None
+                ),
+                None,
+            )
+            if sub_result.get("status") == "ok" and source_fact is not None:
+                issue_status_facts.append(
+                    VerifiedFact(
+                        fact_id=f"{issue_key}_verified_result",
+                        fact_type=f"verified_{str(subplan.intent).casefold()}",
+                        value=str(sub_result.get("answer") or ""),
+                        subject={"issue_id": issue_key, "question": issue_question},
+                        academic_year=source_fact.academic_year,
+                        status="VERIFIED",
+                        attributes={
+                            "validated_module_result": True,
+                            "answered_topics": list(
+                                coverage.get("answered_topics") or ()
+                            ) if isinstance(coverage, Mapping) else [],
+                        },
+                        provenance=source_fact.provenance,
+                    )
+                )
+            if isinstance(coverage, Mapping):
+                missing_topics = list(coverage.get("missing_topics") or ())
+                ambiguous_topics = list(coverage.get("ambiguous_topics") or ())
+                if missing_topics or ambiguous_topics or sub_result.get("partial"):
+                    issue_status_facts.append(
+                        VerifiedFact(
+                            fact_id=f"{issue_key}_coverage_status",
+                            fact_type="issue_coverage",
+                            value="Một phần dữ liệu được xác minh; phần còn thiếu không được suy đoán.",
+                            subject={"issue_id": issue_key, "question": issue_question},
+                            status="PARTIAL",
+                            attributes={
+                                "answered_topics": list(coverage.get("answered_topics") or ()),
+                                "missing_topics": missing_topics,
+                                "ambiguous_topics": ambiguous_topics,
+                            },
+                            reason="Thiếu hoặc mơ hồ dữ liệu cho một phần yêu cầu.",
+                        )
+                    )
+            if sub_result.get("status") != "ok":
+                issue_status_facts.append(
+                    VerifiedFact(
+                        fact_id=f"{issue_key}_missing",
+                        fact_type="issue_coverage",
+                        value="Chưa tìm thấy dữ kiện đã xác minh để trả lời phần này.",
+                        subject={"issue_id": issue_key, "question": issue_question},
+                        status="MISSING",
+                        attributes={"intent": str(subplan.intent)},
+                        reason="Không có bằng chứng đạt yêu cầu cho tiểu câu hỏi.",
+                    )
+                )
+        try:
+            composed = compose_verified_response(
+                active_llm=llm or LocalLLM(settings_obj=settings_obj),
+                question=query,
+                original_question=original_question,
+                resolved_context=raw_context,
+                analysis=analysis,
+                evidence=merged_evidence,
+                conversation_state=next_state.to_dict(),
+                answer_plan=merged_answer_plan,
+                score_facts=merged_evidence.score_facts,
+                score_comparisons=(),
+                entity_relations=merged_evidence.entity_relations,
+                additional_facts=issue_status_facts,
+                required_phrases=required_multi_phrases,
+                settings_obj=settings_obj,
+            )
+            if composed.get("status") == "ok" and str(composed.get("answer") or "").strip():
+                result["answer"] = composed["answer"]
+                trace["response_composer"] = {"status": "composed", "validator": "ok"}
+            else:
+                trace["response_composer"] = {
+                    "status": "safe_fallback",
+                    "validator": composed.get("status"),
+                    "reason": composed.get("_validation_reason"),
+                }
+        except Exception as exc:
+            trace["response_composer"] = {
+                "status": "safe_fallback",
+                "error_type": type(exc).__name__,
+            }
+    return _attach_answer_plan(result, merged_answer_plan)

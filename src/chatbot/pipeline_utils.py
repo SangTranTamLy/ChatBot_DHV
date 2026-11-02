@@ -368,6 +368,7 @@ def _retrieve(
                 and (
                     entity_filters.get("admission_combination_detail")
                     or entity_filters.get("admission_method")
+                    or entity_filters.get("schoolwide_admission_method_request")
                 )
             )
             or (

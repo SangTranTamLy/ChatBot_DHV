@@ -154,7 +154,7 @@ class Phase2ScopeAndScoreTests(unittest.TestCase):
         self.assertIn("15 điểm", str(result["answer"]))
         self.assertIn("18 điểm", str(result["answer"]))
         self.assertIn("600 điểm", str(result["answer"]))
-        self.assertEqual(llm.calls, 0)
+        self.assertGreater(llm.calls, 0)
 
     def test_personal_score_comparison_is_not_an_admission_decision(self) -> None:
         retriever = _RecordingRetriever(

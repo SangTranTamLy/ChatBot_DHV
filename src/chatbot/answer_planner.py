@@ -393,8 +393,10 @@ def _required_content(mode: str, intent: str) -> tuple[str, ...]:
     return ()
 
 
-def related_questions_for(analysis: object, *, limit: int = 6) -> tuple[str, ...]:
-    """Tạo nhóm ứng viên follow-up theo intent/entity, không gọi model."""
+def related_questions_for(
+    analysis: object, *, limit: int = 6, status: str = "ok"
+) -> tuple[str, ...]:
+    """Tạo nhóm follow-up theo câu hỏi, entity và trạng thái dữ liệu."""
 
     if limit <= 0:
         return ()
@@ -412,8 +414,33 @@ def related_questions_for(analysis: object, *, limit: int = 6) -> tuple[str, ...
         if question and question not in suggestions and "http://" not in question and "https://" not in question:
             suggestions.append(question)
 
+    if status == "clarification":
+        if "diem" in normalized or intent in {
+            "HOI_NGUONG_DAU_VAO",
+            "HOI_DIEM_TRUNG_TUYEN",
+            "HOI_XET_TUYEN_BO_SUNG",
+        }:
+            add(f"Điểm sàn DHV năm {year} là bao nhiêu?")
+            add(f"Điểm trúng tuyển DHV năm {year} là bao nhiêu?")
+            add(f"DHV có thông tin xét tuyển bổ sung năm {year} không?")
+        elif intent in {"HOI_NGANH", "HOI_CHUONG_TRINH", "TU_VAN_CHON_NGANH"}:
+            add("Bạn đang quan tâm đến ngành hoặc chương trình nào của DHV?")
+            add("Bạn thích lĩnh vực kinh tế, truyền thông, quản trị hay công nghệ?")
+            add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
+        else:
+            add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
+            add(f"Các phương thức xét tuyển DHV năm {year} gồm những gì?")
+            add(f"Học phí DHV năm {year} được tính như thế nào?")
+        return tuple(suggestions[:limit])
+
     if intent in {"OUT_OF_SCOPE", "NO_DATA"}:
-        return ()
+        # Even when the request is outside the corpus or too vague to classify,
+        # offer safe DHV topics the assistant can actually handle.
+        add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
+        add(f"Các phương thức xét tuyển DHV năm {year} gồm những gì?")
+        add(f"Học phí và học bổng DHV năm {year} có thông tin gì?")
+        add(f"Hồ sơ xét tuyển DHV năm {year} cần chuẩn bị gì?")
+        return tuple(suggestions[:limit])
     if intent == "GREETING":
         add(f"DHV hiện có những ngành đào tạo nào năm {year}?")
         add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
@@ -440,12 +467,32 @@ def related_questions_for(analysis: object, *, limit: int = 6) -> tuple[str, ...
         add(f"Mình có thể so sánh {' và '.join(candidates[:2])} theo cùng tiêu chí không?")
         add("Các chương trình đào tạo thuộc từng lựa chọn là gì?")
         add(f"Các phương thức xét tuyển DHV {year} gồm những gì?")
-    elif intent in {"DANH_SACH_NGANH", "DANH_SACH_CHUONG_TRINH"}:
-        add(f"Phương thức xét tuyển cho các ngành DHV {year} là gì?")
-        add(f"Học phí và học bổng DHV {year} có những thông tin nào?")
-        add(f"Các tổ hợp xét tuyển của DHV {year} gồm những gì?")
-        add(f"Điều kiện xét tuyển của các ngành DHV {year} ra sao?")
-        add("Có thể tìm hiểu chương trình đào tạo của một ngành cụ thể không?")
+    elif intent == "DANH_SACH_NGANH":
+        asks_count = _catalog_operation(analysis) == "COUNT" or any(
+            marker in normalized
+            for marker in ("bao nhieu nganh", "bao nhiu nganh", "may nganh", "so luong nganh", "tong so nganh")
+        )
+        if asks_count:
+            add("Bạn muốn xem danh sách đầy đủ các ngành DHV không?")
+            add(f"Các ngành DHV xét tuyển theo tổ hợp nào năm {year}?")
+            add("Bạn đang quan tâm nhóm ngành nào để mình tư vấn sát hơn?")
+            add(f"DHV có những chương trình đào tạo nào năm {year}?")
+            add(f"Điều kiện xét tuyển vào các ngành DHV năm {year} là gì?")
+            add("Mình có thể gợi ý ngành theo sở thích và tổ hợp môn của bạn không?")
+        else:
+            add("Bạn muốn tìm hiểu sâu về ngành nào trong danh sách?")
+            add(f"Các ngành DHV xét tuyển theo tổ hợp nào năm {year}?")
+            add(f"DHV có những chương trình đào tạo nào năm {year}?")
+            add("Bạn đang quan tâm nhóm ngành nào để mình tư vấn sát hơn?")
+            add(f"Điều kiện xét tuyển vào các ngành DHV năm {year} là gì?")
+            add("Mình có thể gợi ý ngành theo sở thích và tổ hợp môn của bạn không?")
+    elif intent == "DANH_SACH_CHUONG_TRINH":
+        add("Bạn muốn tìm hiểu chương trình thuộc ngành nào?")
+        if topic:
+            add(f"Ngành {topic} có những chương trình đào tạo nào?")
+            add(f"Các chương trình của ngành {topic} học những nội dung gì?")
+        add(f"Các ngành DHV xét tuyển theo tổ hợp nào năm {year}?")
+        add("Bạn đang quan tâm lĩnh vực nào để mình gợi ý chương trình phù hợp?")
     elif intent == "TU_VAN_CHON_NGANH":
         if combination:
             add(f"DHV có những ngành nào xét tổ hợp {combination} năm {year}?")
@@ -513,10 +560,18 @@ def plan_answer(
         evidence=evidence,
         deterministic=deterministic,
     )
-    if mode in {"NO_DATA", "OUT_OF_SCOPE", "CLARIFICATION"}:
-        related = ()
-    else:
-        related = related_questions_for(analysis, limit=related_limit)
+    followup_status = status
+    if mode == "CLARIFICATION":
+        followup_status = "clarification"
+    elif mode == "OUT_OF_SCOPE":
+        followup_status = "out_of_scope"
+    elif mode == "NO_DATA" and status == "ok":
+        followup_status = "no_data"
+    related = related_questions_for(
+        analysis,
+        limit=related_limit,
+        status=followup_status,
+    )
     reason = {
         "DIRECT_SHORT": "single_fact_or_deterministic_short_answer",
         "EXPLANATION": "explain_multiple_or_process_related_facts",

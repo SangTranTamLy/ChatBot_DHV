@@ -220,6 +220,9 @@ def validate_model_answer(
     catalog_failure = _program_catalog_failure(answer, evidence, question, analysis)
     if catalog_failure:
         return _failed(catalog_failure)
+    major_catalog_failure = _major_catalog_failure(answer, evidence, analysis)
+    if major_catalog_failure:
+        return _failed(major_catalog_failure)
     advisory_choice_failure = _advisory_choice_failure(answer, analysis)
     if advisory_choice_failure:
         return _failed(advisory_choice_failure)
@@ -941,6 +944,69 @@ def _program_catalog_failure(
         for parent, program in rows:
             if program not in folded_answer or parent not in folded_answer:
                 return "program_catalog_missing"
+    return ""
+
+
+def _major_catalog_failure(
+    answer: str,
+    evidence: EvidenceBundle,
+    analysis: Mapping[str, object] | Any | None,
+) -> str:
+    """Check that an LLM-composed major catalogue keeps every verified row/code."""
+
+    if isinstance(analysis, Mapping):
+        intent = str(analysis.get("intent") or "")
+        entities = analysis.get("entities") if isinstance(analysis.get("entities"), Mapping) else analysis
+    else:
+        intent = str(getattr(analysis, "intent", "") or "")
+        raw_entities = getattr(analysis, "entities", {})
+        entities = raw_entities if isinstance(raw_entities, Mapping) else {}
+    if intent != "DANH_SACH_NGANH":
+        return ""
+
+    rows: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for fact in evidence.score_facts:
+        if (
+            str(fact.get("category") or "") != "nganh_dao_tao"
+            or not _is_verified_score_fact(fact)
+        ):
+            continue
+        major = str(fact.get("major_name") or "").strip()
+        code = str(fact.get("major_code") or "").strip()
+        identity = (_fold_text(major), code)
+        if major and code and identity not in seen:
+            seen.add(identity)
+            rows.append((major, code))
+    # Some older catalog sources have no score-fact adapter yet; the existing
+    # source-validated deterministic formatter remains their authority.
+    if not rows:
+        return ""
+
+    operation = str(entities.get("query_mode") or entities.get("catalog_operation") or "LIST")
+    folded = _fold_text(answer)
+    if operation in {"COUNT", "LIST_AND_COUNT"}:
+        count_pattern = re.compile(r"\b(\d+)\s+nganh\b")
+        counts = {int(match.group(1)) for match in count_pattern.finditer(folded)}
+        if len(rows) not in counts:
+            return "major_catalog_count_mismatch"
+    if operation not in {"LIST", "LIST_AND_COUNT"}:
+        return ""
+
+    lines = [_fold_text(line) for line in answer.splitlines() if line.strip()]
+    missing_rows = [
+        (major, code)
+        for major, code in rows
+        if not any(_fold_text(major) in line and re.search(rf"(?<!\d){re.escape(code)}(?!\d)", line) for line in lines)
+    ]
+    if missing_rows:
+        return "major_catalog_missing"
+    allowed_codes = {code for _major, code in rows}
+    for line in lines:
+        if re.match(r"^\d+[.)]\s+", line):
+            codes = re.findall(r"(?<!\d)\d{7}(?!\d)", line)
+            if codes and any(code not in allowed_codes for code in codes):
+                return "major_catalog_code_mismatch"
     return ""
 
 

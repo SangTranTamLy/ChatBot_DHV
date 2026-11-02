@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import unittest
 
+from langchain_core.documents import Document
+
+from evaluation.run_evaluation import _retriever as offline_project_retriever
 from src.chatbot.evidence import EvidenceBundle, EvidenceChunk
 from src.chatbot.query_analysis import analyze_question, route_question
 from src.chatbot.query_decomposer import should_attempt_decomposition
 from src.chatbot.output_validator import validate_model_answer
 from src.chatbot.catalog_formatters import _method_details_from_evidence
 from src.chatbot.rag_chain import (
+    ask_chatbot,
     _evidence_admission_combination_answer,
     _evidence_application_registration_answer,
     _evidence_eligibility_answer,
@@ -59,6 +63,17 @@ class AdmissionConditionRoutingTests(unittest.TestCase):
         self.assertEqual(analysis.intent, "HOI_PHUONG_THUC_XET_TUYEN")
         self.assertEqual(analysis.entities.get("issue_intents"), [])
         self.assertEqual(analysis.entities.get("query_mode"), "LIST")
+
+    def test_named_major_how_to_apply_question_routes_to_admission_methods(self) -> None:
+        analysis = analyze_question(
+            "Ngành Công nghệ thông tin xét tuyển thế nào năm 2026?"
+        )
+        plan = route_question(analysis)
+
+        self.assertEqual(analysis.intent, "HOI_PHUONG_THUC_XET_TUYEN")
+        self.assertEqual(analysis.entities.get("major_name"), "Công nghệ thông tin")
+        self.assertIn("phuong_thuc_xet_tuyen", plan.categories)
+        self.assertTrue(plan.entity_filters.get("schoolwide_admission_method_request"))
 
     def test_natural_three_subject_selection_question_requests_combination_details(self) -> None:
         question = "Xét bằng điểm thi tốt nghiệp thì ba môn chọn như thế nào?"
@@ -140,6 +155,100 @@ class AdmissionConditionRoutingTests(unittest.TestCase):
                 self.assertEqual(plan.categories, ("diem_trung_tuyen",))
 
 
+class NamedMajorAdmissionMethodIntegrationTests(unittest.TestCase):
+    def test_named_major_how_to_apply_question_uses_verified_method_facts(self) -> None:
+        source = (
+            "Các phương thức xét tuyển năm 2026\n"
+            "Năm 2026, DHV áp dụng 5 phương thức xét tuyển.\n"
+            "2.1 Xét kết quả kỳ thi tốt nghiệp THPT năm 2026\n"
+            "Thí sinh đăng ký dựa trên tổng điểm 03 môn theo tổ hợp xét tuyển.\n"
+            "2.2 Xét tuyển kết quả học tập THPT (học bạ).\n"
+            "2.3 Xét kết quả kỳ thi Đánh giá năng lực.\n"
+            "2.4 Xét kết quả bài thi Đánh giá năng lực chuyên biệt (H-SCA).\n"
+            "2.5 Xét tuyển đối với thí sinh tốt nghiệp trung cấp.\n"
+            "Khối công nghệ: Toán + 2 môn điểm cao nhất trong danh mục xét tuyển."
+        )
+        metadata = {
+            "record_type": "page_text",
+            "category": "phuong_thuc_xet_tuyen",
+            "year": 2026,
+            "school_code": "DHV",
+            "status": "verified",
+            "source_url": "https://tuyensinh.dhv.edu.vn/",
+            "source_file": "03_DIEU_KIEN_VA_PHUONG_THUC_XET_TUYEN_DHV_2026.pdf",
+            "document_id": "admission-methods-fixture",
+            "page": 1,
+            "chunk_index": 0,
+        }
+
+        class StaticRetriever:
+            requested_top_k: int | None = None
+
+            def retrieve_with_audit(
+                self,
+                question: str,
+                *,
+                categories: tuple[str, ...],
+                retrieval_query: str,
+                **kwargs: object,
+            ) -> dict[str, object]:
+                del question, categories, retrieval_query
+                self.requested_top_k = kwargs.get("top_k")
+                return {"documents": [Document(page_content=source, metadata=metadata)]}
+
+        class ComposerProbe:
+            def __init__(self) -> None:
+                self.prompts: list[str] = []
+
+            def generate(self, prompt: str) -> str:
+                self.prompts.append(prompt)
+                return (
+                    "DHV năm 2026 có 5 phương thức xét tuyển: thi tốt nghiệp THPT, học bạ, "
+                    "ĐGNL, H-SCA và tốt nghiệp trung cấp. Với nhóm Công nghệ, tổ hợp thi THPT "
+                    "gồm Toán và hai môn có điểm cao nhất trong danh mục được phép."
+                )
+
+        llm = ComposerProbe()
+        retriever = StaticRetriever()
+        result = ask_chatbot(
+            "Ngành Công nghệ thông tin xét tuyển thế nào năm 2026?",
+            retriever=retriever,
+            llm=llm,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["trace"]["intent"], "HOI_PHUONG_THUC_XET_TUYEN")
+        self.assertEqual(retriever.requested_top_k, 16)
+        self.assertTrue(llm.prompts)
+        self.assertIn("5 phương thức xét tuyển", str(result["answer"]))
+        self.assertIn("nhóm Công nghệ", str(result["answer"]))
+
+    def test_project_corpus_returns_all_five_methods_for_named_major_question(self) -> None:
+        class GroundedComposer:
+            def generate(self, prompt: str) -> str:
+                del prompt
+                return (
+                    "DHV năm 2026 áp dụng 5 phương thức xét tuyển: thi tốt nghiệp THPT, "
+                    "học bạ THPT, Đánh giá năng lực (ĐGNL), H-SCA và xét tuyển đối với "
+                    "thí sinh tốt nghiệp trung cấp."
+                )
+
+        result = ask_chatbot(
+            "Ngành Công nghệ thông tin xét tuyển thế nào năm 2026?",
+            retriever=offline_project_retriever(),
+            llm=GroundedComposer(),
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["trace"]["retrieval"]["top_k"], 16)
+        method_numbers = {
+            fact.get("method_number")
+            for fact in result["trace"].get("matching_facts", [])
+            if fact.get("score_type") == "admission_method"
+        }
+        self.assertTrue(set(range(1, 6)).issubset(method_numbers))
+
+
 class AdmissionConditionEvidenceAnswerTests(unittest.TestCase):
     def setUp(self) -> None:
         method_page = (
@@ -196,6 +305,49 @@ class AdmissionConditionEvidenceAnswerTests(unittest.TestCase):
         self.assertIn("18 điểm", answer)
         self.assertIn("Toán từ 6 điểm trở lên", answer)
         self.assertNotIn("18,5", answer)
+
+    def test_pdf_extracted_bullet_conditions_answer_the_all_majors_question(self) -> None:
+        text = (
+            "Điều kiện xét tuyển năm 2026\n"
+            "1\nĐiều kiện xét tuyển\n"
+            "Thí sinh đã tốt nghiệp trung học phổ thông hoặc có trình độ tương đương.\n"
+            "Đối với thí sinh dự thi tốt nghiệp THPT từ năm 2026 trở đi, tổng điểm 03 môn\n"
+            "theo tổ hợp xét tuyển đạt tối thiểu 15,00 điểm (theo thang điểm 30).\n"
+            "Riêng đối với các ngành Luật và Luật Kinh tế, thí sinh cần đáp ứng các điều kiện:\n"
+            "• Học lực lớp 12 đạt loại Giỏi trở lên, điểm trung bình môn lớp 12 từ 8,0 trở lên\n"
+            "• Tổng điểm 03 môn thi tốt nghiệp THPT đạt từ 18 điểm trở lên, trong đó điểm\n"
+            "Ngữ văn hoặc Toán từ 6 điểm trở lên\n"
+            "2\nCác phương thức xét tuyển năm 2026\n"
+            "Năm 2026, DHV áp dụng các phương thức xét tuyển linh hoạt."
+        )
+        metadata = {
+            "record_type": "page_text",
+            "category": "phuong_thuc_xet_tuyen",
+            "year": 2026,
+            "school_code": "DHV",
+            "status": "verified",
+            "source_url": "https://tuyensinh.dhv.edu.vn/",
+            "source_file": "V1_PHUONG_THUC_XET_TUYEN_VA_HOC_BONG_DHV_2026.pdf",
+            "document_id": "condition-pdf-format-fixture",
+            "page": 1,
+            "chunk_index": 0,
+        }
+        evidence = EvidenceBundle(
+            chunks=(EvidenceChunk(text=text, metadata=metadata),),
+            context=text,
+            sources=({"url": "https://tuyensinh.dhv.edu.vn/"},),
+        )
+        analysis = analyze_question(
+            "Điều kiện xét tuyển vào các ngành DHV năm 2026 là gì?"
+        )
+
+        answer = _evidence_eligibility_answer(analysis, evidence)
+
+        self.assertIsNotNone(answer)
+        self.assertIn("15,00 điểm", answer)
+        self.assertIn("Riêng đối với ngành Luật và Luật Kinh tế", answer)
+        self.assertIn("điểm trung bình môn lớp 12 từ 8,0 trở lên", answer)
+        self.assertIn("Ngữ văn hoặc Toán từ 6 điểm trở lên", answer)
 
     def test_natural_paraphrase_uses_semantic_admission_condition_flag(self) -> None:
         analysis = analyze_question("Muốn vào DHV thì cần đáp ứng những gì?")

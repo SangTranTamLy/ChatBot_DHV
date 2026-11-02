@@ -55,8 +55,31 @@ class TaskLPlannerTests(unittest.TestCase):
         analysis = analyze_question("Học bổng DHV 2026")
         plan = plan_answer(analysis, status="no_data")
         self.assertEqual(plan.mode, "NO_DATA")
-        self.assertFalse(plan.related_questions)
+        self.assertTrue(plan.related_questions)
+        self.assertTrue(any("học bổng" in question.casefold() for question in plan.related_questions))
         self.assertFalse(plan.evidence_required)
+
+    def test_major_count_followups_stay_on_major_topic(self) -> None:
+        analysis = analyze_question("Trường có bao nhiêu ngành đào tạo?")
+        questions = related_questions_for(analysis)
+
+        self.assertEqual(analysis.intent, "DANH_SACH_NGANH")
+        self.assertTrue(any("danh sách đầy đủ" in question.casefold() for question in questions))
+        self.assertTrue(any("tổ hợp" in question.casefold() for question in questions))
+        self.assertTrue(all("học phí" not in question.casefold() for question in questions))
+        self.assertTrue(all("học bổng" not in question.casefold() for question in questions))
+
+    def test_unknown_and_clarification_answers_can_offer_safe_followups(self) -> None:
+        unknown = analyze_question("Thời tiết hôm nay thế nào?")
+        unknown_plan = plan_answer(unknown, status="out_of_scope")
+        self.assertTrue(unknown_plan.related_questions)
+        self.assertTrue(all("dhv" in question.casefold() for question in unknown_plan.related_questions))
+
+        unclear_score = analyze_question("Công nghệ thông tin lấy bao nhiêu điểm?")
+        clarification_plan = plan_answer(unclear_score)
+        self.assertEqual(clarification_plan.mode, "CLARIFICATION")
+        self.assertTrue(any("điểm sàn" in question.casefold() for question in clarification_plan.related_questions))
+        self.assertTrue(any("điểm trúng tuyển" in question.casefold() for question in clarification_plan.related_questions))
 
     def test_followup_candidate_pool_tracks_score_and_subject_combination(self) -> None:
         analysis = analyze_question(

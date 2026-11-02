@@ -61,7 +61,8 @@ _FOLLOWUP_STOP_WORDS = frozenset(
 )
 _SOURCE_FILE_SUFFIXES = frozenset({".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip"})
 _ANSWER_SOURCE_SECTION_RE = re.compile(
-    r"(?im)^\s*(?:(?:[-*]|\d+[.)])\s*)?(?:\*\*|__)?"
+    r"(?im)^\s*(?:(?::material/[a-z0-9_]+:|[🔗↪↗]|[-*]|\d+[.)])\s*)*"
+    r"(?:\*\*|__)?"
     r"(?:nguồn tham khảo|nguồn trích dẫn|nguồn)(?:\*\*|__)?\s*:.*$"
 )
 STARTER_QUESTIONS = {
@@ -296,7 +297,7 @@ def _normalise_result(result: object) -> dict[str, object]:
     if sources:
         normalised["sources"] = sources
 
-    if status == "ok":
+    if status in {"ok", "no_data", "out_of_scope", "clarification"}:
         followup_candidates = result.get("related_questions")
         if not isinstance(followup_candidates, (list, tuple)) or not followup_candidates:
             trace = result.get("trace")
@@ -376,7 +377,7 @@ def _select_followup_questions(
     result: Mapping[str, Any], history: object, *, limit: int = 3
 ) -> list[str]:
     """Prefer new planner questions, avoiding repeats in the recent conversation."""
-    if result.get("status") != "ok" or limit <= 0:
+    if result.get("status") not in {"ok", "no_data", "out_of_scope", "clarification"} or limit <= 0:
         return []
     candidates = _normalise_followup_candidates(result.get("followup_candidates"))
     if not candidates:

@@ -933,7 +933,7 @@ class IntentAndYearSweepTests(unittest.TestCase):
         # The verified scholarship catalogue spans more than the default
         # retrieval window; keep the bounded policy-page budget explicit.
         self.assertEqual(retriever.call["top_k"], 96)
-        self.assertEqual(llm.prompt, "")
+        self.assertTrue(llm.prompt)
         self.assertEqual(result["status"], "ok")
         self.assertIn("Chính sách học bổng Hào khí Hùng Vương", str(result["answer"]))
         self.assertIn("Học bổng Cam kết hoàn học phí", str(result["answer"]))
@@ -1430,6 +1430,14 @@ class IntentAndYearSweepTests(unittest.TestCase):
         retriever = _TopKRecordingRetriever()
         ask_chatbot(
             "Em mạnh Toán thì DHV có cách lấy Toán cộng hai môn điểm cao nhất không ạ?",
+            retriever=retriever,
+        )
+        self.assertEqual(retriever.top_k, 16)
+
+    def test_named_major_admission_overview_expands_for_all_method_facts(self) -> None:
+        retriever = _TopKRecordingRetriever()
+        ask_chatbot(
+            "Ngành Công nghệ thông tin xét tuyển thế nào năm 2026?",
             retriever=retriever,
         )
         self.assertEqual(retriever.top_k, 16)

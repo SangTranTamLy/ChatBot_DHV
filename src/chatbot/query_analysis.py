@@ -1543,6 +1543,9 @@ def _is_admission_method_question(normalized: str) -> bool:
             "thi thpt",
             "cach xet tuyen",
             "cach thuc xet tuyen",
+            "xet tuyen the nao",
+            "xet tuyen nhu the nao",
+            "xet tuyen ra sao",
             "hinh thuc tuyen sinh",
             "hinh thuc xet tuyen",
             "phuong an tuyen sinh",
@@ -4035,6 +4038,17 @@ def route_question(analysis: QueryAnalysis, state: ConversationState | Mapping[s
     if data_roles:
         metadata_filter["data_roles"] = list(data_roles)
     entity_filters = _entity_filters_from_entities(entities)
+    if (
+        resolved.intent == "HOI_PHUONG_THUC_XET_TUYEN"
+        and any(
+            entity_filters.get(key)
+            for key in ("major_name", "major_code", "program_name", "parent_major")
+        )
+    ):
+        # General admission-method pages apply across majors. Allow their
+        # untyped page-text chunks only for an explicit method question, so
+        # they do not leak into score-based major-counselling retrieval.
+        entity_filters["schoolwide_admission_method_request"] = True
     if resolved.intent == "SCHOOL_INFO":
         # School-information documents describe the whole university; a major
         # named in the question is context, not a filter that would discard

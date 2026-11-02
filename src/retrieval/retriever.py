@@ -447,6 +447,20 @@ def _entity_matches(
             and metadata.get("category") == "hoc_phi"
             and record_type == "tuition"
         )
+        # Typed admission-method records can be matched at the school level.
+        # Untyped page text is broader, so only let it pass when routing has
+        # established that the user explicitly asked about admission methods.
+        or (
+            "phuong_thuc_xet_tuyen" in category_values
+            and metadata.get("category") == "phuong_thuc_xet_tuyen"
+            and (
+                record_type == "admission_method"
+                or (
+                    record_type == "page_text"
+                    and bool(entity_filters.get("schoolwide_admission_method_request"))
+                )
+            )
+        )
     ):
         return True
     content = " ".join(_normalize(document.page_content.replace("&", " va ")).split())

@@ -8,7 +8,6 @@ from typing import Any, Mapping
 
 from src.config.settings import Settings, settings
 from src.models.local_llm import LocalLLM, OllamaError, OllamaUnavailableError, OllamaTimeoutError
-from src.prompts.rag_prompt import build_rag_prompt
 from src.retrieval.retriever import RetrieverEmbeddingError, VectorDatabaseError, requested_year
 from .year_semantics import current_admission_window_answer
 
@@ -59,7 +58,9 @@ from .catalog_formatters import (
     _source_ordered_documents,
 )
 from .evidence import build_evidence, select_evidence_documents
-from .generation_guards import _combination_is_verified, _validated_generation
+from .facts import ResolvedContext, VerifiedFact
+from .answer_composer import compose_verified_response
+from .generation_guards import _combination_is_verified
 from .multi_issue import _ask_multi_issue
 from .official_links import _official_links_answer
 from .output_validator import (
@@ -221,6 +222,20 @@ def _is_dhv_related_unsupported(analysis: Any, query: str) -> bool:
     )
 
 
+def _required_scholarship_headings(answer: str) -> list[str]:
+    """Return every numbered scholarship heading from a complete deterministic list."""
+
+    headings: list[str] = []
+    for line in str(answer or "").splitlines():
+        match = re.match(r"^\s*\d+[.)]\s+(.+?)\s*$", line)
+        if not match:
+            continue
+        heading = match.group(1).strip().strip("*").strip()
+        if "hoc bong" in normalize_question(heading):
+            headings.append(heading)
+    return headings if len(headings) >= 2 else []
+
+
 def ask_chatbot(
     question: str,
     *,
@@ -229,11 +244,20 @@ def ask_chatbot(
     query_planner: Any | None = None,
     settings_obj: Settings = settings,
     conversation_state: ConversationState | Mapping[str, object] | None = None,
+    resolved_context: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Trả lời một lượt hỏi thông qua luồng: phân tích → router → truy xuất → sinh văn bản."""
 
     query = correct_domain_typos(question.strip()) if isinstance(question, str) else ""
     state = ConversationState.from_value(conversation_state, default_year=settings_obj.target_year)
+    context_value = dict(resolved_context or {})
+    if not context_value:
+        context_value = ResolvedContext(
+            original_question=question,
+            resolved_question=query,
+            status="RESOLVED",
+            entities=state.to_dict(),
+        ).to_dict()
     fee_request = analyze_fee_request(query)
     analysis = analyze_question(query, state, default_year=settings_obj.target_year)
     if fee_request.is_fee_request and analysis.intent in {"HOI_CHUONG_TRINH", "HOI_NGANH"}:
@@ -396,6 +420,7 @@ def ask_chatbot(
                 retriever=active_retriever,
                 llm=llm,
                 settings_obj=settings_obj,
+                resolved_context=context_value,
             )
         except RetrieverEmbeddingError:
             return _planned_boundary_result(
@@ -591,8 +616,58 @@ def ask_chatbot(
     if fee_request.is_fee_request:
         trace["fee_request"] = fee_request.to_dict()
 
+    composed_once = False
+    composer_facts: list[VerifiedFact] = []
+
     def finish(result: dict[str, object], answer_plan: Any) -> dict[str, object]:
+        nonlocal composed_once
         result.update(state=next_state.to_dict(), conversation_state=next_state.to_dict(), trace=trace)
+        if (
+            not composed_once
+            and result.get("status") == "ok"
+            and evidence.is_usable
+            and trace.get("deterministic_branch") != "verified_website_directory"
+        ):
+            composed_once = True
+            fallback_answer = str(result.get("answer") or "")
+            try:
+                generated = compose_verified_response(
+                    active_llm=llm or LocalLLM(settings_obj=settings_obj),
+                    question=query,
+                    original_question=str(context_value.get("original_question") or question),
+                    resolved_context=context_value,
+                    analysis=analysis,
+                    evidence=evidence,
+                    conversation_state=next_state.to_dict(),
+                    answer_plan=answer_plan,
+                    score_facts=select_relevant_score_facts(analysis, evidence.score_facts),
+                    score_comparisons=deterministic_score_comparisons(analysis, evidence),
+                    entity_relations=evidence.entity_relations,
+                    additional_facts=composer_facts,
+                    required_phrases=(
+                        _required_scholarship_headings(fallback_answer)
+                        if analysis.intent == "HOI_HOC_BONG"
+                        else ()
+                    ),
+                    settings_obj=settings_obj,
+                )
+                if generated.get("status") == "ok" and str(generated.get("answer") or "").strip():
+                    result["answer"] = generated["answer"]
+                    trace["response_composer"] = {"status": "composed", "validator": "ok"}
+                else:
+                    result["answer"] = fallback_answer
+                    trace["response_composer"] = {
+                        "status": "safe_fallback",
+                        "validator": generated.get("status"),
+                        "reason": generated.get("_validation_reason"),
+                    }
+            except Exception as exc:
+                result["answer"] = fallback_answer
+                trace["response_composer"] = {
+                    "status": "safe_fallback",
+                    "error_type": type(exc).__name__,
+                }
+            # If generation fails or is rejected, keep the deterministic result.
         return _attach_answer_plan(result, answer_plan)
 
     def no_data() -> dict[str, object]:
@@ -966,6 +1041,45 @@ def ask_chatbot(
                 }
                 answer = fee_answer.get("answer")
                 direct_evidence_answer = str(answer) if answer else None
+                if direct_evidence_answer:
+                    source_fact = next(
+                        (
+                            fact
+                            for fact in evidence.facts
+                            if fact.status == "VERIFIED" and fact.provenance is not None
+                        ),
+                        None,
+                    )
+                    if source_fact is not None:
+                        fee_coverage_partial = bool(
+                            fee_answer.get("missing_topics")
+                            or fee_answer.get("ambiguous_topics")
+                        )
+                        composer_facts.append(
+                            VerifiedFact(
+                                fact_id="fee-calculation-" + source_fact.fact_id,
+                                fact_type="tuition_calculation",
+                                subject={
+                                    "requested_topics": list(fee_answer.get("requested_topics") or ()),
+                                },
+                                value=direct_evidence_answer,
+                                unit="VND theo nội dung câu trả lời đã tính",
+                                academic_year=source_fact.academic_year or settings_obj.target_year,
+                                status="PARTIAL" if fee_coverage_partial else "VERIFIED",
+                                attributes={
+                                    "answered_topics": list(fee_answer.get("answered_topics") or ()),
+                                    "missing_topics": list(fee_answer.get("missing_topics") or ()),
+                                    "ambiguous_topics": list(fee_answer.get("ambiguous_topics") or ()),
+                                    "calculation": "Kết quả từ hàm tính học phí xác định trên các dòng đã xác minh.",
+                                },
+                                provenance=source_fact.provenance,
+                                reason=(
+                                    "Một phần câu hỏi chưa có dữ liệu nguồn đủ để tính."
+                                    if fee_coverage_partial
+                                    else None
+                                ),
+                            )
+                        )
             if direct_evidence_answer is None:
                 trace["evidence_boundary"] = (
                     "annual_tuition_average_missing_matching_rate"
@@ -1166,17 +1280,6 @@ def ask_chatbot(
         }, answer_plan)
 
     answer_plan = plan_answer(analysis, evidence=evidence)
-    prompt = build_rag_prompt(
-        query,
-        evidence.context,
-        intent=analysis.intent,
-        entities=analysis.entities,
-        conversation_state=next_state.to_dict(),
-        answer_plan=answer_plan,
-        score_facts=lookup_facts,
-        score_comparisons=score_comparisons,
-        entity_relations=evidence.entity_relations,
-    )
     try:
         if analysis.intent in {"HOI_NHAP_HOC", "HOI_HO_SO"} and not enrollment_answer_checked:
             enrollment_answer = _evidence_enrollment_answer(analysis, evidence)
@@ -1190,19 +1293,29 @@ def ask_chatbot(
             result = dict(validated_enrollment_answer)
         else:
             active_llm = llm or LocalLLM(settings_obj=settings_obj)
-            result = _validated_generation(
+            result = compose_verified_response(
                 active_llm=active_llm,
-                prompt=prompt,
-                evidence=evidence,
                 question=query,
+                original_question=str(context_value.get("original_question") or question),
+                resolved_context=context_value,
                 analysis=analysis,
+                evidence=evidence,
+                conversation_state=next_state.to_dict(),
                 score_facts=lookup_facts,
                 answer_plan=answer_plan,
                 score_comparisons=score_comparisons,
-                target_year=settings_obj.target_year,
+                entity_relations=evidence.entity_relations,
+                additional_facts=composer_facts,
+                settings_obj=settings_obj,
             )
+            composed_once = True
+            trace["response_composer"] = {
+                "status": "composed" if result.get("status") == "ok" else "safe_fallback",
+                "validator": result.get("status"),
+                "reason": result.get("_validation_reason"),
+            }
         validation_reason = result.pop("_validation_reason", None)
-        if result.get("status") == "ok" and analysis.intent not in {"HOI_NHAP_HOC", "HOI_HO_SO"}:
+        if result.get("status") != "ok" and analysis.intent not in {"HOI_NHAP_HOC", "HOI_HO_SO"}:
             structured_answer = None
             if answer_plan.mode == "OVERVIEW":
                 structured_answer = _evidence_overview_answer(
