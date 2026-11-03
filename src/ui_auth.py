@@ -918,5 +918,3 @@ def render_auth_dialog() -> None:
                     st.error(result[1])
             st.divider()
             _auth_footer("Đã nhớ mật khẩu?", "Đăng nhập", "login", key="auth_back_from_forgot")
-        with st.container(key="auth_note"):
-            st.caption("Tài khoản được xác thực và lưu bằng Supabase.")

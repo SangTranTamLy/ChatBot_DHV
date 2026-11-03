@@ -17,6 +17,7 @@ from .query_semantics import (
     is_semester_fee_total_question,
     is_tuition_increase_question,
     mentions_optional_english_test,
+    normalize_semantic_text,
     should_include_optional_english_fee,
 )
 from .year_semantics import extract_requested_year
@@ -75,6 +76,15 @@ _PROMPT_REFERENCE_CLAUSE_RE = re.compile(
     re.IGNORECASE,
 )
 _PROMPT_LEAK_RE = re.compile(r"\bCONTEXT\b|ngữ\s+cảnh\s+được\s+cung\s+cấp", re.IGNORECASE)
+_PROMPT_INSTRUCTION_LEAK_MARKERS = (
+    "ban dap an truoc da bo sot noi dung bat buoc",
+    "o lan tra loi nay hay bao gom day du cac cum/tieu de sau",
+    "khong bo bat ky muc nao",
+    "ban dap an moi",
+    "ban nhap can kiem tra",
+    "cau tra loi moi",
+    "checklist mapping bat buoc",
+)
 
 
 def _strip_prompt_references(text: str) -> str:
@@ -101,7 +111,12 @@ def _strip_prompt_references(text: str) -> str:
 def has_prompt_leak(answer: str) -> bool:
     """True nếu câu trả lời vẫn nhắc tới tên thẻ/biến nội bộ của prompt."""
 
-    return bool(isinstance(answer, str) and _PROMPT_LEAK_RE.search(answer))
+    if not isinstance(answer, str):
+        return False
+    if _PROMPT_LEAK_RE.search(answer):
+        return True
+    normalized = normalize_semantic_text(answer)
+    return any(marker in normalized for marker in _PROMPT_INSTRUCTION_LEAK_MARKERS)
 _MARKDOWN_LINK_RE = re.compile(
     r"\[([^\]]+)\]\(\s*.*?\)(?=[.,!?;:\s]|$)", re.IGNORECASE
 )
@@ -645,7 +660,17 @@ def _optional_fee_total_failure(
     if not any(marker in folded_answer for marker in ("tong chi phi", "tong cong", "tong cac khoan")):
         return "optional_fee_total_missing"
     formatted = f"{expected_total:,}".replace(",", ".")
-    return "" if _contains_numeric_literal(answer, formatted) else "optional_fee_total_mismatch"
+    if not _contains_numeric_literal(answer, formatted):
+        return "optional_fee_total_mismatch"
+    if excludes_optional_english_test(question):
+        # A response can repeat the correct base subtotal and still contradict
+        # an exclusion by adding the optional fee afterward. Reject any larger
+        # grouped currency amount in an excluded-total answer, even when the
+        # expected subtotal also appears elsewhere in the sentence.
+        for literal in re.findall(r"(?<!\d)(\d{1,3}(?:\.\d{3})+)(?!\d)", answer):
+            if int(literal.replace(".", "")) > expected_total:
+                return "optional_fee_total_mismatch"
+    return ""
 
 
 def _has_unsupported_named_entity(

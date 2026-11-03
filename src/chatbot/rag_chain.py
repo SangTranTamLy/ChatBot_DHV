@@ -236,6 +236,51 @@ def _required_scholarship_headings(answer: str) -> list[str]:
     return headings if len(headings) >= 2 else []
 
 
+def _required_fee_answer_phrases(answer: str, fee_request: Any) -> tuple[str, ...]:
+    """Preserve unit price and conditional-total distinctions in generated drafts."""
+
+    required: list[str] = []
+    if getattr(fee_request, "scope", None) == "per_credit":
+        rate = re.search(
+            r"\d{1,3}(?:\.\d{3})+\s*(?:đồng|VNĐ|VND)\s*/\s*tín\s*chỉ",
+            str(answer or ""),
+            re.IGNORECASE,
+        )
+        if rate:
+            required.append(rate.group(0))
+
+    topics = set(getattr(fee_request, "topics", ()) or ())
+    if "total" in topics and getattr(fee_request, "optional_english", "unknown") == "unknown":
+        base_total = re.search(
+            r"Tổng các khoản cơ bản học kỳ I năm \d{4} là [\d.]+ đồng",
+            str(answer or ""),
+            re.IGNORECASE,
+        )
+        conditional_total = re.search(
+            r"Nếu thuộc diện kiểm tra năng lực Tiếng Anh, cộng thêm [\d.]+ đồng, "
+            r"thành tối đa [\d.]+ đồng",
+            str(answer or ""),
+            re.IGNORECASE,
+        )
+        if base_total and conditional_total:
+            required.extend((base_total.group(0), conditional_total.group(0)))
+    return tuple(required)
+
+
+def _unrequested_fee_total_claim(answer: object, fee_request: Any) -> bool:
+    """Reject a generated payable total when the user asked only for fee items."""
+
+    topics = set(getattr(fee_request, "topics", ()) or ())
+    if "total" in topics:
+        return False
+    normalized = normalize_question(str(answer or ""))
+    return bool(re.search(
+        r"(?:tong cong|tong cac khoan|tong chi phi|tong hoc phi|ban can dong|ban phai dong)"
+        r".{0,80}?\d{1,3}(?:\.\d{3})+",
+        normalized,
+    ))
+
+
 def ask_chatbot(
     question: str,
     *,
@@ -619,11 +664,14 @@ def ask_chatbot(
     composed_once = False
     composer_facts: list[VerifiedFact] = []
 
-    def finish(result: dict[str, object], answer_plan: Any) -> dict[str, object]:
+    def finish(
+        result: dict[str, object], answer_plan: Any, *, skip_composer: bool = False
+    ) -> dict[str, object]:
         nonlocal composed_once
         result.update(state=next_state.to_dict(), conversation_state=next_state.to_dict(), trace=trace)
         if (
-            not composed_once
+            not skip_composer
+            and not composed_once
             and result.get("status") == "ok"
             and evidence.is_usable
             and trace.get("deterministic_branch") != "verified_website_directory"
@@ -645,15 +693,24 @@ def ask_chatbot(
                     entity_relations=evidence.entity_relations,
                     additional_facts=composer_facts,
                     required_phrases=(
-                        _required_scholarship_headings(fallback_answer)
+                        tuple(_required_scholarship_headings(fallback_answer))
                         if analysis.intent == "HOI_HOC_BONG"
                         else ()
-                    ),
+                    ) + _required_fee_answer_phrases(fallback_answer, fee_request),
                     settings_obj=settings_obj,
                 )
                 if generated.get("status") == "ok" and str(generated.get("answer") or "").strip():
-                    result["answer"] = generated["answer"]
-                    trace["response_composer"] = {"status": "composed", "validator": "ok"}
+                    generated_answer = str(generated["answer"])
+                    if _unrequested_fee_total_claim(generated_answer, fee_request):
+                        result["answer"] = fallback_answer
+                        trace["response_composer"] = {
+                            "status": "safe_fallback",
+                            "validator": "no_data",
+                            "reason": "unrequested_fee_total_claim",
+                        }
+                    else:
+                        result["answer"] = generated_answer
+                        trace["response_composer"] = {"status": "composed", "validator": "ok"}
                 else:
                     result["answer"] = fallback_answer
                     trace["response_composer"] = {
@@ -897,13 +954,19 @@ def ask_chatbot(
     if catalog_answer is not None:
         if catalog_answer.get("catalog") is not None:
             trace["catalog"] = catalog_answer["catalog"]
+        if catalog_answer.get("major_lookup") is not None:
+            trace["major_lookup"] = catalog_answer["major_lookup"]
         answer_plan = plan_answer(
             analysis,
             evidence=evidence,
             deterministic=True,
         )
         trace["answer_plan"] = answer_plan.to_dict()
-        return finish(catalog_answer, answer_plan)
+        return finish(
+            catalog_answer,
+            answer_plan,
+            skip_composer=bool(catalog_answer.get("major_lookup")),
+        )
 
     if _school_info_detail_missing_evidence(analysis, evidence):
         trace["evidence_boundary"] = "requested_school_info_detail_missing"
@@ -1192,7 +1255,22 @@ def ask_chatbot(
             answer_plan = plan_answer(analysis, evidence=evidence, deterministic=True)
             trace["answer_plan"] = answer_plan.to_dict()
             trace["final_status"] = "ok"
-            return finish(validated_direct_answer, answer_plan)
+            deterministic_scholarship_range = bool(
+                analysis.intent == "HOI_HOC_BONG"
+                and re.search(
+                    r"(?<!\d)\d+(?:[.,]\d+)?\s*(?:đến|tới|[-–—])\s*\d+(?:[.,]\d+)?(?!\d)",
+                    analysis.question,
+                    re.IGNORECASE,
+                )
+            )
+            return finish(
+                validated_direct_answer,
+                answer_plan,
+                skip_composer=bool(
+                    (enrollment_answer and analysis.intent in {"HOI_NHAP_HOC", "HOI_HO_SO"})
+                    or deterministic_scholarship_range
+                ),
+            )
 
     strict_scholarship_request = analysis.intent == "HOI_HOC_BONG" and (
         _is_scholarship_conditions_question(analysis)
@@ -1442,6 +1520,31 @@ def ask_chatbot(
         )
 
     final_status = str(result.get("status") or "no_data")
+    if (
+        final_status == "ok"
+        and analysis.entities.get("score_type") == "application_threshold"
+    ):
+        answer_text = str(result.get("answer") or "")
+        normalized_answer = normalize_question(answer_text)
+        if "khong phai diem trung tuyen" not in normalized_answer:
+            disclaimer = (
+                "Đây là ngưỡng nhận hồ sơ, không phải điểm trúng tuyển hay cam kết trúng tuyển."
+            )
+            trimmed_answer = answer_text.rstrip()
+            if analysis.intent == "TU_VAN_CHON_NGANH":
+                prefix, separator, final_line = trimmed_answer.rpartition("\n")
+                if separator and final_line.rstrip().endswith("?"):
+                    result["answer"] = (
+                        prefix.rstrip()
+                        + "\n\n"
+                        + disclaimer
+                        + "\n\n"
+                        + final_line.strip()
+                    )
+                else:
+                    result["answer"] = trimmed_answer + "\n\n" + disclaimer
+            else:
+                result["answer"] = trimmed_answer + "\n\n" + disclaimer
     trace["validator"] = {
         "status": final_status,
         "reason": validation_reason,

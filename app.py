@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from datetime import date, datetime, timedelta
 from html import escape
+import logging
 from pathlib import Path
 import re
 from typing import Any
@@ -19,6 +20,7 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from src.supabase_auth import AuthServiceError, change_password
+from src.chat_history import ChatHistoryStorageError, ChatHistoryStore
 from src.ui_auth import (
     init_auth,
     logout,
@@ -30,11 +32,14 @@ from src.ui_auth import (
 
 load_dotenv()
 
+_CHAT_HISTORY_STORE = ChatHistoryStore()
+_LOGGER = logging.getLogger(__name__)
+
 st.set_page_config(
     page_title="Chatbot tuyển sinh DHV",
     page_icon=":material/school:",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 
@@ -223,32 +228,133 @@ def _is_verified_contact_channel_result(result: Mapping[str, Any]) -> bool:
     )
 
 
+def _chat_owner_id(user: object) -> str | None:
+    """Use the stable Supabase UUID as the owner key, never a display field."""
+    if not isinstance(user, Mapping):
+        return None
+    user_id = str(user.get("id") or "").strip()
+    return user_id or None
+
+
+def _restore_chat_history(owner: str, initial_state: Mapping[str, Any]) -> None:
+    try:
+        chats, next_chat = _CHAT_HISTORY_STORE.load_user(owner)
+    except ChatHistoryStorageError:
+        _LOGGER.exception("Unable to load persisted chat history")
+        chats, next_chat = {}, 0
+        st.session_state.chat_history_storage_error = True
+    else:
+        st.session_state.chat_history_storage_error = bool(
+            st.session_state.get("chat_history_storage_error")
+        )
+
+    st.session_state.chats = chats
+    st.session_state.next_chat = next_chat
+    latest = max(
+        (
+            (chat_id, chat)
+            for chat_id, chat in chats.items()
+            if isinstance(chat, Mapping) and not chat.get("deleted_at")
+        ),
+        key=lambda item: str(item[1].get("updated_at") or ""),
+        default=None,
+    )
+    if latest is None:
+        st.session_state.active_chat = 0
+        st.session_state.messages = []
+        st.session_state.conversation_state = dict(initial_state)
+    else:
+        chat_id, chat = latest
+        st.session_state.active_chat = chat_id
+        st.session_state.messages = deepcopy(chat.get("messages", []))
+        saved_state = chat.get("conversation_state")
+        st.session_state.conversation_state = (
+            deepcopy(dict(saved_state)) if isinstance(saved_state, Mapping)
+            else dict(initial_state)
+        )
+    st.session_state.state = deepcopy(st.session_state.conversation_state)
+
+
+def _migrate_legacy_session_history(previous_owner: object, owner: str, user: object) -> None:
+    """Carry over the current process's old email-keyed history after an upgrade."""
+    if not isinstance(previous_owner, str) or not isinstance(user, Mapping):
+        return
+    email = str(user.get("email") or "").strip().casefold()
+    if not email or previous_owner.strip().casefold() != email:
+        return
+
+    legacy_chats = st.session_state.get("chats")
+    if not isinstance(legacy_chats, Mapping):
+        return
+    next_chat = st.session_state.get("next_chat", 0)
+    active_chat = st.session_state.get("active_chat")
+    current_messages = st.session_state.get("messages")
+    snapshot = {chat_id: deepcopy(chat) for chat_id, chat in legacy_chats.items()}
+    if isinstance(current_messages, list) and current_messages:
+        try:
+            active_id = int(active_chat)
+        except (TypeError, ValueError):
+            active_id = 0
+        current = snapshot.get(active_id, {})
+        snapshot[active_id] = {
+            **(dict(current) if isinstance(current, Mapping) else {}),
+            "id": active_id,
+            "messages": deepcopy(current_messages),
+            "conversation_state": deepcopy(
+                st.session_state.get("conversation_state") or {}
+            ),
+        }
+
+    try:
+        for raw_chat_id, conversation in snapshot.items():
+            if not isinstance(conversation, Mapping):
+                continue
+            chat_id = int(raw_chat_id)
+            _CHAT_HISTORY_STORE.save_conversation(
+                owner, chat_id, conversation, int(next_chat or 0)
+            )
+    except (ChatHistoryStorageError, TypeError, ValueError):
+        _LOGGER.exception("Unable to migrate in-memory chat history")
+        st.session_state.chat_history_storage_error = True
+
+
 def _init_session_state() -> None:
-    """Khởi tạo toàn bộ trạng thái chat của người dùng tại một nơi."""
+    """Initialize chat state and restore account-owned conversations from JSON."""
 
     user = st.session_state.get("auth_user")
-    owner = user["email"].strip().casefold() if user else None
-    sessions = st.session_state.setdefault("account_chat_sessions", {})
-    chat_keys = (
-        "messages", "chats", "active_chat", "next_chat", "conversation_state", "state",
-    )
+    owner = _chat_owner_id(user)
     previous_owner = st.session_state.get("chat_owner")
-    if "chat_owner" in st.session_state and previous_owner != owner:
-        if previous_owner:
-            sessions[previous_owner] = {key: deepcopy(st.session_state[key])
-                                        for key in chat_keys if key in st.session_state}
-        for key in (*chat_keys, "chat_input", "pending_question", "chat_request_in_progress",
-                    "chat_request_phase", "saved_items", "admission_checklist"):
+    owner_changed = "chat_owner" not in st.session_state or previous_owner != owner
+    initial_state = ConversationState().to_dict()
+
+    if owner_changed:
+        st.session_state.chat_history_storage_error = False
+        if owner:
+            _migrate_legacy_session_history(previous_owner, owner, user)
+        for key in (
+            "messages", "chats", "active_chat", "next_chat", "conversation_state", "state",
+            "chat_input", "pending_question", "chat_request_in_progress",
+            "chat_request_phase", "saved_items", "admission_checklist",
+        ):
             st.session_state.pop(key, None)
         if st.session_state.get("account_page") != "chat":
             st.session_state.account_page = "chat"
-        if owner in sessions:
-            st.session_state.update(deepcopy(sessions[owner]))
+        if owner:
+            _restore_chat_history(owner, initial_state)
+        else:
+            st.session_state.chats = {}
+            st.session_state.messages = []
+            st.session_state.active_chat = 0
+            st.session_state.next_chat = 0
+            st.session_state.conversation_state = dict(initial_state)
+            st.session_state.state = dict(initial_state)
+            st.session_state.chat_history_storage_error = False
+
+    # Conversation data now lives in the account-scoped JSON store, not in a
+    # second in-memory cache keyed by email.
+    st.session_state.account_chat_sessions = {}
     st.session_state.chat_owner = owner
-    if st.session_state.get("messages"):
-        st.session_state.setdefault("account_page", "chat")
-    else:
-        st.session_state.setdefault("account_page", "chat")
+    st.session_state.setdefault("account_page", "chat")
     st.session_state.setdefault("admission_checklist", {})
     st.session_state.setdefault("saved_items", [])
     st.session_state.setdefault("messages", [])
@@ -259,13 +365,11 @@ def _init_session_state() -> None:
         st.session_state.chats = {}
     st.session_state.setdefault("active_chat", 0)
     st.session_state.setdefault("next_chat", 0)
-    initial_state = ConversationState().to_dict()
     st.session_state.setdefault("conversation_state", dict(initial_state))
-    # Giữ đồng bộ cả hai tên biến dùng cho service để các câu trả lời làm rõ (clarification)
-    # hoặc danh sách không bị mất ngữ cảnh giới hạn ở lần chạy lại (rerun) tiếp theo của Streamlit.
     st.session_state.setdefault(
         "state", dict(st.session_state.get("conversation_state") or initial_state)
     )
+    st.session_state.setdefault("chat_history_storage_error", False)
 
 
 def _normalise_result(result: object) -> dict[str, object]:
@@ -408,11 +512,13 @@ def _select_followup_questions(
         if not _is_repeated_followup(question, recent_prompts)
     ]
     if len(fresh) < min(2, limit):
-        # If the topic has few candidates, allow an older unseen-by-user prompt
-        # to return instead of showing an empty or unrelated suggestion row.
+        # If the topic has few candidates, allow an older prompt to return, but
+        # never repeat a question already shown or the user's current question.
+        latest_user_question = recent_user_questions[-1:]
         fresh = [
             question for question in candidates
-            if not _is_repeated_followup(question, recent_user_questions)
+            if not _is_repeated_followup(question, latest_user_question)
+            and not _is_repeated_followup(question, recently_shown)
         ]
     return fresh[:limit]
 
@@ -921,16 +1027,52 @@ def _render_welcome() -> str | None:
 
 
 def _save_current_chat() -> None:
-    """Keep conversations local to this browser session, with their own context."""
-    if st.session_state.auth_user and st.session_state.messages:
-        existing = st.session_state.chats.get(st.session_state.active_chat, {})
-        st.session_state.chats[st.session_state.active_chat] = {
-            "messages": deepcopy(st.session_state.messages),
-            "conversation_state": deepcopy(st.session_state.conversation_state),
-            "updated_at": existing.get("updated_at"),
-            "title": existing.get("title"),
-            "deleted_at": existing.get("deleted_at"),
-        }
+    """Persist the active signed-in user's conversation and context to JSON."""
+    owner = _chat_owner_id(st.session_state.get("auth_user"))
+    messages = st.session_state.get("messages")
+    if not owner or not isinstance(messages, list) or not messages:
+        return
+
+    try:
+        chat_id = int(st.session_state.get("active_chat", 0))
+    except (TypeError, ValueError):
+        chat_id = 0
+    now = datetime.now().isoformat(timespec="seconds")
+    chats = st.session_state.get("chats")
+    if not isinstance(chats, dict):
+        chats = {}
+        st.session_state.chats = chats
+    existing = chats.get(chat_id, {})
+    if not isinstance(existing, Mapping):
+        existing = {}
+    saved_messages = deepcopy(messages)
+    saved_state = deepcopy(st.session_state.get("conversation_state") or {})
+    title = str(existing.get("title") or _chat_title({"messages": saved_messages}))
+    changed = any((
+        existing.get("messages") != saved_messages,
+        existing.get("conversation_state") != saved_state,
+        existing.get("title") != title,
+        chat_id not in chats,
+    ))
+    conversation = {
+        "id": chat_id,
+        "title": title,
+        "created_at": existing.get("created_at") or now,
+        "updated_at": now if changed else (existing.get("updated_at") or now),
+        "messages": saved_messages,
+        "conversation_state": saved_state,
+        "deleted_at": existing.get("deleted_at"),
+    }
+    chats[chat_id] = conversation
+    try:
+        _CHAT_HISTORY_STORE.save_conversation(
+            owner, chat_id, conversation, st.session_state.get("next_chat", chat_id)
+        )
+    except ChatHistoryStorageError:
+        _LOGGER.exception("Unable to persist current chat history")
+        st.session_state.chat_history_storage_error = True
+    else:
+        st.session_state.chat_history_storage_error = False
 
 
 def _chat_title(chat: Mapping[str, Any]) -> str:
@@ -997,6 +1139,7 @@ def _return_to_chat() -> None:
 
 def _logout_account() -> None:
     st.session_state.account_page = "chat"
+    _save_current_chat()
     logout()
 
 
@@ -1414,6 +1557,14 @@ def _render_simple_chat_history() -> None:
 
 def _render_clean_conversation() -> None:
     """Render a compact chat-first landing before the first message."""
+    if (
+        st.session_state.get("auth_user")
+        and st.session_state.get("chat_history_storage_error")
+    ):
+        st.warning(
+            "Chưa thể đọc hoặc lưu lịch sử chat trên máy chủ. Cuộc trò chuyện hiện tại "
+            "có thể không còn sau khi đóng ứng dụng."
+        )
     if not st.session_state.messages:
         with st.container(key="chat_landing_reference"):
             st.html(
@@ -1531,6 +1682,7 @@ def _queue_question(question: str) -> None:
         return
     st.session_state.pop("chat_input_limit_error", None)
     st.session_state.messages.append({"role": "user", "content": clean_question})
+    _save_current_chat()
     st.session_state.pending_question = clean_question
     st.session_state.chat_request_in_progress = True
     st.session_state.chat_request_phase = "queued"
@@ -1577,7 +1729,6 @@ def _record_and_render_exchange(question: str) -> None:
     st.session_state.messages.append(message)
     if st.session_state.auth_user:
         _save_current_chat()
-        st.session_state.chats[st.session_state.active_chat]["updated_at"] = datetime.now().isoformat(timespec="seconds")
 
 
 _inject_chat_styles()

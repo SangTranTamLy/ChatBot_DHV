@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import unittest
+import os
 from pathlib import Path
+import tempfile
+from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
@@ -12,6 +15,20 @@ from tests.test_task_f import EchoEvidenceLLM, _retriever
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+_TEST_TEMP_ROOT = PROJECT_ROOT / ".qa_tmp"
+_TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+
+
+class _IsolatedHistoryAppTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        history_directory = tempfile.TemporaryDirectory(dir=_TEST_TEMP_ROOT)
+        self.addCleanup(history_directory.cleanup)
+        history_env = patch.dict(
+            os.environ,
+            {"CHAT_HISTORY_PATH": str(Path(history_directory.name) / "history.json")},
+        )
+        history_env.start()
+        self.addCleanup(history_env.stop)
 
 
 class TaskResponseRegressionTests(unittest.TestCase):
@@ -220,9 +237,10 @@ class TaskResponseRegressionTests(unittest.TestCase):
         self.assertNotIn("600", result["answer"])
 
 
-class TaskResponseSuggestionRenderingTests(unittest.TestCase):
+class TaskResponseSuggestionRenderingTests(_IsolatedHistoryAppTestCase):
     def test_followups_precede_compact_sources_without_exposing_direct_files(self) -> None:
         app = AppTest.from_file(str(PROJECT_ROOT / "app.py"))
+        app.run(timeout=30)
         app.session_state["messages"] = [
             {"role": "user", "content": "Câu hỏi trước"},
             {
@@ -280,10 +298,11 @@ class TaskResponseSuggestionRenderingTests(unittest.TestCase):
         self.assertIn("Cổng tuyển sinh DHV", source_rows[0])
 
 
-class UserMessageRenderingSafetyTests(unittest.TestCase):
+class UserMessageRenderingSafetyTests(_IsolatedHistoryAppTestCase):
     def test_user_markdown_image_is_rendered_as_plain_text(self) -> None:
         payload = "![tracking](https://example.invalid/pixel.png)"
         app = AppTest.from_file(str(PROJECT_ROOT / "app.py"))
+        app.run(timeout=30)
         app.session_state["messages"] = [{"role": "user", "content": payload}]
         app.run(timeout=30)
 

@@ -640,6 +640,7 @@ def _evidence_method_application_threshold_answer(
         value = next(iter(verified_values)).replace(".", ",")
         return (
             f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {value} điểm trở lên."
+            " Đây là ngưỡng nhận hồ sơ, không phải điểm trúng tuyển hay cam kết trúng tuyển."
         )
 
     for text in verified_method_texts:
@@ -653,6 +654,7 @@ def _evidence_method_application_threshold_answer(
         if match:
             return (
                 f"Theo phương án tuyển sinh DHV {target_year}, phương thức Đánh giá năng lực (ĐGNL) yêu cầu kết quả từ {match.group(1)} điểm trở lên."
+                " Đây là ngưỡng nhận hồ sơ, không phải điểm trúng tuyển hay cam kết trúng tuyển."
             )
     return None
 
@@ -1914,7 +1916,11 @@ def _evidence_score_list_answer(analysis: QueryAnalysis, evidence: Any) -> str |
             + "\n".join(rows)
             + "\n\nLưu ý: đây là điểm trúng tuyển theo từng phương thức, không phải ngưỡng chung để nộp hồ sơ."
         )
-    return "Ngưỡng nhận hồ sơ của các ngành bạn vừa hỏi:\n" + "\n".join(rows)
+    return (
+        "Ngưỡng nhận hồ sơ của các ngành bạn vừa hỏi:\n"
+        + "\n".join(rows)
+        + "\n\nĐây là ngưỡng nhận hồ sơ, không phải điểm trúng tuyển hay cam kết trúng tuyển."
+    )
 
 
 def _is_verified_fact(fact: Mapping[str, object]) -> bool:
@@ -2066,11 +2072,8 @@ def _structured_score_answer(
     else:
         intro = "Ngưỡng nhận hồ sơ được công bố: "
     answer = intro + "; ".join(grouped) + "."
-    if (
-        score_type == "application_threshold"
-        and any(marker in normalized_question for marker in ("phan lon", "da so", "cac nganh con lai"))
-    ):
-        answer += " Đây là ngưỡng nhận hồ sơ, không phải điểm trúng tuyển."
+    if score_type == "application_threshold":
+        answer += " Đây là ngưỡng nhận hồ sơ, không phải điểm trúng tuyển hay cam kết trúng tuyển."
     return answer
 
 

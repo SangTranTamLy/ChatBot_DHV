@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -758,6 +759,11 @@ def _evidence_catalog_answer(
 ) -> dict[str, object] | None:
     """Định dạng các câu trả lời danh mục từ bằng chứng có cấu trúc, không phải từ văn xuôi của model."""
 
+    if analysis.intent == "HOI_NGANH":
+        major_code_answer = _evidence_major_code_answer(analysis, evidence)
+        if major_code_answer is not None:
+            return major_code_answer
+
     if analysis.intent == "DANH_SACH_NGANH":
         try:
             target_year = int(analysis.entities.get("year") or settings.target_year)
@@ -1025,6 +1031,78 @@ def _evidence_catalog_answer(
             "status": "ok",
         }
     return None
+
+
+def _evidence_major_code_answer(
+    analysis: QueryAnalysis,
+    evidence: Any,
+) -> dict[str, object] | None:
+    """Answer a single major-code lookup from verified, in-year catalogue facts."""
+
+    normalized_question = normalize_question(analysis.normalized_question)
+    if (
+        analysis.intent != "HOI_NGANH"
+        or "ma nganh" not in normalized_question
+        or any(marker in normalized_question for marker in ("chuong trinh", "chuyen nganh", "danh sach"))
+    ):
+        return None
+
+    entities = analysis.entities
+    requested_name = str(entities.get("major_name") or "").strip()
+    requested_code = str(entities.get("major_code") or "").strip()
+    if not requested_name and not requested_code:
+        return None
+    if len(entities.get("candidate_majors") or ()) > 1:
+        return None
+    try:
+        target_year = int(entities.get("year") or settings.target_year)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+    matches: dict[tuple[str, str], None] = {}
+    for fact in getattr(evidence, "score_facts", ()) or ():
+        if not isinstance(fact, Mapping):
+            continue
+        if (
+            str(fact.get("category") or "") != "nganh_dao_tao"
+            or str(fact.get("status") or fact.get("source_status") or "").casefold() != "verified"
+        ):
+            continue
+        try:
+            if int(fact.get("year")) != target_year:
+                continue
+        except (TypeError, ValueError, OverflowError):
+            continue
+        major = str(fact.get("major_name") or "").strip()
+        code = str(fact.get("major_code") or "").strip()
+        if not major or not code:
+            continue
+        if requested_name and normalize_question(major) != normalize_question(requested_name):
+            continue
+        if requested_code and code != requested_code:
+            continue
+        matches[(major, code)] = None
+
+    if len(matches) != 1:
+        return None
+    major, code = next(iter(matches))
+    answer = (
+        f"Mã ngành {code} là ngành {major}"
+        if requested_code and not requested_name
+        else f"Ngành {major} có mã ngành {code}"
+    )
+    answer += f" tại DHV năm {target_year}."
+    return {
+        "answer": answer,
+        "sources": [dict(source) for source in getattr(evidence, "sources", ()) or ()],
+        "status": "ok",
+        "major_lookup": {
+            "major_name": major,
+            "major_code": code,
+            "year": target_year,
+            "deterministic": True,
+        },
+    }
 
 
 _PROGRAM_RELATION_MARKERS = (

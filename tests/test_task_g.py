@@ -22,6 +22,21 @@ from tests.test_task_f import (
 
 
 class TaskGIntentTests(unittest.TestCase):
+    def test_single_major_code_lookup_uses_verified_catalog_without_generation(self) -> None:
+        llm = RecordingLLM("Mã ngành không xác định.")
+        result = ask_chatbot(
+            "Ngành Công nghệ thông tin của DHV năm 2026 có mã ngành nào?",
+            retriever=_retriever(),
+            llm=llm,
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("7480201", result["answer"])
+        self.assertIn("Công nghệ thông tin", result["answer"])
+        self.assertTrue(result["trace"]["major_lookup"]["deterministic"])
+        self.assertTrue(result["sources"])
+        self.assertEqual(llm.prompts, [])
+
     def test_natural_language_specialization_aliases_resolve_to_program_catalog(self) -> None:
         cases = (
             (

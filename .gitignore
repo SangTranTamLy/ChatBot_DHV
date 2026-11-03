@@ -45,6 +45,10 @@ chroma_backup_*/
 data/chroma/
 scratch/
 
+# Local persistent chat history (may contain user-provided personal data)
+storage/*
+!storage/.gitkeep
+
 # Generated QA/evaluation result dumps
 .reports/
 /reports/

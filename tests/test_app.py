@@ -4,30 +4,50 @@ from __future__ import annotations
 
 import unittest
 from datetime import datetime, timedelta
+import os
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
+from uuid import uuid4
 
 from streamlit.testing.v1 import AppTest
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = PROJECT_ROOT / "app.py"
+_TEST_TEMP_ROOT = PROJECT_ROOT / ".qa_tmp"
+_TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def _signed_in_app() -> AppTest:
     at = AppTest.from_file(str(APP_PATH))
     at.session_state["account_page"] = "chat"
-    at.session_state["auth_user"] = {"name": "Test User", "email": "test@example.com"}
+    at.session_state["auth_user"] = {
+        "id": f"test-user-{uuid4()}",
+        "name": "Test User",
+        "email": "test@example.com",
+    }
     # init_auth signs out a user that has no tokens.
     at.session_state["auth_tokens"] = {"access_token": "a", "refresh_token": "r", "expires_at": 4_000_000_000}
-    return at
+    # Initialise Streamlit's owner state before tests seed an existing conversation.
+    return at.run(timeout=30)
 
 
 def _app() -> AppTest:
-    return _signed_in_app().run(timeout=30)
+    return _signed_in_app()
 
 
 class StreamlitAppTests(unittest.TestCase):
+    def setUp(self) -> None:
+        history_directory = tempfile.TemporaryDirectory(dir=_TEST_TEMP_ROOT)
+        self.addCleanup(history_directory.cleanup)
+        history_env = patch.dict(
+            os.environ,
+            {"CHAT_HISTORY_PATH": str(Path(history_directory.name) / "history.json")},
+        )
+        history_env.start()
+        self.addCleanup(history_env.stop)
+
     def test_major_list_renders_as_table_without_changing_history(self):
         answer = ("Các ngành đào tạo:\n\n"
                   "1. Kỹ thuật máy tính — mã ngành 7480106\n\n"
@@ -256,6 +276,45 @@ class StreamlitAppTests(unittest.TestCase):
                 "Học bổng nào áp dụng cho tân sinh viên DHV 2026?",
             ],
         )
+
+    def test_followup_fallback_does_not_repeat_questions_shown_on_previous_turn(self) -> None:
+        first_suggestions = [
+            "DHV có những học bổng nào cho tân sinh viên 2026?",
+            "Học phí học kỳ I DHV 2026 gồm những khoản nào?",
+            "Cách đóng học phí tại DHV như thế nào?",
+        ]
+        first_response = {
+            "answer": "Mức học phí ngành CNTT năm 2026 được công bố theo tín chỉ.",
+            "status": "ok",
+            "related_questions": first_suggestions,
+        }
+        next_suggestion = "Học phí mỗi tín chỉ tại DHV năm 2026 bao nhiêu?"
+        followup_response = {
+            "answer": "Học phí học kỳ I phụ thuộc vào số tín chỉ đăng ký.",
+            "status": "ok",
+            "related_questions": [*first_suggestions, next_suggestion],
+        }
+
+        at = _signed_in_app()
+        with patch(
+            "src.chatbot.chat_service.ask_chatbot",
+            side_effect=[first_response, followup_response],
+        ) as ask_chatbot:
+            at.chat_input[0].set_value("Học phí ngành CNTT năm 2026 bao nhiêu?").run(timeout=30)
+            at.chat_input[0].set_value("Còn học phí học kỳ I thì sao?").run(timeout=30)
+
+        self.assertFalse(at.exception)
+        self.assertEqual(ask_chatbot.call_count, 2)
+        self.assertEqual(
+            at.session_state.messages[-1]["suggested_questions"],
+            [next_suggestion],
+        )
+        visible_followups = [
+            button.label
+            for button in at.button
+            if button.key.startswith("answer_followup_")
+        ]
+        self.assertEqual(visible_followups, [next_suggestion])
 
     def test_history_displays_public_backend_sources_and_all_service_statuses(self) -> None:
         messages = [

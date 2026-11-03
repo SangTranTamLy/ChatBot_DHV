@@ -202,10 +202,19 @@ class RuntimeEnrollmentTests(unittest.TestCase):
                 ),
             ]
         )
-        result = ask_chatbot("nhập học cần những gì", retriever=retriever)
+        class NeverGenerate:
+            calls = 0
+
+            def generate(self, prompt: str) -> str:
+                self.calls += 1
+                raise AssertionError("verified enrollment answers should not need generation")
+
+        llm = NeverGenerate()
+        result = ask_chatbot("nhập học cần những gì", retriever=retriever, llm=llm)
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["trace"]["retrieval_calls"], 1)
         self.assertGreater(result["trace"]["evidence_count"], 0)
+        self.assertEqual(llm.calls, 0)
         self.assertIn("Học bạ THPT", str(result["answer"]))
         self.assertIn("Căn cước", str(result["answer"]))
 

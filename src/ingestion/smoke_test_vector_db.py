@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import sys
 from typing import Any
 
 from langchain_chroma import Chroma
@@ -38,6 +39,20 @@ def _result_summary(document: Any) -> dict[str, Any]:
         "heading_path": metadata.get("heading_path"),
         "content_preview": document.page_content[:220].replace("\n", " | "),
     }
+
+
+def _print_console_safe(value: object) -> None:
+    """Print Unicode diagnostics safely in legacy Windows CMD code pages."""
+
+    text = str(value)
+    try:
+        sys.stdout.reconfigure(errors="backslashreplace")
+    except (AttributeError, OSError, ValueError):
+        pass
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", errors="backslashreplace").decode("ascii"))
 
 
 def run_smoke_tests(
@@ -88,9 +103,9 @@ def run_smoke_tests(
             if not documents:
                 raise AssertionError(f"no retrieval result for query: {query}")
             summaries = [_result_summary(document) for document in documents]
-            print(f"QUERY: {query}")
+            _print_console_safe(f"QUERY: {query}")
             for summary in summaries:
-                print(json.dumps(summary, ensure_ascii=False))
+                _print_console_safe(json.dumps(summary, ensure_ascii=False))
 
             matching = [
                 document
@@ -131,7 +146,7 @@ def run_smoke_tests(
                     "results": summaries,
                 }
             )
-        print("SMOKE_PASS")
+        _print_console_safe("SMOKE_PASS")
         return all_results
     finally:
         close_chroma_store(vector_store)

@@ -1286,6 +1286,40 @@ def extract_pdf_pages(path: Any) -> list[dict[str, object]]:
                 page_value["warnings"] = page_warnings
             pages.append(page_value)
     if not any(str(page.get("text") or "").strip() for page in pages):
+        failed_ocr_pages = sorted(
+            {
+                int(page["page"])
+                for page in pages
+                if any(
+                    isinstance(warning, dict) and warning.get("type") == "OCR_FAILED"
+                    for warning in page.get("warnings", [])
+                )
+            }
+        )
+        empty_ocr_pages = sorted(
+            {
+                int(page["page"])
+                for page in pages
+                if any(
+                    isinstance(warning, dict)
+                    and warning.get("type") == "OCR_EMPTY_OR_LOW_QUALITY"
+                    for warning in page.get("warnings", [])
+                )
+            }
+        )
+        if failed_ocr_pages:
+            page_list = ", ".join(str(number) for number in failed_ocr_pages)
+            raise ValueError(
+                "PDF has no extractable text; OCR failed on page(s) "
+                f"{page_list}. Check that rapidocr_onnxruntime is installed and "
+                "initializes correctly, then retry."
+            )
+        if empty_ocr_pages:
+            page_list = ", ".join(str(number) for number in empty_ocr_pages)
+            raise ValueError(
+                "PDF has no extractable text; OCR returned no usable text on "
+                f"page(s) {page_list}. Check scan quality, orientation, and resolution."
+            )
         raise ValueError("PDF has no extractable text")
     return pages
 

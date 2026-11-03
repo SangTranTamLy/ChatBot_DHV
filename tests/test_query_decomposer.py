@@ -83,6 +83,19 @@ class QueryDecomposerTests(unittest.TestCase):
         advisory = analyze_question("Học lực của em không giỏi, nên chọn ngành nào?")
         self.assertFalse(should_attempt_decomposition(advisory, route_question(advisory)))
 
+    def test_threshold_and_admission_guarantee_check_stay_one_issue(self) -> None:
+        question = (
+            "Điểm sàn xét tuyển ngành Công nghệ thông tin năm 2026 theo phương thức "
+            "ĐGNL là bao nhiêu? Có chắc trúng tuyển không?"
+        )
+        analysis = analyze_question(question)
+        plan = route_question(analysis)
+
+        self.assertEqual(analysis.intent, "HOI_NGUONG_DAU_VAO")
+        self.assertEqual(analysis.entities["issue_intents"], ["HOI_NGUONG_DAU_VAO"])
+        self.assertFalse(plan.subplans)
+        self.assertFalse(should_attempt_decomposition(analysis, plan))
+
     def test_natural_admission_method_phrasings_are_in_scope_and_listable(self) -> None:
         for question in (
             "Trường mình có những hình thức tuyển sinh nào?",

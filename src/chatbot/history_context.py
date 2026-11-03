@@ -10,7 +10,11 @@ from typing import Any
 
 from src.config.settings import Settings
 from src.models.local_llm import LocalLLM, OllamaError
-from .query_semantics import analyze_fee_request, normalize_semantic_text
+from .query_semantics import (
+    analyze_fee_request,
+    excludes_optional_english_test,
+    normalize_semantic_text,
+)
 from .scope_guard import detect_target_school
 from .year_semantics import extract_requested_year
 
@@ -118,7 +122,7 @@ def _resolve_fee_followup(
     period = {"HKI": "học kỳ I", "HKII": "học kỳ II"}.get(semester, "học kỳ")
     year_suffix = f" năm {year}" if year is not None else ""
 
-    if any(marker in text for marker in ("khong kiem tra", "khong thi", "khong dong", "khong bao gom")) and "tieng anh" in text:
+    if excludes_optional_english_test(question) and "tieng anh" in text:
         resolved = (
             f"Tổng các khoản thu {period}{year_suffix} của DHV, không gồm phí kiểm tra năng lực tiếng Anh, "
             "là bao nhiêu?"

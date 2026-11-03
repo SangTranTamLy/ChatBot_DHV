@@ -726,6 +726,56 @@ def _evidence_scholarship_answer(analysis: QueryAnalysis, evidence: Any) -> str 
         return None
     normalized_question = normalize_question(analysis.normalized_question)
     target_year = int(analysis.entities.get("year") or settings.target_year)
+    score_range = re.search(
+        r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(?:đến|tới|[-–—])\s*(\d+(?:[.,]\d+)?)(?!\d)",
+        analysis.question,
+        re.IGNORECASE,
+    )
+    if score_range and any(
+        marker in normalized_question
+        for marker in (
+            "hoc bong",
+            "ho tro hoc phi",
+            "duoc ho tro",
+            "mien giam hoc phi",
+            "duoc giam hoc phi",
+        )
+    ):
+        requested_range = tuple(
+            float(value.replace(",", ".")) for value in score_range.groups()
+        )
+        best_range_lines: dict[tuple[str, str], tuple[tuple[int, int], str]] = {}
+        for line in lines:
+            folded_line = normalize_question(line)
+            condition = re.split(r"hỗ trợ|ho tro", line, maxsplit=1, flags=re.IGNORECASE)[0]
+            condition_values = [
+                float(value.replace(",", "."))
+                for value in re.findall(r"\d+(?:[.,]\d+)?", condition)
+            ]
+            percentage = re.search(r"(\d+(?:[.,]\d+)?)\s*%", line)
+            if (
+                requested_range[0] in condition_values
+                and requested_range[1] in condition_values
+                and percentage
+                and "hoc phi chuan hk1" in folded_line
+            ):
+                key = (
+                    normalize_question(condition),
+                    normalize_question(percentage.group(1)),
+                )
+                has_amount = bool(
+                    re.search(r"\d[\d.,]*\s*(?:VNĐ|đồng|VND)", line, re.IGNORECASE)
+                )
+                quality = (int(has_amount), len(line))
+                previous = best_range_lines.get(key)
+                if previous is None or quality > previous[0]:
+                    best_range_lines[key] = (quality, line)
+        matching_range_lines = [line for _, line in best_range_lines.values()]
+        if matching_range_lines:
+            return (
+                f"Theo chính sách học bổng DHV {target_year}, khoảng {score_range.group(1)}–{score_range.group(2)} điểm được hỗ trợ theo các điều kiện sau:\n"
+                + "\n".join(f"- {line.lstrip('• ').strip()}" for line in matching_range_lines)
+            )
     if _is_admission_scholarship_conditions_question(analysis):
         conditions_answer = _evidence_admission_scholarship_conditions_answer(
             analysis,

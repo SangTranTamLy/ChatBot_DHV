@@ -135,6 +135,8 @@ Quy tắc:
   dùng fact có status VERIFIED. Fact PARTIAL chỉ cho phép nêu phần có dữ kiện;
   phải nói rõ field nào còn thiếu. Với MISSING, không suy đoán giá trị. Với
   CONFLICT, không tự chọn nguồn hoặc giá trị; nêu chưa thể xác nhận chính xác.
+- Khi nhắc tên trường, dùng "DHV" hoặc tên đầy đủ "Trường Đại học Hùng Vương TP.HCM";
+  không rút gọn tên đầy đủ thành "Trường Đại học Hùng Vương" vì có thể nhầm với trường khác.
 - Provenance trong VERIFIED_FACTS chỉ phục vụ đối chiếu nội bộ. Không đọc mã
   nguồn, tên trường kỹ thuật, đường dẫn nội bộ hoặc metadata cho thí sinh.
 - ORIGINAL_QUESTION giữ nguyên cách hỏi của thí sinh; RESOLVED_CONTEXT là cách

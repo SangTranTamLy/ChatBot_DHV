@@ -1755,8 +1755,15 @@ def _multi_issue_intents(normalized: str, entities: Mapping[str, object]) -> tup
     if supplementary:
         add("HOI_XET_TUYEN_BO_SUNG")
     scholarship_context = "hoc bong" in normalized
+    threshold_method_scope = (
+        "HOI_NGUONG_DAU_VAO" in intents
+        and bool(entities.get("admission_method"))
+        and bool(re.search(r"\btheo phuong thuc\b", normalized))
+        and _is_score_amount_request(normalized)
+    )
     if (
         not admission_condition_request
+        and not threshold_method_scope
         and (
             "phuong thuc" in normalized
             or any(
@@ -2123,13 +2130,26 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
         admission_method is not None and _is_score_amount_request(normalized)
     ) or _is_subject_minimum_request(normalized):
         score_type = APPLICATION_THRESHOLD
-    if score_type == APPLICATION_THRESHOLD and _is_major_specific_score_lookup(
+    explicit_threshold_terms = (
+        "diem san",
+        "nguong dau vao",
+        "diem dau vao",
+        "diem nhan ho so",
+        "nguong nhan ho so",
+        "nguong dam bao chat luong",
+    )
+    if (
+        score_type == APPLICATION_THRESHOLD
+        and not any(term in normalized for term in explicit_threshold_terms)
+        and _is_major_specific_score_lookup(
         normalized,
         major_name=major_name,
         admission_method=admission_method,
+        )
     ):
         # A major/method-specific published score row is more precise than a
         # generic application-floor record associated with the same major.
+        # Keep explicit ``điểm sàn``/minimum wording on the threshold route.
         score_type = ADMISSION_SCORE
 
     score_facts, score_value = _extract_scores(normalized)
@@ -2299,6 +2319,7 @@ def _extract_entities(normalized: str, state: ConversationState) -> dict[str, ob
             "catalog_operation": catalog_operation,
             "score_type": score_type,
             "student_scores": score_facts,
+            "admission_method": admission_method,
         },
     )
     entity_type = "program" if program_name else ("major" if major_name or major_code else None)
@@ -2771,8 +2792,33 @@ def _is_score_distribution_question(normalized: str, entities: Mapping[str, obje
 
 
 def _is_scholarship_score_question(normalized: str) -> bool:
+    explicit_scholarship = "hoc bong" in normalized
+    implicit_support_question = (
+        not explicit_scholarship
+        and "diem" in normalized
+        and any(
+            marker in normalized
+            for marker in (
+                "ho tro hoc phi",
+                "duoc ho tro",
+                "mien giam hoc phi",
+                "duoc giam hoc phi",
+            )
+        )
+        and not any(
+            marker in normalized
+            for marker in (
+                "diem san",
+                "nguong dau vao",
+                "diem dau vao",
+                "diem nhan ho so",
+                "diem chuan",
+                "diem trung tuyen",
+            )
+        )
+    )
     return (
-        "hoc bong" in normalized
+        (explicit_scholarship or implicit_support_question)
         and any(word in normalized for word in _SCHOLARSHIP_CRITERIA_WORDS)
         and not _has_supplementary_marker(normalized)
         and not any(other in normalized for other in ("diem chuan", "diem trung tuyen", "ho so", "nhap hoc"))
@@ -2829,8 +2875,14 @@ def _classify_intent_rules(normalized: str, entities: dict[str, object], state: 
         entities["score_type"] = None
         entities["score_query_type"] = None
         entities["admission_combination_detail"] = False
+        if "hoc bong" not in normalized:
+            # A score range used to ask about financial support is a policy
+            # criterion, not a personal score supplied for admission advice.
+            entities["student_scores"] = {}
         entities["requested_information"] = ["scholarship"]
-        if any(marker in normalized for marker in _SCHOLARSHIP_CRITERIA_WORDS):
+        if "hoc bong" in normalized and any(
+            marker in normalized for marker in _SCHOLARSHIP_CRITERIA_WORDS
+        ):
             entities["scholarship_request_type"] = "conditions"
         issue_intents = _multi_issue_intents(normalized, entities)
         if len(issue_intents) >= 2 and _has_standalone_tuition_clause(normalized):

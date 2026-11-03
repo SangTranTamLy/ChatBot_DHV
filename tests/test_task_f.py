@@ -637,6 +637,41 @@ class TaskFGenerationTests(unittest.TestCase):
         )
         self.assertTrue(llm.prompts)
 
+    def test_implicit_score_range_support_question_uses_scholarship_policy(self) -> None:
+        question = "Thí sinh đạt từ 21 đến 25,5 điểm được hỗ trợ học phí thế nào trong năm 2026?"
+        analysis = analyze_question(question)
+        llm = RecordingLLM("Không có dữ liệu.")
+        result = ask_chatbot(question, retriever=_retriever(), llm=llm)
+
+        self.assertEqual(analysis.intent, "HOI_HOC_BONG")
+        self.assertEqual(analysis.entities["student_scores"], {})
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("50%", result["answer"])
+        self.assertIn("học phí chuẩn HK1", result["answer"])
+        self.assertIn("21 đến 25,5", result["answer"])
+        self.assertEqual(result["answer"].count("50%"), 2)
+        self.assertTrue(result["sources"])
+        self.assertEqual(llm.prompts, [])
+
+    def test_explicit_score_floor_stays_an_admission_threshold_question(self) -> None:
+        analysis = analyze_question(
+            "Điểm sàn ngành Công nghệ thông tin DHV năm 2026 là bao nhiêu?"
+        )
+        self.assertEqual(analysis.intent, "HOI_NGUONG_DAU_VAO")
+
+    def test_named_method_qualifies_a_threshold_lookup_without_becoming_a_second_issue(self) -> None:
+        for question in (
+            "Điểm sàn xét tuyển ngành Công nghệ thông tin năm 2026 theo phương thức ĐGNL là bao nhiêu?",
+            "Điểm sàn xét tuyển ngành Công nghệ thông tin năm 2026 theo phương thức ĐGNL là bao nhiêu? Có chắc trúng tuyển không?",
+        ):
+            with self.subTest(question=question):
+                analysis = analyze_question(question)
+                self.assertEqual(analysis.intent, "HOI_NGUONG_DAU_VAO")
+                self.assertEqual(analysis.entities["admission_method"], "dgnl")
+                self.assertEqual(
+                    analysis.entities["issue_intents"], ["HOI_NGUONG_DAU_VAO"]
+                )
+
     def test_advisory_does_not_generate_personal_fit_without_verified_evidence(self) -> None:
         llm = SequenceLLM(
             [
@@ -687,6 +722,7 @@ class TaskFGenerationTests(unittest.TestCase):
         self.assertIn("D01 (Toán, Ngữ văn, Tiếng Anh)", result["answer"])
         self.assertEqual(result["answer"].count("7340101"), 1)
         self.assertEqual(result["answer"].count("?"), 1)
+        self.assertIn("không phải điểm trúng tuyển hay cam kết trúng tuyển", result["answer"])
         self.assertTrue(result["answer"].rstrip().endswith("?"))
 
     def test_direct_fit_evidence_must_be_verified_dhv_and_current_year(self) -> None:
@@ -810,6 +846,7 @@ class TaskFGenerationTests(unittest.TestCase):
             "application_threshold_lookup",
         )
         self.assertIn("15 điểm", result["answer"])
+        self.assertIn("không phải điểm trúng tuyển", result["answer"])
 
     def test_personal_admission_guarantee_is_rejected(self) -> None:
         class UnsafeLLM:

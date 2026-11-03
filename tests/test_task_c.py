@@ -651,6 +651,7 @@ class TaskCTests(unittest.TestCase):
 
         self.assertIn("CHỈ DÙNG VERIFIED_FACTS và CONTEXT", prompt)
         self.assertIn("Không tạo, đoán hoặc chép URL", prompt)
+        self.assertIn("không rút gọn tên đầy đủ thành \"Trường Đại học Hùng Vương\"", prompt)
         self.assertIn("điểm sàn", prompt)
         self.assertIn("Học phí là 1.250.000", prompt)
 

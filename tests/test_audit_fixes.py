@@ -14,6 +14,19 @@ class PromptLeakTests(unittest.TestCase):
         cleaned = sanitize_answer("Theo thông tin từ CONTEXT, học phí không tăng.")
         self.assertNotIn("CONTEXT", cleaned)
 
+    def test_retry_instruction_echo_is_detected_with_or_without_diacritics(self) -> None:
+        leaked_prefixes = (
+            "BẢN ĐÁP ÁN TRƯỚC ĐÃ BỎ SÓT NỘI DUNG BẮT BUỘC. "
+            "Ở lần trả lời này, hãy bao gồm đầy đủ các cụm/tiêu đề sau.",
+            "Ban dap an truoc da bo sot noi dung bat buoc; khong bo bat ky muc nao.",
+            "Bản đáp án mới: Tổng các khoản cơ bản học kỳ I là 14.250.000 đồng.",
+            "BẢN NHÁP CẦN KIỂM TRA: Tổng các khoản cơ bản học kỳ I là 14.250.000 đồng.",
+            "CÂU TRẢ LỜI MỚI: Học phí HKI là 12.500.000 đồng.",
+        )
+        for answer in leaked_prefixes:
+            with self.subTest(answer=answer):
+                self.assertTrue(has_prompt_leak(answer))
+
 
 class FallbackIntentTests(unittest.TestCase):
     def test_program_existence_is_not_out_of_scope(self) -> None:

@@ -122,6 +122,28 @@ class FeeHistoryResolutionTests(unittest.TestCase):
         self.assertEqual(result.method, "fee_history_resolution")
         self.assertIn("không gồm phí kiểm tra năng lực tiếng Anh", result.question)
 
+    def test_not_subject_to_test_followup_preserves_explicit_exclusion(self) -> None:
+        history = (
+            {"role": "user", "content": "Tổng chi phí học kỳ I năm 2026 bao nhiêu?"},
+            {
+                "role": "assistant",
+                "content": (
+                    "Tổng các khoản cơ bản học kỳ I năm 2026 là 14.250.000 đồng. "
+                    "Nếu thuộc diện kiểm tra năng lực Tiếng Anh, thành tối đa 14.500.000 đồng."
+                ),
+            },
+        )
+        result = resolve_history_question(
+            "Nếu không thuộc diện kiểm tra tiếng Anh thì tổng là bao nhiêu?",
+            history,
+            settings_obj=settings,
+        )
+
+        self.assertEqual(result.method, "fee_history_resolution")
+        self.assertIn("học kỳ I", result.question)
+        self.assertIn("2026", result.question)
+        self.assertIn("không gồm phí kiểm tra năng lực tiếng Anh", result.question)
+
     def test_new_topic_does_not_inherit_tuition_history(self) -> None:
         result = resolve_history_question("Vậy học bổng đầu vào thế nào?", self.history, settings_obj=settings)
         self.assertEqual(result.method, "independent_question")
@@ -129,6 +151,151 @@ class FeeHistoryResolutionTests(unittest.TestCase):
 
 
 class FeeConversationRegressionTests(unittest.TestCase):
+    class MisleadingFeeComposer:
+        def generate(self, prompt: str) -> str:
+            # All listed rows are sourced, but 14.250.000 is a subtotal that
+            # excludes the conditional English test fee.
+            return (
+                "Học phí HKI (10 tín chỉ): 12.500.000 đồng; "
+                "phí nhập học: 1.500.000 đồng; học liệu: 250.000 đồng; "
+                "kiểm tra năng lực Tiếng Anh (nếu có): 250.000 đồng. "
+                "Tổng cộng, bạn cần đóng 14.250.000 đồng."
+            )
+
+    def test_generic_hki_tuition_question_does_not_gain_an_unrequested_total(self) -> None:
+        result = ChatService(
+            retriever=_retriever(), llm=self.MisleadingFeeComposer()
+        ).ask("Học phí học kỳ I đóng bao nhiêu?")
+
+        self.assertEqual(result["status"], "ok")
+        self.assertIn("12.500.000", result["answer"])
+        self.assertNotIn("Tổng cộng", result["answer"])
+        self.assertNotIn("14.250.000", result["answer"])
+
+    def test_hki_followup_keeps_conditional_english_fee_out_of_tuition_total(self) -> None:
+        service = ChatService(
+            retriever=_retriever(), llm=self.MisleadingFeeComposer()
+        )
+        first_question = "Học phí ngành Công nghệ thông tin năm 2026 bao nhiêu?"
+        first = service.ask(first_question)
+        history = [
+            {"role": "user", "content": first_question},
+            {"role": "assistant", "content": str(first["answer"])},
+        ]
+
+        followup = service.ask(
+            "Còn học phí học kỳ I thì sao?",
+            conversation_state=first.get("state"),
+            conversation_history=history,
+        )
+
+        self.assertEqual(followup["status"], "ok")
+        self.assertEqual(
+            followup["trace"]["history_resolution"]["method"],
+            "fee_history_resolution",
+        )
+        self.assertIn("12.500.000", followup["answer"])
+        self.assertNotIn("Tổng cộng", followup["answer"])
+        self.assertNotIn("14.250.000", followup["answer"])
+
+    def test_history_exclusion_overrides_unknown_optional_english_status(self) -> None:
+        class NeverGenerate:
+            def generate(self, prompt: str) -> str:
+                raise AssertionError("verified fee-table answers should not need generation")
+
+        service = ChatService(retriever=_retriever(), llm=NeverGenerate())
+        first_question = "Tổng chi phí học kỳ I năm 2026 bao nhiêu?"
+        first = service.ask(first_question)
+        history = [
+            {"role": "user", "content": first_question},
+            {"role": "assistant", "content": str(first["answer"])},
+        ]
+        followup = service.ask(
+            "Nếu không thuộc diện kiểm tra tiếng Anh thì tổng là bao nhiêu?",
+            conversation_state=first.get("state"),
+            conversation_history=history,
+        )
+
+        self.assertEqual(followup["status"], "ok")
+        resolution = followup["trace"]["history_resolution"]["resolved_question"]
+        self.assertIn("không gồm phí kiểm tra năng lực tiếng Anh", resolution)
+        self.assertEqual(followup["trace"]["fee_request"]["optional_english"], "exclude")
+        self.assertIn("14.250.000", followup["answer"])
+        self.assertNotIn("14.500.000", followup["answer"])
+
+    def test_composer_cannot_add_excluded_optional_fee_after_correct_subtotal(self) -> None:
+        class IncorrectlyAddsExcludedFee:
+            def generate(self, prompt: str) -> str:
+                return (
+                    "Tổng các khoản thu học kỳ I năm 2026, không gồm phí kiểm tra tiếng Anh, "
+                    "là 14.250.000 đồng + 250.000 đồng = 14.500.000 đồng."
+                )
+
+        service = ChatService(retriever=_retriever(), llm=IncorrectlyAddsExcludedFee())
+        first_question = "Tổng chi phí học kỳ I năm 2026 bao nhiêu?"
+        first = service.ask(first_question)
+        history = [
+            {"role": "user", "content": first_question},
+            {"role": "assistant", "content": str(first["answer"])},
+        ]
+        followup = service.ask(
+            "Nếu không thuộc diện kiểm tra tiếng Anh thì tổng là bao nhiêu?",
+            conversation_state=first.get("state"),
+            conversation_history=history,
+        )
+
+        self.assertEqual(followup["status"], "ok")
+        self.assertIn("14.250.000", followup["answer"])
+        self.assertNotIn("14.500.000", followup["answer"])
+        self.assertEqual(followup["trace"]["response_composer"]["status"], "safe_fallback")
+        self.assertEqual(
+            followup["trace"]["response_composer"]["reason"],
+            "optional_fee_total_mismatch",
+        )
+
+    def test_unqualified_total_keeps_base_and_conditional_fee_distinct(self) -> None:
+        result = ChatService(
+            retriever=_retriever(), llm=self.MisleadingFeeComposer()
+        ).ask("Tổng các khoản phải đóng học kỳ I năm 2026 là bao nhiêu?")
+
+        self.assertEqual(result["status"], "ok")
+        answer = str(result["answer"])
+        self.assertIn("Tổng các khoản cơ bản", answer)
+        self.assertIn("14.250.000 đồng", answer)
+        self.assertIn("nếu thuộc diện kiểm tra", answer.casefold())
+        self.assertIn("tối đa 14.500.000 đồng", answer.casefold())
+
+    def test_retry_instruction_echo_falls_back_without_showing_internal_prompt(self) -> None:
+        class RetryInstructionEcho:
+            def __init__(self) -> None:
+                self.prompts: list[str] = []
+
+            def generate(self, prompt: str) -> str:
+                self.prompts.append(prompt)
+                if len(self.prompts) == 1:
+                    return "Tổng cộng, bạn cần đóng 14.250.000 đồng."
+                return (
+                    "Bản đáp án mới: "
+                    "Tổng các khoản cơ bản học kỳ I năm 2026 là 14.250.000 đồng; "
+                    "Nếu thuộc diện kiểm tra năng lực Tiếng Anh, cộng thêm 250.000 đồng, "
+                    "thành tối đa 14.500.000 đồng."
+                )
+
+        llm = RetryInstructionEcho()
+        result = ChatService(retriever=_retriever(), llm=llm).ask(
+            "Tổng chi phí học kỳ I năm 2026 bao nhiêu?"
+        )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(len(llm.prompts), 2)
+        self.assertIn("BẢN ĐÁP ÁN TRƯỚC", llm.prompts[1])
+        self.assertIn("CÂU TRẢ LỜI MỚI:", llm.prompts[1])
+        self.assertNotIn("Bản đáp án mới:", result["answer"])
+        self.assertIn("Tổng các khoản cơ bản", result["answer"])
+        self.assertIn("tối đa 14.500.000 đồng", result["answer"])
+        self.assertEqual(result["trace"]["response_composer"]["status"], "safe_fallback")
+        self.assertEqual(result["trace"]["response_composer"]["reason"], "prompt_leak")
+
     def test_optional_english_total_is_in_scope_and_includes_the_conditional_fee(self) -> None:
         class NeverGenerate:
             def generate(self, prompt: str) -> str:

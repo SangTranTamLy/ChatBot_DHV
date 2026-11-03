@@ -69,6 +69,7 @@ def _retry_prompt(
     evidence: Any,
     analysis: QueryAnalysis | None = None,
     score_comparisons: Any = (),
+    validation_reason: str = "",
 ) -> str:
     checklist = "; ".join(
         f"{fact.get('method')} → {fact.get('raw_value')}"
@@ -154,6 +155,13 @@ def _retry_prompt(
                 " Bắt buộc giữ nguyên từng phép so sánh điểm cá nhân sau đây, không bỏ "
                 "điểm thí sinh hoặc đổi quan hệ: " + " | ".join(required_comparisons)
             )
+    institution_instruction = ""
+    if validation_reason == "institution_mismatch":
+        institution_instruction = (
+            " Tên trường trong bản nháp trước không được chấp nhận. Nếu cần nhắc tên trường, "
+            "chỉ dùng chính xác “DHV” hoặc “Trường Đại học Hùng Vương TP.HCM”; "
+            "không rút gọn thành “Trường Đại học Hùng Vương” và không đưa tên trường khác."
+        )
     major_catalog_instruction = ""
     if analysis is not None and getattr(analysis, "intent", None) == "DANH_SACH_NGANH":
         major_rows: list[str] = []
@@ -188,6 +196,7 @@ def _retry_prompt(
         + relation_instruction
         + comparison_instruction
         + major_catalog_instruction
+        + institution_instruction
         + "\n\nCÂU TRẢ LỜI MỚI:\n"
     )
 
@@ -557,6 +566,7 @@ def _validated_generation(
                     evidence,
                     analysis,
                     score_comparisons,
+                    validation_reason=str(reason or ""),
                 )
             required = [str(phrase).strip() for phrase in required_phrases or () if str(phrase).strip()]
             if required:

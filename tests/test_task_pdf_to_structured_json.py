@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -573,6 +574,30 @@ class StructuredJSONPipelineTests(unittest.TestCase):
         self.assertEqual(tokens, [])
         self.assertEqual(engine, "")
         self.assertIn("RapidOCR failed", failures[0])
+
+    def test_unreadable_scan_error_identifies_ocr_runtime_failure(self) -> None:
+        import fitz
+        from PIL import Image
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            pdf_path = Path(temp_dir) / "unreadable-scan.pdf"
+            image_buffer = io.BytesIO()
+            Image.new("RGB", (160, 80), "white").save(image_buffer, format="PNG")
+            pdf = fitz.open()
+            page = pdf.new_page(width=320, height=160)
+            page.insert_image(page.rect, stream=image_buffer.getvalue())
+            pdf.save(pdf_path)
+            pdf.close()
+
+            with patch(
+                "src.ingestion.pdf_layout._rapidocr_tokens",
+                side_effect=RuntimeError("runtime unavailable"),
+            ):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    r"OCR failed on page\(s\) 1.*rapidocr_onnxruntime",
+                ):
+                    extract_pdf_pages(pdf_path)
 
     def test_ocr_image_crop_boxes_are_translated_to_page_coordinates(self) -> None:
         token = {"text": "75%", "bbox": [1.0, 2.0, 7.0, 9.0], "confidence": 0.95, "source": "rapidocr"}

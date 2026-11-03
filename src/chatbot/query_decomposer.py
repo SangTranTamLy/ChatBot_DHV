@@ -92,6 +92,24 @@ def should_attempt_decomposition(analysis: object, plan: object) -> bool:
         return False
 
     question = str(getattr(analysis, "normalized_question", "") or "")
+    threshold_outcome_check = (
+        intent == "HOI_NGUONG_DAU_VAO"
+        and any(
+            marker in question
+            for marker in ("diem san", "nguong dau vao", "diem nhan ho so")
+        )
+        and bool(
+            re.search(
+                r"\b(?:co chac(?: chan)?|dam bao)\b.{0,36}\b(?:trung tuyen|dau)\b",
+                question,
+            )
+        )
+    )
+    if threshold_outcome_check:
+        # Asking whether an intake threshold guarantees admission is one
+        # connected question; decomposing its caution into a separate
+        # ``admission score`` request can surface unrelated score tables.
+        return False
     # Asking when a supplementary round accepts applications is one connected
     # admissions issue. Splitting the words "nhận hồ sơ" into an ordinary
     # enrollment-document question sends the second span to the wrong corpus.
